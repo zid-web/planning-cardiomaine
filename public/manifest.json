@@ -1,0 +1,21 @@
+{
+  "name": "Plateforme de gestion : planning Cardiomaine",
+  "short_name": "Cardiomaine",
+  "description": "Plateforme de gestion de planning pour le Groupe Cardiomaine",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/icon-192x192.jpg",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512x512.jpg",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
