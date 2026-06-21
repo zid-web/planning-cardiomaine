@@ -7,6 +7,7 @@ export function LiveClock() {
   const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
+    setDate(new Date())
     setIsMounted(true)
     const timer = setInterval(() => setDate(new Date()), 1000)
     return () => clearInterval(timer)
