@@ -4,15 +4,16 @@ import { useEffect, useState } from "react"
 
 export function LiveClock() {
   const [date, setDate] = useState<Date | null>(null)
-  const [isMounted, setIsMounted] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    setIsMounted(true)
+    setMounted(true)
+    setDate(new Date())
     const timer = setInterval(() => setDate(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
-  if (!isMounted || !date) {
+  if (!mounted || !date) {
     return (
       <div className="flex flex-col items-end text-right">
         <div className="text-2xl font-bold text-slate-900">--:--</div>
