@@ -58,3 +58,51 @@ export async function getAllSchedulesFromDb() {
 
   return data || []
 }
+
+export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>) {
+  const supabase = await getSupabaseServer()
+
+  const scheduleKey = "full_schedule"
+
+  const { data, error } = await supabase
+    .from("schedules")
+    .upsert(
+      {
+        week_key: scheduleKey,
+        schedule_data: fullSchedule,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        onConflict: "week_key",
+      },
+    )
+    .select()
+    .single()
+
+  if (error) {
+    console.error("[v0] Error saving full schedule to Supabase:", error)
+    throw new Error(`Failed to save full schedule: ${error.message}`)
+  }
+
+  revalidatePath("/")
+  return data
+}
+
+export async function loadFullScheduleFromDb() {
+  const supabase = await getSupabaseServer()
+
+  const scheduleKey = "full_schedule"
+
+  const { data, error } = await supabase
+    .from("schedules")
+    .select("schedule_data")
+    .eq("week_key", scheduleKey)
+    .single()
+
+  if (error && error.code !== "PGRST116") {
+    console.error("[v0] Load error:", error)
+    return null
+  }
+
+  return data?.schedule_data || null
+}
