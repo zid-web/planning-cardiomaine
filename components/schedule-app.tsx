@@ -408,12 +408,12 @@ export function ScheduleApp({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full layout-main">
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
           <div className="p-4 pb-24">
-            <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl shadow-sm border">
+            <div className="header-sticky flex items-center justify-between mb-6 bg-white p-4 rounded-xl shadow-sm border">
               <div className="flex items-center gap-4">
                 <Button variant="outline" size="icon" onClick={prevWeek}>
                   <ChevronLeft className="h-4 w-4" />
@@ -463,7 +463,7 @@ export function ScheduleApp({
             {/* TODAY VIEW */}
             {activeTab === "today" && (
               <div className="space-y-4 max-w-md mx-auto">
-                <div className="flex overflow-x-auto pb-2 gap-2 no-scrollbar">
+                <div className="flex tabs-scroll pb-2 gap-2 scrollbar-none">
                   {DAYS.map((day, idx) => {
                     const isSelected = idx === currentDayIndex
                     const date = weekDates[idx].split("/")[0]
@@ -638,17 +638,17 @@ export function ScheduleApp({
                 </div>
 
                 <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
-                  <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-200px)] md:max-h-[70vh] -webkit-overflow-scrolling-touch">
+                  <div className="table-scroll overflow-y-auto max-h-[calc(100vh-200px)] md:max-h-[70vh] -webkit-overflow-scrolling-touch">
                     <table className="w-full text-xs border-collapse min-w-[900px]">
-                      <thead className="sticky top-0 z-20 bg-slate-100 shadow-sm">
+                      <thead className="header-sticky bg-slate-100 shadow-sm">
                         <tr>
-                          <th className="sticky left-0 z-30 bg-slate-100 p-2 md:p-3 text-left font-bold text-slate-700 border-b border-r min-w-[100px] md:min-w-[140px] text-[10px] md:text-xs">
+                          <th className="table-label-sticky bg-slate-100 p-2 md:p-3 text-left font-bold text-slate-700 border-b border-r min-w-[100px] md:min-w-[140px] text-[10px] md:text-xs">
                             Activité
                           </th>
                           {DAYS.map((d, i) => (
                             <th
                               key={d}
-                              className={`p-1.5 md:p-2 text-center font-medium min-w-[80px] md:min-w-[100px] w-[90px] md:w-[120px] border-r last:border-r-0 relative group
+                              className={`table-cell-default p-1.5 md:p-2 text-center font-medium w-[90px] md:w-[120px] border-r last:border-r-0 relative group
                                 ${d === "SAMEDI" || d === "DIMANCHE" ? "bg-slate-50/80" : "bg-white"}
                                 ${isDateHoliday(weekDates[i]) ? "bg-red-100 text-red-700 border-l-4 border-r-4 border-red-400" : ""}
                               `}
@@ -687,13 +687,13 @@ export function ScheduleApp({
                           if (rowKey === "Notes du jour") {
                             return (
                               <tr key={rowKey} className="border-b last:border-0 bg-yellow-50">
-                                <td className="sticky left-0 z-10 bg-yellow-50 p-2 font-bold text-yellow-700 border-r text-[11px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[100px] md:min-w-[140px] text-[10px] md:text-xs">
+                                <td className="table-label-sticky bg-yellow-50 p-2 font-bold text-yellow-700 border-r text-[11px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[100px] md:min-w-[140px] text-[10px] md:text-xs">
                                   📝 Notes
                                 </td>
                                 {DAYS.map((day) => (
                                   <td
                                     key={day}
-                                    className="p-1 text-center border-r last:border-r-0 h-10 min-w-[80px] md:min-w-[100px]"
+                                    className="table-cell-default p-1 text-center border-r last:border-r-0 h-10"
                                   >
                                     <div
                                       onClick={() => handleNoteClick(day)}
@@ -713,7 +713,7 @@ export function ScheduleApp({
                                 <tr className="bg-slate-200">
                                   <td
                                     colSpan={8}
-                                    className="p-2 font-bold text-slate-600 text-[10px] tracking-wider sticky left-0 z-10 bg-slate-200 min-w-[100px] md:min-w-[140px] text-[10px] md:text-xs"
+                                    className="table-label-sticky p-2 font-bold text-slate-600 text-[10px] tracking-wider bg-slate-200 min-w-[100px] md:min-w-[140px] text-[10px] md:text-xs"
                                   >
                                     {sectionTitle}
                                   </td>
@@ -723,7 +723,7 @@ export function ScheduleApp({
                                 key={rowKey}
                                 className={`border-b last:border-0 transition-colors ${getRowColor(rowKey)}`}
                               >
-                                <td className="sticky left-0 z-10 bg-white p-2 font-medium text-slate-700 border-r text-[11px] truncate max-w-[140px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[100px] md:min-w-[140px] text-[10px] md:text-xs">
+                                <td className="table-label-sticky bg-white p-2 font-medium text-slate-700 border-r text-[11px] truncate max-w-[140px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[100px] md:min-w-[140px] text-[10px] md:text-xs">
                                   <span className="mr-1 inline-block w-4 text-center">
                                     {/* @ts-ignore */}
                                     {ACTIVITY_ICONS[
@@ -752,7 +752,7 @@ export function ScheduleApp({
                                     <td
                                       key={`${rowKey}-${day}`}
                                       className={cn(
-                                        "border border-gray-300 p-1 min-w-[80px] h-[60px] text-xs relative group",
+                                        "table-cell-default border border-gray-300 p-1 h-[60px] relative group",
                                         cellBlocked
                                           ? "bg-black cursor-not-allowed opacity-40"
                                           : "cursor-pointer hover:bg-gray-50",
