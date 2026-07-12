@@ -665,7 +665,7 @@ export default function MedicalScheduleApp() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden layout-main">
+      <div className="flex-1 flex flex-col h-dvh overflow-hidden">
         {/* App Header */}
         <header className="header-sticky bg-white border-b h-16 flex items-center justify-between px-4 shrink-0">
           <div className="flex items-center gap-3">

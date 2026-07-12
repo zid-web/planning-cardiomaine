@@ -144,7 +144,7 @@
   }
 
   .table-label-sticky {
-    @apply sticky left-0 z-20 bg-white min-w-[120px];
+    @apply sticky left-0 z-30 bg-white min-w-[120px];
   }
 
   .table-cell-default {
