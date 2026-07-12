@@ -21,17 +21,22 @@ import { LearnMoreModal } from "@/components/learn-more-modal"
 export function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
   const [showInstallModal, setShowInstallModal] = useState<"ios" | "android" | null>(null)
   const [showLearnMore, setShowLearnMore] = useState(false)
-  const currentYear = new Date().getFullYear()
-  const [currentDateTime, setCurrentDateTime] = useState(new Date())
+  const [currentDateTime, setCurrentDateTime] = useState<Date | null>(null)
 
   useEffect(() => {
+    // Initialize on client only to prevent hydration mismatch
+    setCurrentDateTime(new Date())
     const interval = setInterval(() => {
       setCurrentDateTime(new Date())
     }, 1000)
     return () => clearInterval(interval)
   }, [])
 
-  const formatDate = (date: Date) => {
+  // Get current year safely after hydration
+  const currentYear = currentDateTime?.getFullYear() || new Date().getFullYear()
+
+  const formatDate = (date: Date | null) => {
+    if (!date) return "--"
     return date.toLocaleDateString("fr-FR", {
       weekday: "long",
       year: "numeric",
@@ -40,7 +45,8 @@ export function LandingPage({ onLoginClick }: { onLoginClick: () => void }) {
     })
   }
 
-  const formatTime = (date: Date) => {
+  const formatTime = (date: Date | null) => {
+    if (!date) return "--:--:--"
     return date.toLocaleTimeString("fr-FR", {
       hour: "2-digit",
       minute: "2-digit",
