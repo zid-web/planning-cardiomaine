@@ -4,15 +4,16 @@ import { useEffect, useState } from "react"
 
 export function LiveClock() {
   const [date, setDate] = useState<Date | null>(null)
-  const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
-    setIsMounted(true)
+    // Initialize immediately on client
+    setDate(new Date())
     const timer = setInterval(() => setDate(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
-  if (!isMounted || !date) {
+  // Show placeholder during hydration and initial mount
+  if (!date) {
     return (
       <div className="flex flex-col items-end text-right">
         <div className="text-2xl font-bold text-slate-900">--:--</div>
