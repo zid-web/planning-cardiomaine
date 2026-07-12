@@ -115,10 +115,51 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
   * {
     @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .layout-main {
+    @apply h-dvh overflow-y-auto;
+  }
+
+  .header-sticky {
+    @apply sticky top-0 z-50;
+  }
+
+  .table-scroll {
+    @apply overflow-x-auto min-w-max;
+  }
+
+  .table-label-sticky {
+    @apply sticky left-0 z-20 bg-white min-w-[120px];
+  }
+
+  .table-cell-default {
+    @apply min-w-[80px] text-[11px];
+  }
+
+  .tabs-scroll {
+    @apply overflow-x-auto;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }
