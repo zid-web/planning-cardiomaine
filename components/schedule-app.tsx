@@ -33,7 +33,7 @@ import { generateNightGuardProposals, constraints2026, type GuardProposal } from
 import { calculateWorkloadStats } from "@/lib/scheduler-algo"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { saveScheduleToDb } from "@/app/actions/schedule-actions"
+import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
 import { toast } from "sonner"
 
 export function ScheduleApp({
@@ -96,6 +96,8 @@ export function ScheduleApp({
 
     try {
       await saveScheduleToDb(weekKey, newSchedule, currentUser || "unknown")
+      // Also save the full schedule to persist all data
+      await saveFullScheduleToDb(updatedFullSchedule)
       console.log("[v0] Saved to Supabase")
       toast.success("Planning saved successfully")
     } catch (error) {

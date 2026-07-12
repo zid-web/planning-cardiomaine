@@ -58,3 +58,83 @@ export async function getAllSchedulesFromDb() {
 
   return data || []
 }
+
+export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>) {
+  const supabase = await getSupabaseServer()
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    console.error("[v0] Auth error:", authError)
+    throw new Error("Not authenticated")
+  }
+
+  // Check if user schedule exists
+  const { data: existingSchedule, error: fetchError } = await supabase
+    .from("schedules")
+    .select("id")
+    .eq("user_id", user.id)
+    .single()
+
+  if (fetchError && fetchError.code !== "PGRST116") {
+    console.error("[v0] Fetch error:", fetchError)
+    throw new Error("Failed to fetch existing schedule")
+  }
+
+  // Update or insert full schedule
+  if (existingSchedule) {
+    const { error: updateError } = await supabase
+      .from("schedules")
+      .update({
+        full_schedule: fullSchedule,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id)
+
+    if (updateError) {
+      console.error("[v0] Update error:", updateError)
+      throw new Error(`Failed to update schedule: ${updateError.message}`)
+    }
+  } else {
+    const { error: insertError } = await supabase.from("schedules").insert({
+      user_id: user.id,
+      full_schedule: fullSchedule,
+    })
+
+    if (insertError) {
+      console.error("[v0] Insert error:", insertError)
+      throw new Error(`Failed to create schedule: ${insertError.message}`)
+    }
+  }
+
+  revalidatePath("/")
+}
+
+export async function loadFullScheduleFromDb() {
+  const supabase = await getSupabaseServer()
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError || !user) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from("schedules")
+    .select("full_schedule")
+    .eq("user_id", user.id)
+    .single()
+
+  if (error && error.code !== "PGRST116") {
+    console.error("[v0] Load error:", error)
+    return null
+  }
+
+  return data?.full_schedule || null
+}
