@@ -151,6 +151,10 @@
     @apply min-w-[80px] text-[11px];
   }
 
+  .table-layout-fixed {
+    table-layout: fixed;
+  }
+
   .tabs-scroll {
     @apply overflow-x-auto;
   }
