@@ -614,3 +614,43 @@ function getWeekNumber(d: Date) {
     week: weekNo,
   }
 }
+
+// Export exceptional rotation constraints
+export const exceptionalRotations2026 = [
+  {
+    id: "rotation-week1-jul13-19",
+    name: "Roulement exceptionnel semaine 1",
+    startDate: "2026-07-13",
+    endDate: "2026-07-19",
+    isActive: true,
+    rules: [
+      // Week 1 rules - CH dominant
+      { date: "2026-07-13", dayOfWeek: "LUNDI", astreinteType: "Nuit", allowedDoctors: ["CH"], rotationMode: "fixed" as const },
+      { date: "2026-07-14", dayOfWeek: "MARDI", astreinteType: "Nuit", allowedDoctors: ["CH"], rotationMode: "fixed" as const },
+      { date: "2026-07-15", dayOfWeek: "MERCREDI", astreinteType: "Nuit", allowedDoctors: ["W", "M"], rotationMode: "round_robin" as const },
+      { date: "2026-07-16", dayOfWeek: "JEUDI", astreinteType: "Nuit", allowedDoctors: ["W", "M"], rotationMode: "round_robin" as const },
+      { date: "2026-07-17", dayOfWeek: "VENDREDI", astreinteType: "Nuit", allowedDoctors: ["CH"], rotationMode: "fixed" as const },
+      { date: "2026-07-18", dayOfWeek: "SAMEDI", astreinteType: "Entier", allowedDoctors: ["CH"], rotationMode: "fixed" as const },
+      { date: "2026-07-19", dayOfWeek: "DIMANCHE", astreinteType: "Entier", allowedDoctors: ["CH"], rotationMode: "fixed" as const },
+    ],
+    rotationHistory: [],
+  },
+  {
+    id: "rotation-week2-jul20-26",
+    name: "Roulement exceptionnel semaine 2",
+    startDate: "2026-07-20",
+    endDate: "2026-07-26",
+    isActive: true,
+    rules: [
+      // Week 2 rules - M/W/O dominant, CH for Wed/Thu only
+      { date: "2026-07-20", dayOfWeek: "LUNDI", astreinteType: "Nuit", allowedDoctors: ["M", "W", "O"], rotationMode: "round_robin" as const },
+      { date: "2026-07-21", dayOfWeek: "MARDI", astreinteType: "Nuit", allowedDoctors: ["M", "W", "O"], rotationMode: "round_robin" as const },
+      { date: "2026-07-22", dayOfWeek: "MERCREDI", astreinteType: "Nuit", allowedDoctors: ["CH"], rotationMode: "fixed" as const },
+      { date: "2026-07-23", dayOfWeek: "JEUDI", astreinteType: "Nuit", allowedDoctors: ["CH"], rotationMode: "fixed" as const },
+      { date: "2026-07-24", dayOfWeek: "VENDREDI", astreinteType: "Nuit", allowedDoctors: ["M", "W", "O"], rotationMode: "round_robin" as const },
+      { date: "2026-07-25", dayOfWeek: "SAMEDI", astreinteType: "Entier", allowedDoctors: ["M", "W", "O"], rotationMode: "fixed" as const },
+      { date: "2026-07-26", dayOfWeek: "DIMANCHE", astreinteType: "Entier", allowedDoctors: ["M", "W", "O"], rotationMode: "fixed" as const },
+    ],
+    rotationHistory: [],
+  },
+] as const

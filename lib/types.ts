@@ -1,3 +1,10 @@
+export type CellMetadata = {
+  cellType?: "normal" | "exceptional_rotation" | "manually_overridden"
+  rotationBadge?: "Roulement exceptionnel" | "Modifié manuellement"
+  manuallyOverriddenBy?: string
+  manuallyOverriddenAt?: number
+}
+
 export type CellData = {
   value: string[]
   type?: "doctor" | "shift" | "location" | "procedure" | "empty"
@@ -7,6 +14,29 @@ export type CellData = {
     status: "pending" | "validated"
     timestamp: number
   }
+  metadata?: CellMetadata
+}
+
+export type ExceptionalRotationRule = {
+  date: string // YYYY-MM-DD
+  dayOfWeek: string // LUNDI, MARDI, etc.
+  astreinteType: string // "Matin", "Apm", "Nuit", "Matin + Apm", "Entier"
+  allowedDoctors: string[] // ["CH"], ["M", "W"], etc.
+  rotationMode: "fixed" | "round_robin" // fixed = all same doctor, round-robin = rotation
+}
+
+export type ExceptionalRotationConstraint = {
+  id: string
+  name: string
+  startDate: string // YYYY-MM-DD
+  endDate: string // YYYY-MM-DD
+  isActive: boolean
+  rules: ExceptionalRotationRule[]
+  rotationHistory: {
+    date: string
+    doctor: string
+    assignedBy: "system" | "admin"
+  }[]
 }
 
 export type ScheduleData = {

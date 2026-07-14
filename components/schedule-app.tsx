@@ -29,12 +29,14 @@ import { LearnMoreModal } from "@/components/learn-more-modal"
 import type { FullSchedule, ScheduleData } from "@/lib/types"
 import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
 import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays } from "@/lib/schedule-utils"
-import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
+import { generateNightGuardProposals, constraints2026, exceptionalRotations2026, type GuardProposal } from "@/lib/guard-scheduler"
 import { calculateWorkloadStats } from "@/lib/scheduler-algo"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
 import { toast } from "sonner"
+import { applyExceptionalRotation } from "@/lib/exceptional-rotation-scheduler"
+import { ExceptionalRotationBadge } from "@/components/exceptional-rotation-badge"
 
 export function ScheduleApp({
   currentUser,
@@ -78,7 +80,17 @@ export function ScheduleApp({
           generated["Notes du jour"][day] = { value: [], type: "empty", status: "validated" }
         }
       })
-      return generated
+      
+      // Apply exceptional rotation rules if applicable
+      const vacations: Record<string, string[]> = {}
+      const withExceptionalRotations = applyExceptionalRotation(
+        generated,
+        weekKey,
+        exceptionalRotations2026 as any,
+        vacations,
+        DOCTORS
+      )
+      return withExceptionalRotations
     }
     return fullSchedule[weekKey]
   }, [fullSchedule, weekKey])
@@ -750,6 +762,9 @@ export function ScheduleApp({
                                   const cellBlocked = isCellBlocked(rowKey, day)
                                   const proposal = getCellProposal(rowKey, day)
 
+                                  const isExceptionalRotation = cellData?.metadata?.cellType === "exceptional_rotation"
+                                  const isManuallyOverridden = cellData?.metadata?.cellType === "manually_overridden"
+
                                   return (
                                     <td
                                       key={`${rowKey}-${day}`}
@@ -757,8 +772,12 @@ export function ScheduleApp({
                                         "border border-gray-300 p-1 h-[60px] relative group min-w-[85px] text-[11px]",
                                         cellBlocked
                                           ? "bg-black cursor-not-allowed opacity-40"
-                                          : "cursor-pointer hover:bg-gray-50",
-                                        isHoliday && "bg-red-50 border-l-4 border-r-4 border-red-400",
+                                          : isManuallyOverridden
+                                            ? "cursor-pointer hover:bg-rose-50 bg-rose-50 border-l-4 border-rose-600"
+                                            : isExceptionalRotation
+                                              ? "cursor-pointer hover:bg-amber-50 bg-amber-50 border-l-4 border-amber-500"
+                                              : "cursor-pointer hover:bg-gray-50",
+                                        isHoliday && !isExceptionalRotation && !isManuallyOverridden && "bg-red-50 border-l-4 border-r-4 border-red-400",
                                       )}
                                       onClick={() => {
                                         if (!cellBlocked && !isRestrictedHoliday) {
@@ -803,6 +822,16 @@ export function ScheduleApp({
                                             )
                                           }
                                         })()}
+
+                                      {/* Exceptional rotation badge */}
+                                      {cellData?.metadata?.rotationBadge && (
+                                        <div className="absolute top-1 right-1">
+                                          <ExceptionalRotationBadge 
+                                            type={cellData.metadata.rotationBadge}
+                                            className="text-[8px] px-1 py-0 h-4"
+                                          />
+                                        </div>
+                                      )}
 
                                       {/* Existing cell content */}
                                       {!cellBlocked && (
