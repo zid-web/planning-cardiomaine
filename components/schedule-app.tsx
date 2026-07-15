@@ -34,6 +34,12 @@ import { calculateWorkloadStats } from "@/lib/scheduler-algo"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
+import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
+import { getAllVacations } from "@/app/actions/vacation-actions"
+import { VacationsModal } from "@/components/vacations-modal"
+import { VacationsButton } from "@/components/vacations-button"
+import { VacationsBadge } from "@/components/vacations-badge"
+import { DoctorVacation } from "@/lib/types"
 import { toast } from "sonner"
 
 export function ScheduleApp({
@@ -63,6 +69,23 @@ export function ScheduleApp({
   const [showWorkloadStats, setShowWorkloadStats] = useState(false)
   const [guardProposals, setGuardProposals] = useState<Map<string, GuardProposal[]>>(new Map())
   const [showProposals, setShowProposals] = useState(false)
+  const [vacations, setVacations] = useState<DoctorVacation[]>([])
+  const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
+  const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
+
+  // Load vacations on mount
+  React.useEffect(() => {
+    loadVacations()
+  }, [])
+
+  const loadVacations = async () => {
+    try {
+      const data = await getAllVacations()
+      setVacations(data)
+    } catch (error) {
+      console.error("[v0] Error loading vacations:", error)
+    }
+  }
 
   const currentWeekInfo = useMemo(() => getWeekNumber(currentDate), [currentDate])
   const weekKey = `${currentWeekInfo.year}-W${currentWeekInfo.week}`
@@ -344,23 +367,36 @@ export function ScheduleApp({
     return map
   }, [fullSchedule])
 
-  const handleGenerateGuards = () => {
+  const handleGenerateGuards = async () => {
     // Generate for current year through end of 2026
     const startDate = new Date()
     const endDate = new Date("2026-12-31")
 
-    const proposals = generateNightGuardProposals(startDate, endDate, constraints2026, scheduleMap)
+    try {
+      // Use new function that includes DB vacations
+      const result = await generateGuardsWithVacations(startDate, endDate)
 
-    // Group proposals by week
-    const proposalsByWeek = new Map<string, GuardProposal[]>()
-    proposals.forEach((p) => {
-      if (!proposalsByWeek.has(p.weekKey)) proposalsByWeek.set(p.weekKey, [])
-      proposalsByWeek.get(p.weekKey)!.push(p)
-    })
+      if (result.error) {
+        toast.error(`Erreur: ${result.error}`)
+        return
+      }
 
-    setGuardProposals(proposalsByWeek)
-    setShowProposals(true)
-    toast.success(`${proposals.length} propositions de gardes de nuit générées`)
+      const proposals = result.proposals
+
+      // Group proposals by week
+      const proposalsByWeek = new Map<string, GuardProposal[]>()
+      proposals.forEach((p) => {
+        if (!proposalsByWeek.has(p.weekKey)) proposalsByWeek.set(p.weekKey, [])
+        proposalsByWeek.get(p.weekKey)!.push(p)
+      })
+
+      setGuardProposals(proposalsByWeek)
+      setShowProposals(true)
+      toast.success(`${proposals.length} propositions de gardes de nuit générées (vacations incluses)`)
+    } catch (error) {
+      console.error("[v0] Error generating guards:", error)
+      toast.error("Erreur lors de la génération des gardes")
+    }
   }
 
   const validateProposal = (proposal: GuardProposal) => {
@@ -438,11 +474,18 @@ export function ScheduleApp({
               <div className="flex items-center gap-2">
                 <LiveClock />
                 {isAdmin && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button variant="outline" size="sm" onClick={handleGenerateGuards}>
                       <Calendar className="h-4 w-4 mr-2" />
                       Générer Gardes Nuit
                     </Button>
+
+                    <VacationsButton
+                      onClick={() => {
+                        setSelectedDoctorForVacations("")
+                        setVacationsModalOpen(true)
+                      }}
+                    />
 
                     {showProposals && (
                       <Button variant="outline" size="sm" onClick={() => setShowProposals(!showProposals)}>
@@ -1078,6 +1121,14 @@ export function ScheduleApp({
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Vacations Modal */}
+      <VacationsModal
+        doctorId={selectedDoctorForVacations || "ALL"}
+        isOpen={vacationsModalOpen}
+        onClose={() => setVacationsModalOpen(false)}
+        onVacationsUpdated={loadVacations}
+      />
     </div>
   )
 }
