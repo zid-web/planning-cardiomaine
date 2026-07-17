@@ -5,8 +5,15 @@ import { STAFF_INITIALS, SPECIALTIES } from './constants'
 import { NCT_DATES_2026, NCT_DATES_2025_DEC } from './guard-scheduler'
 import { format, parseISO, isBefore, isAfter } from 'date-fns'
 
+// All doctors: internal (with Supabase accounts) + external (no account)
+// doctor_id in doctor_vacations table can be:
+// - UUID: for internal doctors (stored in profiles table)
+// - TEXT CODE: for external doctors like "FV" (not in profiles table)
+const AVAILABLE_DOCTORS = ['A', 'Z', 'S', 'B', 'G', 'O', 'W', 'M', 'P', 'H', 'U', 'K', 'V', 'FV']
+
 /**
  * Vérifie si un médecin est en vacances à une date donnée
+ * doctor_id peut être un UUID ou un code texte (ex: "FV")
  */
 export function isDoctorOnVacation(
   doctorId: string,

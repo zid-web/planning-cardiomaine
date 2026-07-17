@@ -26,7 +26,9 @@ export function VacationsModal({
   onVacationsUpdated,
   showDoctorSelector = true,
 }: VacationsModalProps) {
-  const AVAILABLE_DOCTORS = ['A', 'Z', 'S', 'B', 'G', 'O', 'W', 'M', 'P', 'H', 'U', 'K', 'V']
+  // All doctors: internal (with accounts) + external (no account)
+  // FV is external - no Supabase account, only for manual planning assignments
+  const AVAILABLE_DOCTORS = ['A', 'Z', 'S', 'B', 'G', 'O', 'W', 'M', 'P', 'H', 'U', 'K', 'V', 'FV']
 
   const [selectedDoctorCode, setSelectedDoctorCode] = useState<string>(initialDoctorCode)
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>(initialDoctorId)

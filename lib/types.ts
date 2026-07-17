@@ -28,9 +28,15 @@ export type GuardProposal = {
   weekKey: string
 }
 
+/**
+ * doctor_id can be either:
+ * - UUID (for internal doctors with Supabase profiles)
+ * - TEXT CODE like "FV" (for external doctors without accounts)
+ * This allows vacations to be recorded for both authenticated and external doctors
+ */
 export type DoctorVacation = {
   id: string
-  doctor_id: string
+  doctor_id: string // UUID or TEXT code (e.g., "FV", "Z", "A")
   start_date: string // YYYY-MM-DD
   end_date: string // YYYY-MM-DD
   reason?: string
