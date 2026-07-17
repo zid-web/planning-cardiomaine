@@ -1,14 +1,12 @@
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { LogoutButton } from '@/components/logout-button'
+import { requireAuthWithPasswordSetup } from '@/lib/auth-utils'
 
 export default async function ProtectedPage() {
+  const user = await requireAuthWithPasswordSetup()
   const supabase = await createClient()
 
-  const { data, error } = await supabase.auth.getUser()
-  if (error || !data?.user) {
-    redirect('/auth/login')
-  }
+  const { data } = await supabase.auth.getUser()
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

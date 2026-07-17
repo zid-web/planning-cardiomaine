@@ -1,7 +1,67 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 
-export function middleware(request: NextRequest) {
-  return NextResponse.next()
+export async function middleware(request: NextRequest) {
+  const response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // Check if user is authenticated
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const { pathname } = request.nextUrl
+
+  // Allow public routes
+  const publicRoutes = ['/auth/login', '/auth/sign-up', '/auth/forgot-password', '/']
+  if (publicRoutes.includes(pathname)) {
+    return response
+  }
+
+  // If no user, redirect to login
+  if (!user) {
+    return NextResponse.redirect(new URL('/auth/login', request.url))
+  }
+
+  // Check if user needs to change password
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('must_change_password')
+    .eq('id', user.id)
+    .single()
+
+  // Allow access to setup-account page
+  if (pathname === '/auth/setup-account') {
+    return response
+  }
+
+  // If must_change_password is true, redirect to setup page
+  if (profile?.must_change_password) {
+    return NextResponse.redirect(new URL('/auth/setup-account', request.url))
+  }
+
+  // Allow all other authenticated requests
+  return response
 }
 
 export const config = {
