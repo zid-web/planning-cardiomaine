@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { DayPicker } from 'react-day-picker'
 import { fr } from 'react-day-picker/locale'
 import { format } from 'date-fns'
@@ -45,9 +45,11 @@ export function VacationsModal({
   }
 
   // Charger les vacations quand la modale s'ouvre
-  if (isOpen && vacations.length === 0 && !isLoading) {
-    loadVacations()
-  }
+  useEffect(() => {
+    if (isOpen && vacations.length === 0) {
+      loadVacations()
+    }
+  }, [isOpen])
 
   // Ajouter une nouvelle vacation
   const handleAddVacation = async () => {
