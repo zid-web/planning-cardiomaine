@@ -26,8 +26,6 @@ export function VacationsModal({
   onVacationsUpdated,
   showDoctorSelector = true,
 }: VacationsModalProps) {
-  // All doctors: internal (with accounts) + external (no account)
-  // FV is external - no Supabase account, only for manual planning assignments
   const AVAILABLE_DOCTORS = ['A', 'Z', 'S', 'B', 'G', 'O', 'W', 'M', 'P', 'H', 'U', 'K', 'V', 'FV']
 
   const [selectedDoctorCode, setSelectedDoctorCode] = useState<string>(initialDoctorCode)
@@ -38,7 +36,6 @@ export function VacationsModal({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  // Charger les vacances du médecin sélectionné
   const loadVacations = async () => {
     if (!selectedDoctorId) return
 
@@ -54,24 +51,21 @@ export function VacationsModal({
     }
   }
 
-  // Charger les vacations quand la modale s'ouvre ou quand le médecin sélectionné change
   useEffect(() => {
     if (isOpen && selectedDoctorId) {
       loadVacations()
     }
   }, [isOpen, selectedDoctorId])
 
-  // Gestion du changement de médecin sélectionné
   const handleDoctorChange = (doctorCode: string) => {
     setSelectedDoctorCode(doctorCode)
-    setSelectedDoctorId(doctorCode) // Utiliser le code comme ID pour simplifier
+    setSelectedDoctorId(doctorCode)
     setVacations([])
     setDateRange({})
     setError(null)
     setSuccess(null)
   }
 
-  // Ajouter une nouvelle vacation
   const handleAddVacation = async () => {
     setError(null)
     setSuccess(null)
@@ -104,7 +98,6 @@ export function VacationsModal({
     }
   }
 
-  // Supprimer une vacation
   const handleDeleteVacation = async (vacationId: string) => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette période de vacances ?')) return
 
@@ -187,84 +180,105 @@ export function VacationsModal({
             </div>
           )}
 
-          {/* Sélecteur de dates */}
+          {/* Calendar and List - Only show when doctor selected */}
           {selectedDoctorCode && (
-          <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
-            <h3 className="font-semibold text-gray-900 mb-4">Sélectionner une période de vacances</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Cliquez sur une date de début, puis sur une date de fin pour définir la période
-            </p>
+            <>
+              {/* Sélecteur de dates */}
+              <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
+                <h3 className="font-semibold text-gray-900 mb-4">Sélectionner une période de vacances</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Cliquez sur une date de début, puis sur une date de fin pour définir la période
+                </p>
 
-            <div className="bg-white rounded-lg p-4 border border-gray-200 inline-block">
-              <DayPicker
-                mode="range"
-                selected={dateRange}
-                onSelect={setDateRange}
-                locale={fr}
-                disabled={isLoading}
-                className="rdp-compact"
-                classNames={{
-                  months: 'flex gap-4',
-                  month: 'space-y-2',
-                  caption: 'flex justify-center pt-1 pb-2 font-semibold text-sm',
-                  caption_label: 'text-gray-900',
-                  nav: 'flex gap-1',
-                  nav_button:
-                    'inline-flex items-center justify-center rounded-md p-1 hover:bg-gray-100 transition',
-                  nav_button_previous: 'absolute left-1',
-                  nav_button_next: 'absolute right-1',
-                  table: 'w-full border-collapse space-y-1',
-                  head_row: 'flex gap-2',
-                  head_cell: 'w-8 h-8 text-center text-xs font-semibold text-gray-600 uppercase',
-                  row: 'flex gap-2 mt-2',
-                  cell: 'relative p-0 text-center',
-                  day: 'inline-flex items-center justify-center w-8 h-8 text-sm rounded-md hover:bg-blue-50 transition',
-                  day_selected:
-                    'bg-blue-500 text-white font-medium hover:bg-blue-600 transition',
-                  day_today: 'font-bold text-blue-600',
-                  day_outside: 'text-gray-300',
-                  day_disabled: 'text-gray-300 cursor-not-allowed',
-                  day_range_middle:
-                    'aria-selected:bg-blue-100 aria-selected:text-gray-900 rounded-none',
-                }}
-              />
-            )}
-          </div>
-          )}
+                <div className="bg-white rounded-lg p-4 border border-gray-200 inline-block">
+                  <DayPicker
+                    mode="range"
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    locale={fr}
+                    disabled={isLoading}
+                    className="rdp-compact"
+                    classNames={{
+                      months: 'flex gap-4',
+                      month: 'space-y-2',
+                      caption: 'flex justify-center pt-1 pb-2 font-semibold text-sm',
+                      caption_label: 'text-gray-900',
+                      nav: 'flex gap-1',
+                      nav_button:
+                        'inline-flex items-center justify-center rounded-md p-1 hover:bg-gray-100 transition',
+                      nav_button_previous: 'absolute left-1',
+                      nav_button_next: 'absolute right-1',
+                      table: 'w-full border-collapse space-y-1',
+                      head_row: 'flex gap-2',
+                      head_cell: 'w-8 h-8 text-center text-xs font-semibold text-gray-600 uppercase',
+                      row: 'flex gap-2 mt-2',
+                      cell: 'relative p-0 text-center',
+                      day: 'inline-flex items-center justify-center w-8 h-8 text-sm rounded-md hover:bg-blue-50 transition',
+                      day_selected:
+                        'bg-blue-500 text-white font-medium hover:bg-blue-600 transition',
+                      day_today: 'font-bold text-blue-600',
+                      day_outside: 'text-gray-300',
+                      day_disabled: 'text-gray-300 cursor-not-allowed',
+                      day_range_middle:
+                        'aria-selected:bg-blue-100 aria-selected:text-gray-900 rounded-none',
+                    }}
+                  />
+                </div>
 
-          {/* Liste des vacances */}
-          {selectedDoctorCode && (
-            <div>
-            <h3 className="font-semibold text-gray-900 mb-4">Périodes enregistrées</h3>
-            {vacations.length === 0 ? (
-              <p className="text-gray-500 italic text-sm">Aucune période de vacances enregistrée</p>
-            ) : (
-              <div className="space-y-2">
-                {vacations.map((vacation) => (
-                  <div
-                    key={vacation.id}
-                    className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-md p-4 hover:bg-blue-100 transition"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900 text-sm">
-                        {formatDateRange(vacation.start_date, vacation.end_date)}
-                      </div>
-                      <div className="text-xs text-gray-600 mt-1">
-                        {getVacationDayCount(vacation.start_date, vacation.end_date)} jours
-                      </div>
-                    </div>
+                {dateRange.from && dateRange.to && (
+                  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-semibold">Période sélectionnée:</span>{' '}
+                      {format(dateRange.from, 'dd MMMM yyyy', { locale: fr })} -{' '}
+                      {format(dateRange.to, 'dd MMMM yyyy', { locale: fr })}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-2">
+                      Durée: <span className="font-semibold">{getVacationDayCount(dateRange.from, dateRange.to)} jours</span>
+                    </p>
                     <button
-                      onClick={() => handleDeleteVacation(vacation.id)}
+                      onClick={handleAddVacation}
                       disabled={isLoading}
-                      className="ml-4 bg-red-100 hover:bg-red-200 disabled:bg-gray-200 text-red-800 px-3 py-1.5 rounded-md text-xs font-medium transition"
+                      className="mt-3 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-md transition"
                     >
-                      Supprimer
+                      {isLoading ? 'Enregistrement...' : 'Enregistrer cette période'}
                     </button>
                   </div>
-                ))}
+                )}
               </div>
-            )}
-            </div>
+
+              {/* Liste des vacances */}
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-4">Périodes enregistrées</h3>
+                {vacations.length === 0 ? (
+                  <p className="text-gray-500 italic text-sm">Aucune période de vacances enregistrée</p>
+                ) : (
+                  <div className="space-y-2">
+                    {vacations.map((vacation) => (
+                      <div
+                        key={vacation.id}
+                        className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-md p-4 hover:bg-blue-100 transition"
+                      >
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900 text-sm">
+                            {formatDateRange(vacation.start_date, vacation.end_date)}
+                          </div>
+                          <div className="text-xs text-gray-600 mt-1">
+                            {getVacationDayCount(vacation.start_date, vacation.end_date)} jours
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteVacation(vacation.id)}
+                          disabled={isLoading}
+                          className="ml-4 bg-red-100 hover:bg-red-200 disabled:bg-gray-200 text-red-800 px-3 py-1.5 rounded-md text-xs font-medium transition"
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
 
