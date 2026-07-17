@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase-client"
+import { createClient } from "@/lib/supabase/client"
 
 export async function saveScheduleToSupabase(fullSchedule: Record<string, unknown>) {
   try {

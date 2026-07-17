@@ -24,7 +24,6 @@ export default function Page() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
@@ -34,19 +33,58 @@ export default function Page() {
         throw new Error('Email and password are required')
       }
 
-      console.log('[v0] Login attempt with email:', email)
+      console.log('[v0] ===== LOGIN ATTEMPT START =====')
+      console.log('[v0] Email:', email)
+      console.log('[v0] NEXT_PUBLIC_SUPABASE_URL env var:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
+      console.log('[v0] NEXT_PUBLIC_SUPABASE_ANON_KEY env var:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 
+      let supabase
+      try {
+        supabase = createClient()
+        console.log('[v0] Supabase client created successfully')
+      } catch (clientError) {
+        console.error('[v0] Failed to create Supabase client:', clientError)
+        throw new Error('Authentication service is not properly configured. Please contact support.')
+      }
+
+      console.log('[v0] Calling signInWithPassword...')
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
+      console.log('[v0] Auth response received:')
+      console.log('[v0] - Data:', data ? 'User object received' : 'No data')
+      console.log('[v0] - Error:', error ? error.message : 'No error')
+      console.log('[v0] - Full error object:', error)
+
       if (error) {
-        console.error('[v0] Supabase auth error:', error.message, error.status)
-        throw error
+        console.error('[v0] ===== AUTH ERROR =====')
+        console.error('[v0] Error message:', error.message)
+        console.error('[v0] Error status:', error.status)
+        console.error('[v0] Error name:', error.name)
+        console.error('[v0] Full error:', JSON.stringify(error, null, 2))
+        
+        // Provide user-friendly error messages
+        if (error.status === 400) {
+          throw new Error('Invalid email or password. Please try again.')
+        } else if (error.status === 422) {
+          throw new Error('Email not found. Please check your email or sign up.')
+        } else if (error.status === 401) {
+          throw new Error('Invalid credentials. Please check your email and password.')
+        } else {
+          throw new Error(error.message || 'Authentication failed. Please try again.')
+        }
       }
 
-      console.log('[v0] Login successful for user:', data.user?.id)
+      if (!data.user) {
+        console.error('[v0] No user data in response')
+        throw new Error('Login failed: No user data returned')
+      }
+
+      console.log('[v0] ===== LOGIN SUCCESSFUL =====')
+      console.log('[v0] User ID:', data.user.id)
+      console.log('[v0] User email:', data.user.email)
       router.push('/protected')
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred'
@@ -83,7 +121,15 @@ export default function Page() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="password">Password</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="password">Password</Label>
+                      <Link
+                        href="/auth/forgot-password"
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        Forgot password?
+                      </Link>
+                    </div>
                     <Input
                       id="password"
                       type="password"
