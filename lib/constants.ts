@@ -1,5 +1,8 @@
 export const DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]
 
+// DOCTORS list includes both internal (with login accounts) and external doctors (no login)
+// External doctors: FV (no Supabase account, no authentication, manually assignable only)
+// FV constraints: Garde Nuit lundi only, Coro jeudi après-midi only
 export const DOCTORS = [
   "P",
   "Z",
