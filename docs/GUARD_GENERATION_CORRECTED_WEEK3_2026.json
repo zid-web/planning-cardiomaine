@@ -1,0 +1,150 @@
+{
+  "weekKey": "2026-W03",
+  "dateRange": "2026-01-19 to 2026-01-25",
+  "weekNumber": 3,
+  "weekType": 1,
+  "structure": "Type 1 (fixed): Lun=CH, Mar=CH, Mer=W, Jeu=M, Ven=CH",
+  
+  "guards": [
+    {
+      "date": "2026-01-19",
+      "day": "LUNDI",
+      "doctor": "CH",
+      "type": "Astreinte Nuit",
+      "notes": "Semaine type 1 - CH fixe"
+    },
+    {
+      "date": "2026-01-19",
+      "day": "LUNDI",
+      "doctor": "FV",
+      "type": "Garde Nuit",
+      "notes": "FV fixe lundi (parallèle à CH)"
+    },
+    {
+      "date": "2026-01-20",
+      "day": "MARDI",
+      "doctor": "CH",
+      "type": "Astreinte Nuit",
+      "notes": "Semaine type 1 - CH fixe"
+    },
+    {
+      "date": "2026-01-21",
+      "day": "MERCREDI",
+      "doctor": "W",
+      "type": "Astreinte Nuit",
+      "notes": "Semaine type 1 - W fixe (MAIS W a NCT jeudi: conflit veille NCT?)"
+    },
+    {
+      "date": "2026-01-21",
+      "day": "MERCREDI",
+      "doctor": "O",
+      "type": "Astreinte Matin",
+      "notes": "Alternative: O peut faire matin/après-midi (pas nuit)"
+    },
+    {
+      "date": "2026-01-22",
+      "day": "JEUDI",
+      "doctor": "M",
+      "type": "Astreinte Nuit",
+      "notes": "Semaine type 1 - M fixe"
+    },
+    {
+      "date": "2026-01-22",
+      "day": "JEUDI",
+      "doctor": "W",
+      "type": "NCT",
+      "notes": "NCT jeudi - alternance W/M (W this week)"
+    },
+    {
+      "date": "2026-01-22",
+      "day": "JEUDI",
+      "doctor": "FV",
+      "type": "Coro Après-midi",
+      "notes": "FV fixe jeudi"
+    },
+    {
+      "date": "2026-01-23",
+      "day": "VENDREDI",
+      "doctor": "CH",
+      "type": "Astreinte Nuit",
+      "notes": "Semaine type 1 - CH fixe"
+    },
+    {
+      "date": "2026-01-24",
+      "day": "SAMEDI",
+      "doctor": "CH",
+      "type": "Astreinte Weekend",
+      "notes": "CH cover weekend entier"
+    },
+    {
+      "date": "2026-01-25",
+      "day": "DIMANCHE",
+      "doctor": "CH",
+      "type": "Astreinte Weekend",
+      "notes": "CH cover weekend entier"
+    }
+  ],
+
+  "implementationNotes": {
+    "correction1_VeilleNCT": {
+      "rule": "Mercredi: PAS de nuit au médecin qui a NCT jeudi",
+      "application": "Si W a NCT jeudi, W ne peut PAS faire astreinte NUIT mercredi (mais peut faire matin/après-midi)",
+      "status": "À IMPLÉMENTER: vérifier mercredi qui a NCT jeudi, exclure de nuit"
+    },
+    "correction2_StructureFixe": {
+      "rule": "Alternance stricte type 1 / type 2",
+      "type1": ["CH", "CH", "W", "M", "CH"],
+      "type2": ["random(M,W,O)", "random(W,O,M)", "CH", "CH", "random(M,O,W)"],
+      "status": "À IMPLÉMENTER: calculer week type via ISO week number % 2"
+    },
+    "correction3_NCTvsAstreinte": {
+      "rule": "Clarification manquante: NCT jeudi + Astreinte Nuit jeudi compatible?",
+      "question": "Quand M a NCT jeudi, M peut-il aussi avoir 'Astreinte Nuit' jeudi?",
+      "options": [
+        "Option A: NON - NCT remplace astreinte nuit (recommandé)",
+        "Option B: OUI - cumul possible (peu probable)",
+        "Option C: OUI mais en remplacement - autre médecin prend nuit jeudi"
+      ],
+      "impact": "CRITIQUE pour la sélection de remplacement des nuits"
+    }
+  },
+
+  "rulesApplied": [
+    "✓ RÈGLE 1: Astreinte NUIT semaine - structure fixe type 1",
+    "✓ RÈGLE 2: Astreinte MATIN/APRÈS-MIDI - suivent coro (auto)",
+    "✓ RÈGLE 3: Weekend alternance CH vs M/O/W",
+    "✓ RÈGLE 4: Propositions modifiables",
+    "✓ RÈGLE 5: NCT jeudi W/M alternance",
+    "✓ RÈGLE 6: FV fixe lun+jeu",
+    "✓ CORRECTION 1: Veille NCT mercredi (PAS de nuit)",
+    "✓ CORRECTION 2: Structure fixe type 1/2 (À IMPLÉMENTER)",
+    "⚠ CORRECTION 3: NCT vs Astreinte Nuit jeudi (À CLARIFIER)"
+  ],
+
+  "weekTypeTable": {
+    "week1_pattern": {
+      "lundi": "CH",
+      "mardi": "CH",
+      "mercredi": "W",
+      "jeudi": "M",
+      "vendredi": "CH"
+    },
+    "week2_pattern": {
+      "lundi": "random(M, W, O)",
+      "mardi": "random(W, O, M)",
+      "mercredi": "CH",
+      "jeudi": "CH",
+      "vendredi": "random(M, O, W)"
+    },
+    "alternance": "W1, W2, W1, W2, W1, ..."
+  },
+
+  "readyForDeployment": false,
+  "blockers": [
+    {
+      "type": "CRITICAL",
+      "description": "CORRECTION 3 - NCT vs Astreinte Nuit jeudi",
+      "action": "Veuillez clarifier: quand médecin X a NCT jeudi, peut-il aussi faire astreinte nuit jeudi?"
+    }
+  ]
+}
