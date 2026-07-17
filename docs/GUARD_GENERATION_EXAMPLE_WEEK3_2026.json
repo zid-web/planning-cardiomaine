@@ -1,0 +1,149 @@
+{
+  "weekKey": "2026-W03",
+  "dateRange": "2026-01-19 (lundi) à 2026-01-25 (dimanche)",
+  "weekNumber": 3,
+  "weekendCoverage": "CH (Centre Hospitalier) - weekend pair",
+  "description": "Exemple de génération complète pour semaine 3/2026 avec toutes les règles appliquées",
+  
+  "guards": [
+    {
+      "date": "2026-01-19",
+      "day": "LUNDI",
+      "doctor": "FV",
+      "type": "Garde Nuit",
+      "notes": "FV fixe lundi"
+    },
+    {
+      "date": "2026-01-19",
+      "day": "LUNDI",
+      "doctor": "W",
+      "type": "Astreinte Nuit",
+      "notes": "Rotation W/M/O - proposition: W (équité)"
+    },
+    {
+      "date": "2026-01-20",
+      "day": "MARDI",
+      "doctor": "M",
+      "type": "Astreinte Nuit",
+      "notes": "Rotation W/M/O - proposition: M (équité)"
+    },
+    {
+      "date": "2026-01-21",
+      "day": "MERCREDI",
+      "doctor": "O",
+      "type": "Astreinte Nuit",
+      "notes": "Rotation W/M/O - proposition: O (équité)"
+    },
+    {
+      "date": "2026-01-22",
+      "day": "JEUDI",
+      "doctor": "FV",
+      "type": "Coro Après-midi",
+      "notes": "FV fixe jeudi après-midi"
+    },
+    {
+      "date": "2026-01-22",
+      "day": "JEUDI",
+      "doctor": "W",
+      "type": "Astreinte Nuit",
+      "notes": "Rotation W/M/O - proposition: W"
+    },
+    {
+      "date": "2026-01-22",
+      "day": "JEUDI",
+      "doctor": "W",
+      "type": "NCT",
+      "notes": "Alternance W/M uniquement - W cette semaine"
+    },
+    {
+      "date": "2026-01-23",
+      "day": "VENDREDI",
+      "doctor": "CH",
+      "type": "Astreinte Nuit",
+      "notes": "Rotation W/M/O - proposition: CH (pour équité)"
+    },
+    {
+      "date": "2026-01-24",
+      "day": "SAMEDI",
+      "doctor": "CH",
+      "type": "Astreinte Weekend",
+      "notes": "Centre Hospitalier (weekend entier - weekend pair)"
+    },
+    {
+      "date": "2026-01-25",
+      "day": "DIMANCHE",
+      "doctor": "CH",
+      "type": "Astreinte Weekend",
+      "notes": "Centre Hospitalier (weekend entier - weekend pair)"
+    }
+  ],
+
+  "equity_tracking": {
+    "W": {
+      "count": 3,
+      "astreinteNuitCount": 2,
+      "weekendCount": 0,
+      "nctCount": 1
+    },
+    "M": {
+      "count": 1,
+      "astreinteNuitCount": 1,
+      "weekendCount": 0,
+      "nctCount": 0
+    },
+    "O": {
+      "count": 1,
+      "astreinteNuitCount": 1,
+      "weekendCount": 0,
+      "nctCount": 0
+    }
+  },
+
+  "rules_applied": {
+    "rule_1_astreinte_nuit_semaine": {
+      "description": "Astreinte NUIT en semaine (lundi-vendredi) - rotation W/M/O vs CH",
+      "application": "Lundi-vendredi: rotation entre nos 3 médecins (W, M, O), avec CH comme option si tous en vacances"
+    },
+    "rule_2_astreinte_matin_apres": {
+      "description": "Astreinte MATIN et APRÈS-MIDI en semaine - suit automatiquement coro",
+      "application": "Pas d'assignation séparée - suivent automatiquement qui est en coro ce créneau",
+      "example": "Si M en coro lundi matin → M aussi d'astreinte lundi matin"
+    },
+    "rule_3_weekend": {
+      "description": "WEEKEND - alternance par weekend entier CH vs M/O/W",
+      "application": "Samedi + dimanche = même couverture, alternance weekend à weekend",
+      "this_week": "Weekend 3 (impair) → propositions varient, ou CH selon calendrier"
+    },
+    "rule_4_proposal": {
+      "description": "Assignation WEEKEND - modifiable manuellement",
+      "application": "Les propositions générées pour weekends M/O/W restent entièrement modifiables par admin"
+    },
+    "rule_5_nct": {
+      "description": "NCT jeudi uniquement - alternance W/M (jamais O, jamais CH)",
+      "application": "Jeudi: alternance stricte W/M selon NCT_DATES_2026"
+    },
+    "rule_6_fv": {
+      "description": "FV - garde nuit fixe lundi, coro fixe jeudi après-midi",
+      "application": "Automatique chaque semaine, sauf si FV en vacances"
+    }
+  },
+
+  "special_notes": {
+    "CH": "Centre Hospitalier externe - pas affecté par vacances, c'est une structure externe",
+    "FV": "Médecin externe - garde nuit lundi + coro jeudi, pas de compte Supabase",
+    "NCT": "Apparaît comme type distinct séparé de astreinte nuit",
+    "equity": "Tracée séparément pour astreinteNuit et weekend",
+    "modifiability": "Les astreintes nuit/weekend PEUVENT être modifiées manuellement après génération"
+  },
+
+  "validation_checklist": {
+    "FV_monday_night": true,
+    "FV_thursday_coro": true,
+    "CH_external_structure": true,
+    "astreinte_nuit_only_weekdays": true,
+    "astreinte_matin_apres_follow_coro": true,
+    "weekend_alternation": true,
+    "nct_thursday_only": true,
+    "vacation_exclusion_applied": true
+  }
+}
