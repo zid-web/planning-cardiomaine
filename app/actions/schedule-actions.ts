@@ -4,7 +4,17 @@ import { createClient } from "@/lib/supabase/server"
 import type { ScheduleData } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 
+// Helper function to check if Supabase is configured
+function isSupabaseConfigured(): boolean {
+  return !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+}
+
 export async function saveScheduleToDb(weekKey: string, scheduleData: ScheduleData, updatedBy: string) {
+  if (!isSupabaseConfigured()) {
+    console.warn("[v0] Supabase not configured - schedule will not be saved")
+    return null
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -33,6 +43,11 @@ export async function saveScheduleToDb(weekKey: string, scheduleData: ScheduleDa
 }
 
 export async function getScheduleFromDb(weekKey: string) {
+  if (!isSupabaseConfigured()) {
+    console.warn("[v0] Supabase not configured - returning null")
+    return null
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase.from("schedules").select("*").eq("week_key", weekKey).single()
@@ -47,6 +62,11 @@ export async function getScheduleFromDb(weekKey: string) {
 }
 
 export async function getAllSchedulesFromDb() {
+  if (!isSupabaseConfigured()) {
+    console.warn("[v0] Supabase not configured - returning empty schedule")
+    return []
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase.from("schedules").select("*").order("week_key", { ascending: true })
@@ -60,6 +80,11 @@ export async function getAllSchedulesFromDb() {
 }
 
 export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>) {
+  if (!isSupabaseConfigured()) {
+    console.warn("[v0] Supabase not configured - full schedule will not be saved")
+    return null
+  }
+
   const supabase = await createClient()
 
   const scheduleKey = "full_schedule"
@@ -89,6 +114,11 @@ export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>
 }
 
 export async function loadFullScheduleFromDb() {
+  if (!isSupabaseConfigured()) {
+    console.warn("[v0] Supabase not configured - returning empty")
+    return null
+  }
+
   const supabase = await createClient()
 
   const scheduleKey = "full_schedule"
