@@ -10,31 +10,39 @@ import { formatDateRange, getVacationDayCount } from '@/lib/vacation-utils'
 import 'react-day-picker/dist/style.css'
 
 interface VacationsModalProps {
-  doctorId: string
-  doctorCode: string
+  doctorId?: string
+  doctorCode?: string
   isOpen: boolean
   onClose: () => void
   onVacationsUpdated?: () => void
+  showDoctorSelector?: boolean
 }
 
 export function VacationsModal({
-  doctorId,
-  doctorCode,
+  doctorId: initialDoctorId = '',
+  doctorCode: initialDoctorCode = '',
   isOpen,
   onClose,
   onVacationsUpdated,
+  showDoctorSelector = true,
 }: VacationsModalProps) {
+  const AVAILABLE_DOCTORS = ['A', 'Z', 'S', 'B', 'G', 'O', 'W', 'M', 'P', 'H', 'U', 'K', 'V']
+
+  const [selectedDoctorCode, setSelectedDoctorCode] = useState<string>(initialDoctorCode)
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>(initialDoctorId)
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  // Charger les vacances du médecin
+  // Charger les vacances du médecin sélectionné
   const loadVacations = async () => {
+    if (!selectedDoctorId) return
+
     try {
       setIsLoading(true)
-      const data = await getDoctorVacationsList(doctorId)
+      const data = await getDoctorVacationsList(selectedDoctorId)
       setVacations(data)
     } catch (err) {
       setError('Erreur lors du chargement des vacances')
@@ -44,12 +52,22 @@ export function VacationsModal({
     }
   }
 
-  // Charger les vacations quand la modale s'ouvre
+  // Charger les vacations quand la modale s'ouvre ou quand le médecin sélectionné change
   useEffect(() => {
-    if (isOpen && vacations.length === 0) {
+    if (isOpen && selectedDoctorId) {
       loadVacations()
     }
-  }, [isOpen])
+  }, [isOpen, selectedDoctorId])
+
+  // Gestion du changement de médecin sélectionné
+  const handleDoctorChange = (doctorCode: string) => {
+    setSelectedDoctorCode(doctorCode)
+    setSelectedDoctorId(doctorCode) // Utiliser le code comme ID pour simplifier
+    setVacations([])
+    setDateRange({})
+    setError(null)
+    setSuccess(null)
+  }
 
   // Ajouter une nouvelle vacation
   const handleAddVacation = async () => {
@@ -66,7 +84,7 @@ export function VacationsModal({
       const startDateStr = format(dateRange.from, 'yyyy-MM-dd')
       const endDateStr = format(dateRange.to, 'yyyy-MM-dd')
 
-      const result = await addVacation(doctorId, startDateStr, endDateStr)
+      const result = await addVacation(selectedDoctorId, startDateStr, endDateStr)
 
       if (result.success) {
         setSuccess('Période de vacances ajoutée avec succès')
@@ -116,7 +134,10 @@ export function VacationsModal({
         <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Gérer les vacances</h2>
-            <p className="text-sm text-gray-600 mt-1">Dr. {doctorCode}</p>
+            {showDoctorSelector && (
+              <p className="text-sm text-gray-600 mt-1">Sélectionnez un médecin</p>
+            )}
+            {!showDoctorSelector && <p className="text-sm text-gray-600 mt-1">Dr. {selectedDoctorCode}</p>}
           </div>
           <button
             onClick={onClose}
@@ -129,6 +150,29 @@ export function VacationsModal({
         </div>
 
         <div className="p-6 space-y-6">
+          {/* Doctor Selector */}
+          {showDoctorSelector && (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+              <label htmlFor="doctor-select" className="block text-sm font-medium text-gray-900 mb-2">
+                Médecin concerné
+              </label>
+              <select
+                id="doctor-select"
+                value={selectedDoctorCode}
+                onChange={(e) => handleDoctorChange(e.target.value)}
+                disabled={isLoading}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">-- Sélectionnez un médecin --</option>
+                {AVAILABLE_DOCTORS.map((code) => (
+                  <option key={code} value={code}>
+                    Dr. {code}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Messages */}
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md text-sm">
@@ -142,6 +186,7 @@ export function VacationsModal({
           )}
 
           {/* Sélecteur de dates */}
+          {selectedDoctorCode && (
           <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
             <h3 className="font-semibold text-gray-900 mb-4">Sélectionner une période de vacances</h3>
             <p className="text-sm text-gray-600 mb-4">
@@ -181,30 +226,12 @@ export function VacationsModal({
                     'aria-selected:bg-blue-100 aria-selected:text-gray-900 rounded-none',
                 }}
               />
-            </div>
-
-            {dateRange.from && dateRange.to && (
-              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
-                <p className="text-sm text-gray-700">
-                  <span className="font-semibold">Période sélectionnée:</span>{' '}
-                  {format(dateRange.from, 'dd MMMM yyyy', { locale: fr })} -{' '}
-                  {format(dateRange.to, 'dd MMMM yyyy', { locale: fr })}
-                </p>
-                <p className="text-sm text-gray-600 mt-2">
-                  Durée: <span className="font-semibold">{getVacationDayCount(dateRange.from, dateRange.to)} jours</span>
-                </p>
-                <button
-                  onClick={handleAddVacation}
-                  disabled={isLoading}
-                  className="mt-3 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium py-2 px-4 rounded-md transition"
-                >
-                  {isLoading ? 'Enregistrement...' : 'Enregistrer cette période'}
-                </button>
-              </div>
             )}
           </div>
+          )}
 
           {/* Liste des vacances */}
+          {selectedDoctorCode && (
           <div>
             <h3 className="font-semibold text-gray-900 mb-4">Périodes enregistrées</h3>
             {vacations.length === 0 ? (
@@ -236,6 +263,7 @@ export function VacationsModal({
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Footer */}
