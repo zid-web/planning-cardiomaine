@@ -234,7 +234,7 @@ export function VacationsModal({
 
           {/* Liste des vacances */}
           {selectedDoctorCode && (
-          <div>
+            <div>
             <h3 className="font-semibold text-gray-900 mb-4">Périodes enregistrées</h3>
             {vacations.length === 0 ? (
               <p className="text-gray-500 italic text-sm">Aucune période de vacances enregistrée</p>
@@ -264,7 +264,7 @@ export function VacationsModal({
                 ))}
               </div>
             )}
-          </div>
+            </div>
           )}
         </div>
 
