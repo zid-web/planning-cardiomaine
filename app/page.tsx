@@ -26,7 +26,7 @@ import { validatePassword } from "@/lib/schedule-utils"
 import { LandingPage } from "@/components/landing-page"
 import { AdminPanel } from "@/components/admin-panel"
 import { ScheduleApp } from "@/components/schedule-app"
-import { getSupabase } from "@/lib/supabase-client"
+import { createClient } from "@/lib/supabase/client"
 import { getAllSchedulesFromDb } from "@/app/actions/schedule-actions"
 
 export default function MedicalScheduleApp() {
@@ -301,7 +301,7 @@ export default function MedicalScheduleApp() {
 
   useEffect(() => {
     try {
-      const supabase = getSupabase()
+      const supabase = createClient()
       const channel = supabase
         .channel("schedules_changes")
         .on(
@@ -339,7 +339,7 @@ export default function MedicalScheduleApp() {
     if (!currentUser || view !== "app") return
 
     try {
-      const supabase = getSupabase()
+      const supabase = createClient()
       const channel = supabase.channel("admin_presence_tracking")
 
       channel

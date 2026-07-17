@@ -1,11 +1,11 @@
 "use server"
 
-import { getSupabaseServer } from "@/lib/supabase-server"
+import { createClient } from "@/lib/supabase/server"
 import type { ScheduleData } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 
 export async function saveScheduleToDb(weekKey: string, scheduleData: ScheduleData, updatedBy: string) {
-  const supabase = await getSupabaseServer()
+  const supabase = await createClient()
 
   const { data, error } = await supabase
     .from("schedules")
@@ -33,7 +33,7 @@ export async function saveScheduleToDb(weekKey: string, scheduleData: ScheduleDa
 }
 
 export async function getScheduleFromDb(weekKey: string) {
-  const supabase = await getSupabaseServer()
+  const supabase = await createClient()
 
   const { data, error } = await supabase.from("schedules").select("*").eq("week_key", weekKey).single()
 
@@ -47,7 +47,7 @@ export async function getScheduleFromDb(weekKey: string) {
 }
 
 export async function getAllSchedulesFromDb() {
-  const supabase = await getSupabaseServer()
+  const supabase = await createClient()
 
   const { data, error } = await supabase.from("schedules").select("*").order("week_key", { ascending: true })
 
@@ -60,7 +60,7 @@ export async function getAllSchedulesFromDb() {
 }
 
 export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>) {
-  const supabase = await getSupabaseServer()
+  const supabase = await createClient()
 
   const scheduleKey = "full_schedule"
 
@@ -89,7 +89,7 @@ export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>
 }
 
 export async function loadFullScheduleFromDb() {
-  const supabase = await getSupabaseServer()
+  const supabase = await createClient()
 
   const scheduleKey = "full_schedule"
 
