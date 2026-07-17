@@ -84,24 +84,9 @@ export default function Page() {
     }
   }
 
-  // Debug: Check if env vars are available
-  const hasUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL
-  const hasKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
-        {!hasUrl || !hasKey ? (
-          <div className="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 p-4">
-            <p className="text-sm text-yellow-800">
-              ⚠️ Environment variables missing:
-              <br />
-              URL: {hasUrl ? '✓' : '✗'}
-              <br />
-              KEY: {hasKey ? '✓' : '✗'}
-            </p>
-          </div>
-        ) : null}
         <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
