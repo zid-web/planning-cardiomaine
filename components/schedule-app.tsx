@@ -31,6 +31,7 @@ import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolid
 import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
 import { calculateWorkloadStats } from "@/lib/scheduler-algo"
 import { canAssignDoctor, detectConflict } from "@/lib/assignment-validation"
+import { populateCongesRowFromVacations } from "@/lib/vacation-congés-mapper"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
@@ -93,6 +94,8 @@ export function ScheduleApp({
 
   // Ensure schedule exists for this week
   const schedule = useMemo(() => {
+    let scheduleToUse: ScheduleData
+    
     if (!fullSchedule[weekKey]) {
       const generated = generateWeekSchedule(weekKey)
       // Ensure all days in the generated schedule have empty notes for consistency
@@ -101,10 +104,18 @@ export function ScheduleApp({
           generated["Notes du jour"][day] = { value: [], type: "empty", status: "validated" }
         }
       })
-      return generated
+      scheduleToUse = generated
+    } else {
+      scheduleToUse = fullSchedule[weekKey]
     }
-    return fullSchedule[weekKey]
-  }, [fullSchedule, weekKey])
+
+    // RÈGLE ABSOLUE: Remplir automatiquement la ligne "Congés" avec les médecins en vacances
+    if (vacations.length > 0) {
+      scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
+    }
+
+    return scheduleToUse
+  }, [fullSchedule, weekKey, vacations])
 
   const workloadStats = useMemo(() => calculateWorkloadStats(schedule), [schedule])
 
