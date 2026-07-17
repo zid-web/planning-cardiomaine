@@ -1,5 +1,3 @@
-import type { User } from "./types"
-
 export const DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]
 
 export const DOCTORS = [
@@ -53,10 +51,7 @@ export const SPECIALTIES = {
   general: ["Val", "K", "CH", "FV", "D", "R", "T"],
 }
 
-// DEPRECATED: Local in-memory authentication system has been removed.
-// All authentication now uses Supabase Auth exclusively.
-// See /app/auth/login/page.tsx and /lib/auth-utils.ts for the current auth implementation.
-export const INITIAL_USERS: User[] = []
+
 
 export const DOCTOR_COLORS: { [key: string]: string } = {
   P: "bg-blue-500",
