@@ -24,7 +24,6 @@ export default function Page() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
@@ -36,17 +35,45 @@ export default function Page() {
 
       console.log('[v0] Login attempt with email:', email)
 
+      let supabase
+      try {
+        supabase = createClient()
+      } catch (clientError) {
+        console.error('[v0] Failed to create Supabase client:', clientError)
+        throw new Error('Authentication service is not properly configured. Please contact support.')
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
+      console.log('[v0] Auth response:', { hasData: !!data, hasError: !!error, errorMessage: error?.message })
+
       if (error) {
-        console.error('[v0] Supabase auth error:', error.message, error.status)
-        throw error
+        console.error('[v0] Supabase auth error:', {
+          message: error.message,
+          status: error.status,
+          name: error.name,
+        })
+        
+        // Provide user-friendly error messages
+        if (error.status === 400) {
+          throw new Error('Invalid email or password. Please try again.')
+        } else if (error.status === 422) {
+          throw new Error('Email not found. Please check your email or sign up.')
+        } else if (error.status === 401) {
+          throw new Error('Invalid credentials. Please check your email and password.')
+        } else {
+          throw new Error(error.message || 'Authentication failed. Please try again.')
+        }
       }
 
-      console.log('[v0] Login successful for user:', data.user?.id)
+      if (!data.user) {
+        throw new Error('Login failed: No user data returned')
+      }
+
+      console.log('[v0] Login successful for user:', data.user.id)
       router.push('/protected')
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred'
@@ -57,9 +84,24 @@ export default function Page() {
     }
   }
 
+  // Debug: Check if env vars are available
+  const hasUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL
+  const hasKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
   return (
     <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm">
+        {!hasUrl || !hasKey ? (
+          <div className="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 p-4">
+            <p className="text-sm text-yellow-800">
+              ⚠️ Environment variables missing:
+              <br />
+              URL: {hasUrl ? '✓' : '✗'}
+              <br />
+              KEY: {hasKey ? '✓' : '✗'}
+            </p>
+          </div>
+        ) : null}
         <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>
