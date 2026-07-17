@@ -1123,7 +1123,8 @@ export function ScheduleApp({
 
       {/* Vacations Modal */}
       <VacationsModal
-        doctorId={selectedDoctorForVacations || "ALL"}
+        doctorId={selectedDoctorForVacations || currentUser || ""}
+        doctorCode={doctorCode}
         isOpen={vacationsModalOpen}
         onClose={() => setVacationsModalOpen(false)}
         onVacationsUpdated={loadVacations}
