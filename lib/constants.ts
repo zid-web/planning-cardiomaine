@@ -53,42 +53,10 @@ export const SPECIALTIES = {
   general: ["Val", "K", "CH", "FV", "D", "R", "T"],
 }
 
-export const INITIAL_USERS: User[] = [
-  // Admin user for email-based login
-  {
-    id: "zidouissem@gmail.com",
-    firstName: "Ouassim",
-    lastName: "Zid",
-    doctorCode: "Z",
-    password: "1234",
-    email: "zidouissem@gmail.com",
-    failedAttempts: 0,
-    isLocked: false,
-    isFirstLogin: true,
-    role: "admin",
-    specialty: "general",
-  },
-  ...STAFF_INITIALS.map((code) => {
-    let specialty: User["specialty"] = "general"
-    if (SPECIALTIES.echo.includes(code)) specialty = "echo"
-    else if (SPECIALTIES.coro.includes(code)) specialty = "coro"
-    else if (SPECIALTIES.rythmo.includes(code)) specialty = "rythmo"
-
-    return {
-      id: code,
-      firstName: "Dr",
-      lastName: code,
-      doctorCode: code,
-      password: "1234",
-      email: "",
-      failedAttempts: 0,
-      isLocked: false,
-      isFirstLogin: true,
-      role: code === "M" || code === "Z" ? "admin" : "user",
-      specialty,
-    }
-  }),
-]
+// DEPRECATED: Local in-memory authentication system has been removed.
+// All authentication now uses Supabase Auth exclusively.
+// See /app/auth/login/page.tsx and /lib/auth-utils.ts for the current auth implementation.
+export const INITIAL_USERS: User[] = []
 
 export const DOCTOR_COLORS: { [key: string]: string } = {
   P: "bg-blue-500",
