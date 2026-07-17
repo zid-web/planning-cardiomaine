@@ -30,6 +30,7 @@ import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
 import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays } from "@/lib/schedule-utils"
 import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
 import { calculateWorkloadStats } from "@/lib/scheduler-algo"
+import { canAssignDoctor, detectConflict } from "@/lib/assignment-validation"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
@@ -168,6 +169,16 @@ export function ScheduleApp({
 
   const addDoctorToCell = (doctor: string) => {
     if (!selectedCell || !schedule) return
+
+    // Vérifier si le médecin est indisponible (en vacances)
+    const dateStr = weekDates[selectedCell.day]?.toISOString().split('T')[0]
+    if (dateStr) {
+      const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations)
+      if (!validation.allowed) {
+        toast.error(validation.reason || 'Assignation impossible')
+        return
+      }
+    }
 
     const newSchedule = { ...schedule }
     const currentCell = newSchedule[selectedCell.row][selectedCell.day]
@@ -849,17 +860,24 @@ export function ScheduleApp({
                                       {/* Existing cell content */}
                                       {!cellBlocked && (
                                         <div className="flex flex-wrap gap-1 justify-center items-center h-full">
-                                          {cellData?.value.map((doc: string, i: number) => (
-                                            <Badge
-                                              key={i}
-                                              className={`
-                                                ${DOCTOR_COLORS[doc] || "bg-slate-500"} text-white border-none px-1 py-0 text-[9px] h-5 min-w-[20px] justify-center
-                                                ${isPending && cellData.request?.requester === doc ? "ring-2 ring-orange-400" : ""}
-                                              `}
-                                            >
-                                              {doc}
-                                            </Badge>
-                                          ))}
+                                          {/* Check for vacation conflicts */}
+                                          {cellData?.value.map((doc: string, i: number) => {
+                                            const dateStr = weekDates[day]?.toISOString().split('T')[0]
+                                            const conflict = dateStr ? detectConflict(doc, dateStr, rowKey, vacations) : { hasConflict: false }
+                                            
+                                            return (
+                                              <Badge
+                                                key={i}
+                                                className={`
+                                                  ${conflict.hasConflict ? "bg-red-500 ring-2 ring-red-300" : DOCTOR_COLORS[doc] || "bg-slate-500"} text-white border-none px-1 py-0 text-[9px] h-5 min-w-[20px] justify-center
+                                                  ${isPending && cellData.request?.requester === doc ? "ring-2 ring-orange-400" : ""}
+                                                `}
+                                                title={conflict.message}
+                                              >
+                                                {doc}
+                                              </Badge>
+                                            )
+                                          })}
                                         </div>
                                       )}
                                     </td>
