@@ -107,7 +107,7 @@ export function VacationsModal({
         setIsSelectingRange(true)
       }
     },
-    [dateRange]
+    [dateRange, isClickDisabled]
   )
 
   const handleResetSelection = () => {
@@ -250,6 +250,7 @@ export function VacationsModal({
                     onClick={handleResetSelection}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
                     title="Réinitialiser la sélection"
+                    disabled={isLoading}
                   >
                     <RotateCcw className="w-4 h-4" />
                     Réinitialiser
@@ -314,7 +315,7 @@ export function VacationsModal({
                 </div>
               </div>
 
-              {/* Selection Summary */}
+              {/* Selection Summary & Submit Button - ONLY SHOWN WHEN BOTH DATES SELECTED */}
               {dateRange.from && dateRange.to && (
                 <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="space-y-2">
