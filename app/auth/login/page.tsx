@@ -136,7 +136,11 @@ export default function Page() {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Use temporary password: 1234"
                     />
+                    <p className="text-xs text-gray-500">
+                      First-time login: Use password &quot;1234&quot; to access your account, then you&apos;ll be asked to create a personal password.
+                    </p>
                   </div>
                   {error && <p className="text-sm text-red-500">{error}</p>}
                   <Button type="submit" className="w-full" disabled={isLoading}>

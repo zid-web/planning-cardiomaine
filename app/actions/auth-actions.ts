@@ -39,6 +39,26 @@ export async function signIn(email: string, password: string) {
     return { error: error.message }
   }
 
+  // Get user profile to check if password setup is needed
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('must_change_password')
+      .eq('id', user.id)
+      .single()
+
+    revalidatePath('/', 'layout')
+    
+    // If user needs to change password, redirect to setup page
+    if (profile?.must_change_password) {
+      redirect('/auth/setup-account')
+    }
+  }
+
   revalidatePath('/', 'layout')
   redirect('/protected')
 }
