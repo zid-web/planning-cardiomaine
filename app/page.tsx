@@ -300,59 +300,67 @@ export default function MedicalScheduleApp() {
   }, [])
 
   useEffect(() => {
-    const supabase = getSupabase()
-    const channel = supabase
-      .channel("schedules_changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "schedules",
-        },
-        (payload) => {
-          console.log("[v0] Realtime update received:", payload)
-          if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
-            const newRecord = payload.new as any
-            if (newRecord.week_key && newRecord.schedule_data) {
-              setFullSchedule((prev) => ({
-                ...prev,
-                [newRecord.week_key]: newRecord.schedule_data,
-              }))
-              setDataVersion(Date.now())
+    try {
+      const supabase = getSupabase()
+      const channel = supabase
+        .channel("schedules_changes")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "schedules",
+          },
+          (payload) => {
+            console.log("[v0] Realtime update received:", payload)
+            if (payload.eventType === "INSERT" || payload.eventType === "UPDATE") {
+              const newRecord = payload.new as any
+              if (newRecord.week_key && newRecord.schedule_data) {
+                setFullSchedule((prev) => ({
+                  ...prev,
+                  [newRecord.week_key]: newRecord.schedule_data,
+                }))
+                setDataVersion(Date.now())
+              }
             }
-          }
-        },
-      )
-      .subscribe()
+          },
+        )
+        .subscribe()
 
-    return () => {
-      supabase.removeChannel(channel)
+      return () => {
+        supabase.removeChannel(channel)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to set up realtime listener:", error)
     }
   }, [])
 
   useEffect(() => {
     if (!currentUser || view !== "app") return
 
-    const supabase = getSupabase()
-    const channel = supabase.channel("admin_presence_tracking")
+    try {
+      const supabase = getSupabase()
+      const channel = supabase.channel("admin_presence_tracking")
 
-    channel
-      .on("presence", { event: "sync" }, () => {
-        console.log("[v0] Presence synced")
-      })
-      .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          await channel.track({
-            user_id: currentUser,
-            online_at: new Date().toISOString(),
-          })
-        }
-      })
+      channel
+        .on("presence", { event: "sync" }, () => {
+          console.log("[v0] Presence synced")
+        })
+        .subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
+            await channel.track({
+              user_id: currentUser,
+              online_at: new Date().toISOString(),
+            })
+          }
+        })
 
-    return () => {
-      channel.untrack()
-      supabase.removeChannel(channel)
+      return () => {
+        channel.untrack()
+        supabase.removeChannel(channel)
+      }
+    } catch (error) {
+      console.error("[v0] Failed to set up presence tracking:", error)
     }
   }, [currentUser, view])
 

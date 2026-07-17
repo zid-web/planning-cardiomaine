@@ -2,10 +2,10 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createServerClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 
 export async function signUp(email: string, password: string, firstName: string, lastName: string) {
-  const supabase = await createServerClient()
+  const supabase = await createClient()
 
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -28,7 +28,7 @@ export async function signUp(email: string, password: string, firstName: string,
 }
 
 export async function signIn(email: string, password: string) {
-  const supabase = await createServerClient()
+  const supabase = await createClient()
 
   const { error } = await supabase.auth.signInWithPassword({
     email,
@@ -44,7 +44,7 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function signOut() {
-  const supabase = await createServerClient()
+  const supabase = await createClient()
 
   const { error } = await supabase.auth.signOut()
 
@@ -57,7 +57,7 @@ export async function signOut() {
 }
 
 export async function getCurrentUser() {
-  const supabase = await createServerClient()
+  const supabase = await createClient()
 
   const {
     data: { user },
