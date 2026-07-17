@@ -25,7 +25,6 @@ export default function Page() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
-    const supabase = createClient()
     setIsLoading(true)
     setError(null)
 
@@ -39,6 +38,11 @@ export default function Page() {
       // Validate inputs
       if (!email || !password) {
         throw new Error('Email and password are required')
+      }
+
+      const supabase = createClient()
+      if (!supabase) {
+        throw new Error('Supabase is not configured. Please contact support.')
       }
 
       console.log('[v0] Sign up attempt with email:', email)

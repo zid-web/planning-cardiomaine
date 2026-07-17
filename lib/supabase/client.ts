@@ -8,8 +8,12 @@ export function createClient() {
     console.error('[v0] Missing Supabase environment variables', {
       hasUrl: !!url,
       hasKey: !!key,
+      urlValue: url ? `${url.substring(0, 20)}...` : 'undefined',
+      keyValue: key ? `${key.substring(0, 20)}...` : 'undefined',
     })
-    throw new Error('Supabase configuration is missing. Please check your environment variables.')
+    // Return a mock client that will fail gracefully
+    // This allows the page to render but auth operations will fail
+    return null as any
   }
 
   return createBrowserClient(url, key)

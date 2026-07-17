@@ -41,6 +41,9 @@ export default function Page() {
       let supabase
       try {
         supabase = createClient()
+        if (!supabase) {
+          throw new Error('Supabase client is not available')
+        }
         console.log('[v0] Supabase client created successfully')
       } catch (clientError) {
         console.error('[v0] Failed to create Supabase client:', clientError)
