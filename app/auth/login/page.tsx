@@ -29,19 +29,29 @@ export default function Page() {
     setError(null)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // Validate inputs
+      if (!email || !password) {
+        throw new Error('Email and password are required')
+      }
+
+      console.log('[v0] Login attempt with email:', email)
+
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
-        options: {
-          emailRedirectTo:
-            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
-            `${window.location.origin}/auth/callback`,
-        },
       })
-      if (error) throw error
+
+      if (error) {
+        console.error('[v0] Supabase auth error:', error.message, error.status)
+        throw error
+      }
+
+      console.log('[v0] Login successful for user:', data.user?.id)
       router.push('/protected')
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'An error occurred')
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred'
+      console.error('[v0] Login failed:', errorMessage)
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
     }

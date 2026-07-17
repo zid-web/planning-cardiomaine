@@ -36,7 +36,14 @@ export default function Page() {
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      // Validate inputs
+      if (!email || !password) {
+        throw new Error('Email and password are required')
+      }
+
+      console.log('[v0] Sign up attempt with email:', email)
+
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -45,10 +52,18 @@ export default function Page() {
             `${window.location.origin}/auth/callback`,
         },
       })
-      if (error) throw error
+
+      if (error) {
+        console.error('[v0] Supabase auth error:', error.message, error.status)
+        throw error
+      }
+
+      console.log('[v0] Sign up successful for user:', data.user?.id)
       router.push('/auth/sign-up-success')
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'An error occurred')
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred'
+      console.error('[v0] Sign up failed:', errorMessage)
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
     }
