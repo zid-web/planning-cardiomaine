@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import type { User } from "@/lib/types"
 import { DOCTOR_COLORS } from "@/lib/constants"
-import { createClient } from "@/lib/supabase-client"
+import { createClient } from "@/lib/supabase/client"
 
 export function AdminPanel({
   users,
