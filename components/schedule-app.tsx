@@ -41,6 +41,7 @@ import { VacationsModal } from "@/components/vacations-modal"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
 import { GuardGenerationButton } from "@/components/guard-generation-button"
+import { SolverGenerationButton } from "@/components/solver-generation-button"
 import { DoctorVacation } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -545,6 +546,12 @@ export function ScheduleApp({
                     <GuardGenerationButton
                       weekKey={`${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`}
                       vacations={vacations}
+                      onGenerationComplete={handleGenerationComplete}
+                    />
+
+                    <SolverGenerationButton
+                      currentDate={currentDate}
+                      weekendMode="ROTATION"
                       onGenerationComplete={handleGenerationComplete}
                     />
 
