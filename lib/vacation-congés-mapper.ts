@@ -13,7 +13,10 @@ export function populateCongesRowFromVacations(
   vacations: DoctorVacation[],
   weekKey: string
 ): FullSchedule {
+  console.log('🔍 [populateCongesRowFromVacations] START - weekKey:', weekKey, 'vacations count:', vacations.length)
+  
   if (!schedule.Congés) {
+    console.log('🔍 [populateCongesRowFromVacations] ERROR: schedule.Congés is undefined')
     return schedule
   }
 
@@ -21,6 +24,7 @@ export function populateCongesRowFromVacations(
   const [yearStr, weekStr] = weekKey.split('-W')
   const year = parseInt(yearStr, 10)
   const weekNum = parseInt(weekStr, 10)
+  console.log('🔍 [populateCongesRowFromVacations] Calculated year:', year, 'weekNum:', weekNum)
 
   // Calculer le lundi de cette semaine
   const jan4 = new Date(Date.UTC(year, 0, 4))
@@ -34,6 +38,8 @@ export function populateCongesRowFromVacations(
     currentDate.setUTCDate(targetMonday.getUTCDate() + dayIndex)
     const dateStr = currentDate.toISOString().split('T')[0] // Format: YYYY-MM-DD
 
+    console.log(`🔍 [populateCongesRowFromVacations] Processing day: ${dayName} (${dateStr})`)
+
     // Trouver tous les médecins en vacances ce jour-là
     const doctorsOnVacationThisDay: string[] = []
 
@@ -42,6 +48,8 @@ export function populateCongesRowFromVacations(
       const endDate = parseISO(vacation.end_date)
       const checkDate = parseISO(dateStr)
 
+      console.log(`  🔍 Vacation check: doctor_id=${vacation.doctor_id}, start=${vacation.start_date}, end=${vacation.end_date}, checkDate=${dateStr}`)
+
       // Vérifier si ce jour est dans la période de vacances: startDate <= checkDate <= endDate
       if (
         !isBefore(checkDate, startDate) &&
@@ -49,6 +57,7 @@ export function populateCongesRowFromVacations(
       ) {
         // Convert email to doctor_code using EMAIL_TO_INITIAL if needed
         const initial = EMAIL_TO_INITIAL[vacation.doctor_id] || vacation.doctor_id
+        console.log(`    ✅ Match! doctor_id=${vacation.doctor_id} → initial=${initial}`)
         doctorsOnVacationThisDay.push(initial)
       }
     })
@@ -56,6 +65,7 @@ export function populateCongesRowFromVacations(
     // ✅ CORRECTION : remplacer la valeur par la liste des initiales dédupliquées
     // au lieu de fusionner avec l'ancienne valeur (qui contenait l'email)
     const uniqueInitials = [...new Set(doctorsOnVacationThisDay)]
+    console.log(`  🔍 Final initials for ${dayName}: [${uniqueInitials.join(', ')}]`)
     schedule.Congés[dayName].value = uniqueInitials
   })
 
