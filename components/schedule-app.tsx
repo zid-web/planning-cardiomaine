@@ -204,24 +204,12 @@ export function ScheduleApp({
 
   const handleCellClick = (rowKey: string, day: string) => {
     if (activeTab === "all" && !isAdmin) return
-    const isBlocked = isCellBlocked(rowKey, day)
-    if (isBlocked) {
-      console.log(`🔍 [CLICK BLOCKED] row: ${rowKey}, day: ${day} - cellBlocked prevented click`)
-      return
-    }
-    console.log(`🔍 [CLICK ALLOWED] row: ${rowKey}, day: ${day} - cell open for editing`)
+    if (isCellBlocked(rowKey, day)) return
     setSelectedCell({ row: rowKey, day })
   }
 
   const addDoctorToCell = (doctor: string) => {
     if (!selectedCell || !schedule) return
-
-    // Double-check cell is not blocked
-    if (isCellBlocked(selectedCell.row, selectedCell.day)) {
-      console.log(`🔍 [SECURITY] Attempt to add ${doctor} to blocked cell ${selectedCell.row}/${selectedCell.day} - BLOCKED`)
-      toast.error("Cette case est bloquée et ne peut pas être modifiée")
-      return
-    }
 
     // Vérifier si le médecin est indisponible (en vacances)
     // weekDates est un array, besoin de trouver l'index du jour
@@ -394,88 +382,33 @@ export function ScheduleApp({
   }
 
   const isCellBlocked = (row: string, day: string) => {
-    let blockReason = ""
-
     // Weekend rule: Block everything except Astreintes and Gardes
     if ((day === "SAMEDI" || day === "DIMANCHE") && !isAllowedOnHoliday(row)) {
-      blockReason = "Weekend - pas autorisé pour cette activité"
-      console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
       return true
-    }
-
-    // Fixed free half-days: Wednesday AM, Thursday AM, Friday AM
-    if (["Garde Matin", "Cs PSS", "Cs Tessée", "Coro", "Rythmo"].includes(row)) {
-      if (day === "MERCREDI" || day === "JEUDI" || day === "VENDREDI") {
-        blockReason = "Demi-journée libre fixe"
-        console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-        return true
-      }
     }
 
     // Rééducation: Block Tuesday and Thursday
-    if (row.includes("RÉEDUCATION") && (day === "MARDI" || day === "JEUDI")) {
-      blockReason = "Rééducation - jour fixe non disponible"
-      console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-      return true
-    }
+    if (row.includes("RÉEDUCATION") && (day === "MARDI" || day === "JEUDI")) return true
 
     // PSSL: Block Mon, Tue, Wed, Fri
-    if (row.includes("PSSL") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) {
-      blockReason = "PSSL - jour bloqué"
-      console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-      return true
-    }
+    if (row.includes("PSSL") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) return true
 
     // LFB: Block Mon, Wed, Fri
-    if (row.includes("LFB") && ["LUNDI", "MERCREDI", "VENDREDI"].includes(day)) {
-      blockReason = "LFB - jour bloqué"
-      console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-      return true
-    }
+    if (row.includes("LFB") && ["LUNDI", "MERCREDI", "VENDREDI"].includes(day)) return true
 
     // Scinti: Block Thu, Fri
-    if (row.includes("Scinti") && ["JEUDI", "VENDREDI"].includes(day)) {
-      blockReason = "Scinti - jour bloqué"
-      console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-      return true
-    }
+    if (row.includes("Scinti") && ["JEUDI", "VENDREDI"].includes(day)) return true
 
     // IRM: Block Tue, Wed, Thu
-    if (row.includes("IRM") && ["MARDI", "MERCREDI", "JEUDI"].includes(day)) {
-      blockReason = "IRM - jour bloqué"
-      console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-      return true
-    }
+    if (row.includes("IRM") && ["MARDI", "MERCREDI", "JEUDI"].includes(day)) return true
 
     // CDL: Block Mon, Wed, Thu, Fri
-    if (row.includes("CDL") && ["LUNDI", "MERCREDI", "JEUDI", "VENDREDI"].includes(day)) {
-      blockReason = "CDL - jour bloqué"
-      console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-      return true
-    }
+    if (row.includes("CDL") && ["LUNDI", "MERCREDI", "JEUDI", "VENDREDI"].includes(day)) return true
 
-    // NCT: Block Mon, Tue, Wed, Fri (only Thursday night allowed)
-    if (row.includes("NCT") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) {
-      blockReason = "NCT - uniquement jeudi nuit autorisé"
-      console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-      return true
-    }
+    // NCT: Block Mon, Tue, Wed, Fri
+    if (row.includes("NCT") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) return true
 
-    if (row.includes("Entrées PSS") && ["MERCREDI", "JEUDI", "VENDREDI"].includes(day)) {
-      blockReason = "Entrées PSS - jour bloqué"
-      console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-      return true
-    }
-
-    // Fixed consultation days: No guards/astreintes for P, U, A, S
-    const fixedDocs: { [key: string]: string } = { "P": "LUNDI", "U": "MARDI", "A": "JEUDI", "S": "VENDREDI" }
-    for (const [doc, fixedDay] of Object.entries(fixedDocs)) {
-      if (day === fixedDay && (row.includes("Garde") || row.includes("Astreintes"))) {
-        blockReason = `${doc} a une consultation fixe ce jour - pas de garde/astreinte`
-        console.log(`🔍 [BLOCK] row: ${row}, day: ${day} - reason: ${blockReason}`)
-        return true
-      }
-    }
+    if (row.includes("Entrées PSS") && ["MERCREDI", "JEUDI", "VENDREDI"].includes(day)) return true
 
     return false
   }
