@@ -12,7 +12,6 @@ const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     'Garde Matin': 'Garde Matin',
     'Coro Matin': 'Matin - Coro',
   },
-  // L'API utilise "apres_midi" (avec underscore)
   apres_midi: {
     'Astreinte Apres-midi': 'Astreintes ATL Midi',
     'Garde Apres-midi': 'Garde Midi',
@@ -24,7 +23,7 @@ const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     NCT: 'Hors site - NCT',
   },
   weekend: {
-    'Astreinte Weekend': 'Garde Matin', // Samedi/Dimanche → Garde Matin
+    'Astreinte Weekend': 'Garde Matin',
   },
 }
 
@@ -69,7 +68,7 @@ export async function generateWeekWithSolver(
     // 3. Parité et week_type
     const dateObj = new Date(weekStartDate)
     const weekInfo = getWeekNumber(dateObj)
-    const semaine_iso_impaire = weekInfo % 2 === 1
+    const semaine_iso_impaire = weekInfo.week % 2 === 1
     const week_type = semaine_iso_impaire ? 2 : 1
     const lastNctDoctor = null
 
@@ -109,19 +108,13 @@ export async function generateWeekWithSolver(
     let assignments = result.assignments
     let warnings = result.warnings || []
 
-    // Si assignments n'est pas un tableau, on explore d'autres pistes
     if (!Array.isArray(assignments)) {
-      // Cas où les données sont sous result.data
       if (result.data && Array.isArray(result.data.assignments)) {
         assignments = result.data.assignments
         warnings = result.data.warnings || warnings
-      }
-      // Cas où result est directement le tableau (peu probable)
-      else if (Array.isArray(result)) {
+      } else if (Array.isArray(result)) {
         assignments = result
-      }
-      // Dernier recours : on renvoie une erreur avec les données brutes
-      else {
+      } else {
         console.error('🔴 [SERVER] Aucune assignation trouvée dans la réponse :', result)
         return {
           schedule: null,
@@ -140,31 +133,54 @@ export async function generateWeekWithSolver(
     assignments.forEach((assign: any) => {
       const { date, day_name, slot, activity, doctor } = assign
       const dayKey = day_name?.toUpperCase()
-      if (!dayKey || !DAYS.includes(dayKey)) return
+      if (!dayKey || !DAYS.includes(dayKey)) {
+        console.warn(`🔴 [SERVER] Jour non reconnu: ${day_name}`)
+        return
+      }
 
       let rowKey = ''
       if (slot === 'weekend') {
         if (dayKey === 'SAMEDI' || dayKey === 'DIMANCHE') {
           rowKey = 'Garde Matin'
+        } else {
+          console.warn(`🔴 [SERVER] Weekend sur un jour non weekend? ${dayKey}`)
+          return
         }
       } else {
         const mapping = ACTIVITY_TO_ROW[slot]
         if (mapping && mapping[activity]) {
           rowKey = mapping[activity]
+        } else {
+          console.warn(`🔴 [SERVER] Mapping non trouvé pour slot="${slot}", activity="${activity}"`)
+          return
         }
       }
 
-      if (!rowKey) return
-      if (!schedule[rowKey]) return
+      if (!rowKey) {
+        console.warn(`🔴 [SERVER] rowKey vide pour ${date} ${day_name} ${slot} ${activity}`)
+        return
+      }
 
-      const cell = schedule[rowKey][dayKey]
-      if (!cell) return
+      const cell = schedule[rowKey]?.[dayKey]
+      if (!cell) {
+        console.warn(`🔴 [SERVER] Cellule inexistante pour rowKey="${rowKey}", dayKey="${dayKey}"`)
+        return
+      }
 
       if (!cell.value.includes(doctor)) {
         cell.value = [...cell.value, doctor]
         cell.type = 'doctor'
+        console.log(`🟢 [SERVER] Ajout de ${doctor} dans ${rowKey} le ${dayKey}`)
+      } else {
+        console.log(`🟡 [SERVER] ${doctor} déjà présent dans ${rowKey} le ${dayKey}`)
       }
     })
+
+    // 8. Vérification finale
+    console.log(`🔵 [SERVER] Planning final contient :`, Object.keys(schedule).map(row => ({
+      row,
+      filled: DAYS.filter(day => schedule[row][day].value.length > 0).length
+    })))
 
     return { schedule, warnings }
   } catch (error) {
