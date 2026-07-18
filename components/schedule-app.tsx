@@ -93,15 +93,19 @@ export function ScheduleApp({
     console.log('🔵 [CLIENT] Lignes remplies :', Object.keys(schedule).filter(row => Object.values(schedule[row]).some(cell => cell.value.length > 0)))
     
     // Merger la génération avec l'existant
-    setFullSchedule((prev) => ({
-      ...prev,
-      [currentWeekKey]: {
-        ...schedule,
-        // Préserver les Congés et Notes existants
-        Congés: prev[currentWeekKey]?.Congés || schedule.Congés,
-        'Notes du jour': prev[currentWeekKey]?.['Notes du jour'] || schedule['Notes du jour'],
-      },
-    }))
+    setFullSchedule((prev) => {
+      const newFullSchedule = {
+        ...prev,
+        [currentWeekKey]: {
+          ...schedule,
+          // Préserver les Congés et Notes existants
+          Congés: prev[currentWeekKey]?.Congés || schedule.Congés,
+          'Notes du jour': prev[currentWeekKey]?.['Notes du jour'] || schedule['Notes du jour'],
+        },
+      }
+      console.log('🔍 [handleGenerationComplete] newFullSchedule:', newFullSchedule)
+      return newFullSchedule
+    })
 
     // Afficher les warnings
     setGeneratedScheduleWarnings(warnings)
