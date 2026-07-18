@@ -117,7 +117,13 @@ export function ScheduleApp({
     } catch (error) {
       console.error("[v0] Error loading vacations:", error)
     }
-  }
+  }const schedule = useMemo(() => {
+  const weekInfo = getWeekNumber(currentDate);
+  const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, '0')}`;
+  console.log('🔍 [useMemo] weekKey:', weekKey);
+  console.log('🔍 [useMemo] fullSchedule[weekKey]:', fullSchedule[weekKey]);
+  // ... reste du code
+}, [fullSchedule, weekKey, vacations]);
 
   const currentWeekInfo = useMemo(() => getWeekNumber(currentDate), [currentDate])
   const weekKey = `${currentWeekInfo.year}-W${currentWeekInfo.week}`
