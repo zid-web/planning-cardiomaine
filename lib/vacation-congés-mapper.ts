@@ -42,33 +42,21 @@ export function populateCongesRowFromVacations(
       const endDate = parseISO(vacation.end_date)
       const checkDate = parseISO(dateStr)
 
-      // Vérifier si ce jour est dans la période de vacances
+      // Vérifier si ce jour est dans la période de vacances: startDate <= checkDate <= endDate
       if (
-        (isBefore(checkDate, startDate) && isBefore(startDate, endDate)) ||
-        isBefore(checkDate, endDate) &&
-        (isAfter(checkDate, startDate) || isBefore(checkDate, startDate))
+        !isBefore(checkDate, startDate) &&
+        !isAfter(checkDate, endDate)
       ) {
-        // En fait, simplement vérifier: startDate <= checkDate <= endDate
-        if (
-          !isBefore(checkDate, startDate) &&
-          !isAfter(checkDate, endDate)
-        ) {
-          // Convert email to doctor_code using EMAIL_TO_INITIAL if needed
-          const initial = EMAIL_TO_INITIAL[vacation.doctor_id] || vacation.doctor_id
-          doctorsOnVacationThisDay.push(initial)
-        }
+        // Convert email to doctor_code using EMAIL_TO_INITIAL if needed
+        const initial = EMAIL_TO_INITIAL[vacation.doctor_id] || vacation.doctor_id
+        doctorsOnVacationThisDay.push(initial)
       }
     })
 
-    // Ajouter les médecins en vacances à la case "Congés" du jour
-    if (doctorsOnVacationThisDay.length > 0) {
-      const currentValue = schedule.Congés[dayName].value || []
-      const newValue = [
-        ...currentValue,
-        ...doctorsOnVacationThisDay.filter((doc) => !currentValue.includes(doc)),
-      ]
-      schedule.Congés[dayName].value = newValue
-    }
+    // ✅ CORRECTION : remplacer la valeur par la liste des initiales dédupliquées
+    // au lieu de fusionner avec l'ancienne valeur (qui contenait l'email)
+    const uniqueInitials = [...new Set(doctorsOnVacationThisDay)]
+    schedule.Congés[dayName].value = uniqueInitials
   })
 
   return schedule
