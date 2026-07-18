@@ -58,8 +58,7 @@ export async function getDoctorVacationsList(doctorId: string): Promise<DoctorVa
 export async function addVacation(
   doctorId: string,
   startDate: string,
-  endDate: string,
-  reason?: string
+  endDate: string
 ): Promise<{ success: boolean; error?: string; data?: DoctorVacation }> {
   try {
     const supabase = await createClient()
@@ -70,7 +69,6 @@ export async function addVacation(
         doctor_id: doctorId,
         start_date: startDate,
         end_date: endDate,
-        reason: reason || null,
       })
       .select()
       .single()
@@ -116,8 +114,7 @@ export async function deleteVacation(vacationId: string): Promise<{ success: boo
 export async function updateVacation(
   vacationId: string,
   startDate: string,
-  endDate: string,
-  reason?: string
+  endDate: string
 ): Promise<{ success: boolean; error?: string; data?: DoctorVacation }> {
   try {
     const supabase = await createClient()
@@ -127,7 +124,6 @@ export async function updateVacation(
       .update({
         start_date: startDate,
         end_date: endDate,
-        reason: reason || null,
       })
       .eq('id', vacationId)
       .select()

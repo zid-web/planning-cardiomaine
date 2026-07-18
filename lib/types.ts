@@ -39,7 +39,6 @@ export type DoctorVacation = {
   doctor_id: string // UUID or TEXT code (e.g., "FV", "Z", "A")
   start_date: string // YYYY-MM-DD
   end_date: string // YYYY-MM-DD
-  reason?: string
   created_at: string
   updated_at: string
 }
