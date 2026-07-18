@@ -230,7 +230,19 @@ export function ScheduleApp({
     // weekDates est un array, besoin de trouver l'index du jour
     const dayIndex = DAYS.indexOf(selectedCell.day)
     const dateObj = dayIndex >= 0 ? weekDates[dayIndex] : undefined
-    const dateStr = dateObj ? dateObj.toISOString().split('T')[0] : undefined
+    let dateStr: string | undefined = undefined
+    
+    if (dateObj) {
+      // weekDates peut être une string (dd/mm/yy) ou une Date object
+      if (typeof dateObj === 'string') {
+        // Convertir dd/mm/yy en YYYY-MM-DD
+        const [day, month, year] = dateObj.split('/')
+        const fullYear = Number.parseInt(year) + 2000
+        dateStr = `${fullYear}-${month}-${day}`
+      } else if (dateObj instanceof Date) {
+        dateStr = dateObj.toISOString().split('T')[0]
+      }
+    }
     
     if (dateStr) {
       const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations, schedule)
