@@ -103,9 +103,6 @@ export function ScheduleApp({
           'Notes du jour': prev[currentWeekKey]?.['Notes du jour'] || schedule['Notes du jour'],
         },
       }
-      console.log('🔍 [handleGenerationComplete] newFullSchedule:', newFullSchedule)
-      console.log('🔍 [handleGenerationComplete] newFullSchedule[currentWeekKey][\'Apm - Coro\'][\'JEUDI\']:', newFullSchedule[currentWeekKey]['Apm - Coro']?.['JEUDI'])
-      console.log('🔍 [handleGenerationComplete] newFullSchedule[currentWeekKey][\'Astreintes ATL Nuit\'][\'LUNDI\']:', newFullSchedule[currentWeekKey]['Astreintes ATL Nuit']?.['LUNDI'])
       return newFullSchedule
     })
 
@@ -131,10 +128,6 @@ export function ScheduleApp({
 
   // Ensure schedule exists for this week
   const schedule = useMemo(() => {
-    console.log('🔍 [useMemo] weekKey:', weekKey)
-    console.log('🔍 [useMemo] fullSchedule[weekKey] avant traitement:', fullSchedule[weekKey])
-    console.log('🔍 [useMemo] vacations loaded:', vacations.length)
-    
     let scheduleToUse: ScheduleData
     
     if (!fullSchedule[weekKey]) {
@@ -152,17 +145,8 @@ export function ScheduleApp({
 
     // RÈGLE ABSOLUE: Remplir automatiquement la ligne "Congés" avec les médecins en vacances
     if (vacations.length > 0) {
-      console.log('🔍 [populateCongesRowFromVacations] appelée avec vacations:', vacations)
       scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
-    } else {
-      console.log('🔍 [useMemo] WARNING: No vacations loaded, skipping populateCongesRowFromVacations')
     }
-
-    console.log('🔍 [useMemo] scheduleToUse final:', scheduleToUse)
-    console.log('🔍 [useMemo] Apm - Coro, JEUDI:', scheduleToUse['Apm - Coro']?.['JEUDI'])
-    console.log('🔍 [useMemo] Astreintes ATL Nuit, LUNDI:', scheduleToUse['Astreintes ATL Nuit']?.['LUNDI'])
-    console.log('🔍 [useMemo] Garde Matin, SAMEDI:', scheduleToUse['Garde Matin']?.['SAMEDI'])
-    console.log('🔍 [useMemo] Garde Nuit, LUNDI:', scheduleToUse['Garde Nuit']?.['LUNDI'])
 
     return scheduleToUse
   }, [fullSchedule, weekKey, vacations])
@@ -850,7 +834,6 @@ export function ScheduleApp({
                       </thead>
                       <tbody>
                         {Object.keys(generateWeekSchedule(weekKey)).map((rowKey) => {
-                          console.log(`🔍 [RENDER] rowKey: ${rowKey} - schedule[rowKey]:`, schedule[rowKey])
                           const rowData = schedule[rowKey] || generateWeekSchedule(weekKey)[rowKey]
 
                           const isSectionStart =
@@ -921,8 +904,7 @@ export function ScheduleApp({
                                   const cellData = rowData
                                     ? rowData[day]
                                     : { value: [], type: "empty", status: "validated" }
-                                  console.log(`🔍 [CELL] rowKey: ${rowKey}, day: ${day}`, cellData)
-                                  
+
                                   const isSelected = selectedCell?.row === rowKey && selectedCell?.day === day
                                   const isWeekend = day === "SAMEDI" || day === "DIMANCHE"
                                   const isPending =
