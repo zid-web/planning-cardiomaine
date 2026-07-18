@@ -145,8 +145,11 @@ export function ScheduleApp({
     }
 
     // RÈGLE ABSOLUE: Remplir automatiquement la ligne "Congés" avec les médecins en vacances
+    console.log('🔍 [useMemo] vacations loaded:', vacations.length, 'vacations:', vacations)
     if (vacations.length > 0) {
       scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
+    } else {
+      console.log('🔍 [useMemo] WARNING: No vacations loaded, skipping populateCongesRowFromVacations')
     }
 
     console.log('🔍 [useMemo] weekKey:', weekKey)
