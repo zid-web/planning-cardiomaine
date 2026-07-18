@@ -1,6 +1,6 @@
 import { DoctorVacation } from './types'
 import { FullSchedule } from './types'
-import { DAYS } from './constants'
+import { DAYS, EMAIL_TO_INITIAL } from './constants'
 import { parseISO, isBefore, isAfter } from 'date-fns'
 
 /**
@@ -53,7 +53,9 @@ export function populateCongesRowFromVacations(
           !isBefore(checkDate, startDate) &&
           !isAfter(checkDate, endDate)
         ) {
-          doctorsOnVacationThisDay.push(vacation.doctor_id)
+          // Convert email to doctor_code using EMAIL_TO_INITIAL if needed
+          const initial = EMAIL_TO_INITIAL[vacation.doctor_id] || vacation.doctor_id
+          doctorsOnVacationThisDay.push(initial)
         }
       }
     })
@@ -112,7 +114,9 @@ export function validateCongesRowCompleteness(
         !isBefore(checkDate, startDate) &&
         !isAfter(checkDate, endDate)
       ) {
-        doctorsShouldBe.add(vacation.doctor_id)
+        // Convert email to doctor_code using EMAIL_TO_INITIAL if needed
+        const initial = EMAIL_TO_INITIAL[vacation.doctor_id] || vacation.doctor_id
+        doctorsShouldBe.add(initial)
       }
     })
 

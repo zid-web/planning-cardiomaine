@@ -254,6 +254,18 @@ export const SPECIALTIES = {
   general: ["Val", "K", "CH", "FV", "D", "R", "T"],
 }
 
+/**
+ * Fallback mapping email → doctor_code
+ * Used when vacation records contain email instead of doctor_code
+ * Map every doctor's email to their doctor_code for proper display in Congés row
+ */
+export const EMAIL_TO_INITIAL: Record<string, string> = {
+  'zidouissem@gmail.com': 'Z',
+  'martin@cardiomaine.fr': 'M',
+  'willy@cardiomaine.fr': 'W',
+  // Add more mappings as needed - format: 'email': 'DOCTOR_CODE'
+}
+
 
 
 export const DOCTOR_COLORS: { [key: string]: string } = {
