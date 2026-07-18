@@ -78,6 +78,21 @@ export function ScheduleApp({
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
 
+  // Utility function: Convert date string to day name
+  const getDayNameFromDate = (dateStr: string): string => {
+    const date = new Date(dateStr + "T00:00:00Z") // Add UTC marker to avoid timezone issues
+    const dayIndex = date.getUTCDay() // 0 = Sunday, 1 = Monday...
+    const days = ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"]
+    return days[dayIndex]
+  }
+
+  // Utility function: Get doctors assigned to NCT for a given day
+  const getNCTDoctorsForDay = (scheduleData: ScheduleData, day: string): string[] => {
+    const nctCell = scheduleData["Hors site - NCT"]?.[day]
+    if (!nctCell) return []
+    return nctCell.value || []
+  }
+
   // Load vacations on mount
   React.useEffect(() => {
     loadVacations()
@@ -217,7 +232,7 @@ export function ScheduleApp({
     const dateStr = dayIndex >= 0 ? weekDates[dayIndex] : undefined
     
     if (dateStr) {
-      const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations)
+      const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations, schedule)
       
       if (!validation.allowed) {
         toast.error(validation.reason || 'Assignation impossible')

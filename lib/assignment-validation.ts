@@ -1,4 +1,4 @@
-import { DoctorVacation } from '@/lib/types'
+import { DoctorVacation, ScheduleData } from '@/lib/types'
 import { parseISO, isAfter, isBefore } from 'date-fns'
 
 /**
@@ -32,11 +32,13 @@ export function canAssignDoctor(
   doctorId: string,
   dateStr: string,
   activity: string,
-  vacations: DoctorVacation[]
+  vacations: DoctorVacation[],
+  schedule?: ScheduleData
 ): {
   allowed: boolean
   reason?: string
 } {
+  // 1. Check vacations
   if (isDoctorUnavailable(doctorId, dateStr, vacations)) {
     // Trouver la vacation pour afficher les dates exactes
     const vacation = vacations.find(
@@ -59,7 +61,50 @@ export function canAssignDoctor(
     }
   }
 
+  // 2. Check NCT vs Astreinte conflict (if schedule is provided)
+  if (schedule) {
+    const dayName = getDayNameFromDate(dateStr)
+    
+    // If assigning to an astreinte, check if doctor is already on NCT
+    if (activity.includes("Astreintes ATL")) {
+      const nctCell = schedule["Hors site - NCT"]?.[dayName]
+      const nctDoctors = nctCell?.value || []
+      
+      if (nctDoctors.includes(doctorId)) {
+        return {
+          allowed: false,
+          reason: `${doctorId} est assigné au NCT ce jour. Il ne peut pas faire d'astreinte en même temps.`,
+        }
+      }
+    }
+    
+    // If assigning to NCT, check if doctor is already on an astreinte
+    if (activity.includes("Hors site - NCT")) {
+      const astreinteRows = Object.keys(schedule).filter(row => row.includes("Astreintes ATL"))
+      
+      for (const rowKey of astreinteRows) {
+        const astreinteCell = schedule[rowKey]?.[dayName]
+        const astrenteDoctors = astreinteCell?.value || []
+        
+        if (astrenteDoctors.includes(doctorId)) {
+          return {
+            allowed: false,
+            reason: `${doctorId} est assigné à l'astreinte ce jour. Il ne peut pas faire de NCT en même temps.`,
+          }
+        }
+      }
+    }
+  }
+
   return { allowed: true }
+}
+
+// Helper function to convert date string to day name
+function getDayNameFromDate(dateStr: string): string {
+  const date = new Date(dateStr + "T00:00:00Z")
+  const dayIndex = date.getUTCDay()
+  const days = ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"]
+  return days[dayIndex]
 }
 
 /**
