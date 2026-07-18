@@ -213,9 +213,14 @@ export function ScheduleApp({
 
     // Vérifier si le médecin est indisponible (en vacances)
     const dateStr = weekDates[selectedCell.day]?.toISOString().split('T')[0]
+    console.log('[v0] DEBUG addDoctorToCell - doctor:', doctor, 'dateStr:', dateStr, 'vacations:', vacations)
+    
     if (dateStr) {
       const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations)
+      console.log('[v0] DEBUG validation result:', validation)
+      
       if (!validation.allowed) {
+        console.log('[v0] DEBUG blocking assignment - reason:', validation.reason)
         toast.error(validation.reason || 'Assignation impossible')
         return
       }
