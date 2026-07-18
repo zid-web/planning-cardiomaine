@@ -8,22 +8,23 @@ import { getWeekNumber } from '@/lib/schedule-utils'
 // Mapping des activités du solveur vers les lignes du planning
 const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
   matin: {
-    ASTREINTE: 'Astreintes ATL Matin',
-    GARDE: 'Garde Matin',
-    CORO: 'Matin - Coro',
+    'Astreinte Matin': 'Astreintes ATL Matin',
+    'Garde Matin': 'Garde Matin',
+    'Coro Matin': 'Matin - Coro',
   },
-  am: {
-    ASTREINTE: 'Astreintes ATL Midi',
-    GARDE: 'Garde Midi',
-    CORO: 'Apm - Coro',
+  // L'API utilise "apres_midi" (avec underscore)
+  apres_midi: {
+    'Astreinte Apres-midi': 'Astreintes ATL Midi',
+    'Garde Apres-midi': 'Garde Midi',
+    'Coro Apres-midi': 'Apm - Coro',
   },
   nuit: {
-    ASTREINTE: 'Astreintes ATL Nuit',
-    GARDE: 'Garde Nuit',
+    'Astreinte Nuit': 'Astreintes ATL Nuit',
+    'Garde Nuit': 'Garde Nuit',
     NCT: 'Hors site - NCT',
   },
   weekend: {
-    ASTREINTE: 'Garde Matin',
+    'Astreinte Weekend': 'Garde Matin', // Samedi/Dimanche → Garde Matin
   },
 }
 
