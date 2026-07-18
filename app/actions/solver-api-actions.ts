@@ -60,6 +60,25 @@ export async function generateWeekWithSolver(
       end_date: v.end_date,
     }))
 
+    // Trace des médecins en vacances pour la semaine demandée
+    const weekStartObj = new Date(weekStartDate)
+    const weekEndObj = new Date(weekStartDate)
+    weekEndObj.setDate(weekEndObj.getDate() + 6)
+    
+    const exclusionWarnings: string[] = []
+    medecins.forEach((doc) => {
+      vacations.forEach((vac) => {
+        if (vac.doctor_id === doc.id) {
+          const vacStart = new Date(vac.start_date)
+          const vacEnd = new Date(vac.end_date)
+          // Vérifier si le médecin est en vacances pendant cette semaine
+          if (vacStart <= weekEndObj && vacEnd >= weekStartObj) {
+            exclusionWarnings.push(`${doc.id} en vacances du ${vac.start_date} au ${vac.end_date} - exclu de toutes les activités`)
+          }
+        }
+      })
+    })
+
     // Parité et week_type
     const dateObj = new Date(weekStartDate)
     const weekInfo = getWeekNumber(dateObj)
@@ -156,7 +175,10 @@ export async function generateWeekWithSolver(
       }
     })
 
-    return { schedule, warnings }
+    // Combiner les warnings du solveur avec les exclusions de vacances
+    const allWarnings = [...exclusionWarnings, ...warnings]
+    
+    return { schedule, warnings: allWarnings }
   } catch (error) {
     console.error('[v0] Erreur dans generateWeekWithSolver:', error)
     return {
