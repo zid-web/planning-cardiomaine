@@ -41,8 +41,6 @@ export async function generateWeekWithSolver(
   weekStartDate: string,
   weekendMode: 'CH' | 'ROTATION' = 'ROTATION'
 ) {
-  console.log(`🔵 [SERVER] generateWeekWithSolver appelée pour ${weekStartDate}`)
-
   try {
     // Médecins
     const medecins = Object.keys(DOCTOR_METADATA).map((id) => ({
@@ -80,8 +78,6 @@ export async function generateWeekWithSolver(
       last_nct_doctor: lastNctDoctor,
     }
 
-    console.log(`🔵 [SERVER] Payload envoyé :`, JSON.stringify(payload, null, 2))
-
     // Appel API
     const response = await fetch('https://guard-api-cardiomaine.onrender.com/generate-week', {
       method: 'POST',
@@ -90,16 +86,13 @@ export async function generateWeekWithSolver(
       signal: AbortSignal.timeout(15000),
     })
 
-    console.log(`🔵 [SERVER] Statut de la réponse Render : ${response.status}`)
-
     if (!response.ok) {
       const errorText = await response.text()
-      console.error(`🔴 [SERVER] Erreur API Render : ${response.status} - ${errorText}`)
+      console.error(`[v0] Erreur API Render : ${response.status} - ${errorText}`)
       throw new Error(`API error (${response.status}): ${errorText}`)
     }
 
     const result = await response.json()
-    console.log('🔵 [SERVER] Réponse brute complète :', JSON.stringify(result, null, 2))
 
     // Extraction
     let assignments = result.assignments
@@ -112,7 +105,7 @@ export async function generateWeekWithSolver(
       } else if (Array.isArray(result)) {
         assignments = result
       } else {
-        console.error('🔴 [SERVER] Aucune assignation trouvée dans la réponse :', result)
+        console.error('[v0] Aucune assignation trouvée dans la réponse:', result)
         return {
           schedule: null,
           warnings: ['Erreur de structure de la réponse du solveur.'],
@@ -122,8 +115,6 @@ export async function generateWeekWithSolver(
       }
     }
 
-    console.log(`🔵 [SERVER] ${assignments.length} assignations extraites.`)
-
     // Transformation
     const schedule = createEmptySchedule()
 
@@ -131,7 +122,6 @@ export async function generateWeekWithSolver(
       const { date, day_name, slot, activity, doctor } = assign
       const dayKey = day_name?.toUpperCase()
       if (!dayKey || !DAYS.includes(dayKey)) {
-        console.warn(`🔴 [SERVER] Jour non reconnu: ${day_name}`)
         return
       }
 
@@ -140,7 +130,6 @@ export async function generateWeekWithSolver(
         if (dayKey === 'SAMEDI' || dayKey === 'DIMANCHE') {
           rowKey = 'Garde Matin'
         } else {
-          console.warn(`🔴 [SERVER] Weekend sur un jour non weekend? ${dayKey}`)
           return
         }
       } else {
@@ -148,40 +137,28 @@ export async function generateWeekWithSolver(
         if (mapping && mapping[activity]) {
           rowKey = mapping[activity]
         } else {
-          console.warn(`🔴 [SERVER] Mapping non trouvé pour slot="${slot}", activity="${activity}"`)
           return
         }
       }
 
       if (!rowKey) {
-        console.warn(`🔴 [SERVER] rowKey vide pour ${date} ${day_name} ${slot} ${activity}`)
         return
       }
 
       const cell = schedule[rowKey]?.[dayKey]
       if (!cell) {
-        console.warn(`🔴 [SERVER] Cellule inexistante pour rowKey="${rowKey}", dayKey="${dayKey}"`)
         return
       }
 
       if (!cell.value.includes(doctor)) {
         cell.value = [...cell.value, doctor]
         cell.type = 'doctor'
-        console.log(`🟢 [SERVER] Ajout de ${doctor} dans ${rowKey} le ${dayKey}`)
-      } else {
-        console.log(`🟡 [SERVER] ${doctor} déjà présent dans ${rowKey} le ${dayKey}`)
       }
     })
 
-    // Vérification finale
-    const filledRows = Object.keys(schedule).filter(row =>
-      DAYS.some(day => schedule[row][day].value.length > 0)
-    )
-    console.log(`🔵 [SERVER] ${filledRows.length} lignes remplies : ${filledRows.join(', ')}`)
-
     return { schedule, warnings }
   } catch (error) {
-    console.error('🔴 [SERVER] Erreur dans generateWeekWithSolver :', error)
+    console.error('[v0] Erreur dans generateWeekWithSolver:', error)
     return {
       schedule: null,
       warnings: [],

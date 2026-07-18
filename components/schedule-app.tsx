@@ -87,11 +87,7 @@ export function ScheduleApp({
   const handleGenerationComplete = (schedule: ScheduleData, warnings: string[]) => {
     const weekInfo = getWeekNumber(currentDate)
     const currentWeekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, '0')}`
-    
-    console.log('🔵 [CLIENT] handleGenerationComplete - schedule reçu :', schedule)
-    console.log('🔵 [CLIENT] currentWeekKey :', currentWeekKey)
-    console.log('🔵 [CLIENT] Lignes remplies :', Object.keys(schedule).filter(row => Object.values(schedule[row]).some(cell => cell.value.length > 0)))
-    
+
     // Merger la génération avec l'existant
     setFullSchedule((prev) => {
       const newFullSchedule = {
@@ -147,9 +143,6 @@ export function ScheduleApp({
     if (vacations.length > 0) {
       scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
     }
-
-    console.log('🔍 [DIAG useMemo] Apm - Coro JEUDI:', scheduleToUse['Apm - Coro']?.['JEUDI'])
-    console.log('🔍 [DIAG useMemo] Astreintes ATL Nuit LUNDI:', scheduleToUse['Astreintes ATL Nuit']?.['LUNDI'])
 
     return scheduleToUse
   }, [fullSchedule, weekKey, vacations])
@@ -565,8 +558,6 @@ export function ScheduleApp({
                       variant="outline"
                       size="sm"
                       onClick={async () => {
-                        // 🟢 Ce log apparaîtra dans la Console du navigateur (F12)
-                        console.log('🟢 [CLIENT] Clic sur le bouton Solveur !')
                         setIsGenerating(true)
                         try {
                           const weekInfo = getWeekNumber(currentDate)
@@ -576,14 +567,8 @@ export function ScheduleApp({
                           const diff = monday.getDate() - day + (day === 0 ? -6 : 1)
                           monday.setDate(diff)
                           const weekStartDate = monday.toISOString().split('T')[0]
-                          
-                          console.log('🟢 [CLIENT] Appel de generateWeekWithSolver pour', weekStartDate)
+
                           const result = await generateWeekWithSolver(weekStartDate, 'ROTATION')
-                          console.log('🟢 [CLIENT] Réponse reçue :', result)
-                          console.log('🟢 [CLIENT] Assignations brutes :', result.assignments)
-                          
-                          console.log('🔵 [CLIENT] Résultat du solveur :', result)
-                          console.log('🔵 [CLIENT] Nombre d\'assignations dans schedule :', result.schedule ? Object.values(result.schedule).reduce((sum, row) => sum + Object.values(row).filter(cell => cell.value.length > 0).length, 0) : 0)
 
                           if (result.error) {
                             toast.error(`Erreur: ${result.error}`)
@@ -591,7 +576,7 @@ export function ScheduleApp({
                             handleGenerationComplete(result.schedule, result.warnings || [])
                           }
                         } catch (error) {
-                          console.error('🔴 [CLIENT] Erreur catch :', error)
+                          console.error('[v0] Erreur lors de la génération:', error)
                           toast.error('Erreur lors de la génération')
                         } finally {
                           setIsGenerating(false)
@@ -907,10 +892,6 @@ export function ScheduleApp({
                                   const cellData = rowData
                                     ? rowData[day]
                                     : { value: [], type: "empty", status: "validated" }
-
-                                  if (rowKey === 'Apm - Coro' && day === 'JEUDI') {
-                                    console.log('🔍 [DIAG RENDER] Apm - Coro JEUDI cellData:', cellData)
-                                  }
 
                                   const isSelected = selectedCell?.row === rowKey && selectedCell?.day === day
                                   const isWeekend = day === "SAMEDI" || day === "DIMANCHE"
