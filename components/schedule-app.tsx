@@ -568,6 +568,7 @@ export function ScheduleApp({
                           console.log('🟢 [CLIENT] Appel de generateWeekWithSolver pour', weekStartDate)
                           const result = await generateWeekWithSolver(weekStartDate, 'ROTATION')
                           console.log('🟢 [CLIENT] Réponse reçue :', result)
+                          console.log('🟢 [CLIENT] Assignations brutes :', result.assignments)
 
                           if (result.error) {
                             toast.error(`Erreur: ${result.error}`)
