@@ -129,6 +129,10 @@ export function ScheduleApp({
 
   // Ensure schedule exists for this week
   const schedule = useMemo(() => {
+    console.log('🔍 [useMemo] weekKey:', weekKey)
+    console.log('🔍 [useMemo] fullSchedule[weekKey] avant traitement:', fullSchedule[weekKey])
+    console.log('🔍 [useMemo] vacations loaded:', vacations.length)
+    
     let scheduleToUse: ScheduleData
     
     if (!fullSchedule[weekKey]) {
@@ -145,16 +149,14 @@ export function ScheduleApp({
     }
 
     // RÈGLE ABSOLUE: Remplir automatiquement la ligne "Congés" avec les médecins en vacances
-    console.log('🔍 [useMemo] vacations loaded:', vacations.length, 'vacations:', vacations)
     if (vacations.length > 0) {
+      console.log('🔍 [populateCongesRowFromVacations] appelée avec vacations:', vacations)
       scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
     } else {
       console.log('🔍 [useMemo] WARNING: No vacations loaded, skipping populateCongesRowFromVacations')
     }
 
-    console.log('🔍 [useMemo] weekKey:', weekKey)
-    console.log('🔍 [useMemo] fullSchedule[weekKey]:', fullSchedule[weekKey])
-    console.log('🔍 [useMemo] schedule final:', scheduleToUse)
+    console.log('🔍 [useMemo] scheduleToUse final:', scheduleToUse)
 
     return scheduleToUse
   }, [fullSchedule, weekKey, vacations])
@@ -842,8 +844,8 @@ export function ScheduleApp({
                       </thead>
                       <tbody>
                         {Object.keys(generateWeekSchedule(weekKey)).map((rowKey) => {
+                          console.log(`🔍 [RENDER] rowKey: ${rowKey} - schedule[rowKey]:`, schedule[rowKey])
                           const rowData = schedule[rowKey] || generateWeekSchedule(weekKey)[rowKey]
-                          console.log(`🔍 [RENDER] rowKey: ${rowKey}`, rowData)
 
                           const isSectionStart =
                             rowKey.includes("Matin - Cs PSS") ||
