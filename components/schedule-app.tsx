@@ -247,27 +247,10 @@ export function ScheduleApp({
           : undefined,
     }
 
-    // Garde logic
-    if (selectedCell.row.includes("Garde Nuit")) {
-      const dayIndex = DAYS.indexOf(selectedCell.day)
-      // dayIndex 4 = Friday, 5 = Saturday
-      if (
-        dayIndex >= 0 &&
-        dayIndex < DAYS.length - 1 &&
-        selectedCell.day !== "VENDREDI" &&
-        selectedCell.day !== "SAMEDI"
-      ) {
-        const nextDay = DAYS[dayIndex + 1]
-        const currentOffDoctors = newSchedule["1/2 journée off Matin"][nextDay].value
+    // Recalculate all dynamic restrictions to ensure consistency
+    const finalSchedule = recalculateDynamicRestrictions(newSchedule)
 
-        // Only add to OFF if not already there (keep OFF logic unique for now unless requested otherwise)
-        if (!currentOffDoctors.includes(doctor)) {
-          newSchedule["1/2 journée off Matin"][nextDay].value = [...currentOffDoctors, doctor]
-        }
-      }
-    }
-
-    updateSchedule(newSchedule)
+    updateSchedule(finalSchedule)
   }
 
   const removeDoctorFromCell = (indexToRemove: number) => {
@@ -295,8 +278,53 @@ export function ScheduleApp({
           : undefined,
     }
 
-    updateSchedule(newSchedule)
+    // Recalculate all dynamic restrictions after removing a doctor
+    const finalSchedule = recalculateDynamicRestrictions(newSchedule)
+
+    updateSchedule(finalSchedule)
     setSelectedCell(null)
+  }
+
+  // Recalculate dynamic restrictions based on current schedule state
+  const recalculateDynamicRestrictions = (scheduleData: ScheduleData): ScheduleData => {
+    const newSchedule = { ...scheduleData }
+
+    // Step 1: Clear all "1/2 journée off Matin" entries to recalculate from scratch
+    DAYS.forEach(day => {
+      newSchedule["1/2 journée off Matin"][day] = {
+        value: [],
+        type: "empty",
+        status: "validated",
+      }
+    })
+
+    // Step 2: Scan all "Garde Nuit" entries and add doctors to "1/2 journée off Matin" the next day
+    DAYS.forEach(day => {
+      const gardeNuitRows = Object.keys(newSchedule).filter(row => row.includes("Garde Nuit"))
+      
+      gardeNuitRows.forEach(rowKey => {
+        const doctors = newSchedule[rowKey][day].value || []
+        
+        doctors.forEach(doctor => {
+          const dayIndex = DAYS.indexOf(day)
+          // Only add OFF if next day exists and is not weekend
+          if (dayIndex >= 0 && dayIndex < DAYS.length - 1) {
+            const nextDay = DAYS[dayIndex + 1]
+            
+            // Don't add OFF on weekends (Saturday/Sunday are last, so skip)
+            if (nextDay !== "SAMEDI" && nextDay !== "DIMANCHE") {
+              const offCell = newSchedule["1/2 journée off Matin"][nextDay]
+              if (!offCell.value.includes(doctor)) {
+                offCell.value.push(doctor)
+                offCell.type = "doctor"
+              }
+            }
+          }
+        })
+      })
+    })
+
+    return newSchedule
   }
 
   const validateCell = () => {
