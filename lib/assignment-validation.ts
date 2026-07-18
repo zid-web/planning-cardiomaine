@@ -64,13 +64,16 @@ export function canAssignDoctor(
   // 2. Check NCT vs Astreinte conflict (if schedule is provided)
   if (schedule) {
     const dayName = getDayNameFromDate(dateStr)
+    console.log(`[v0] NCT validation - doctor: ${doctorId}, activity: ${activity}, dateStr: ${dateStr}, dayName: ${dayName}`)
     
     // If assigning to an astreinte, check if doctor is already on NCT
     if (activity.includes("Astreintes ATL")) {
       const nctCell = schedule["Hors site - NCT"]?.[dayName]
       const nctDoctors = nctCell?.value || []
+      console.log(`[v0] Checking astreinte vs NCT - nctDoctors on ${dayName}:`, nctDoctors)
       
       if (nctDoctors.includes(doctorId)) {
+        console.log(`[v0] BLOCKED - ${doctorId} is on NCT`)
         return {
           allowed: false,
           reason: `${doctorId} est assigné au NCT ce jour. Il ne peut pas faire d'astreinte en même temps.`,
@@ -81,12 +84,15 @@ export function canAssignDoctor(
     // If assigning to NCT, check if doctor is already on an astreinte
     if (activity.includes("Hors site - NCT")) {
       const astreinteRows = Object.keys(schedule).filter(row => row.includes("Astreintes ATL"))
+      console.log(`[v0] Checking NCT vs astreinte - astreinteRows:`, astreinteRows)
       
       for (const rowKey of astreinteRows) {
         const astreinteCell = schedule[rowKey]?.[dayName]
         const astrenteDoctors = astreinteCell?.value || []
+        console.log(`[v0] Checking ${rowKey} on ${dayName}:`, astrenteDoctors)
         
         if (astrenteDoctors.includes(doctorId)) {
+          console.log(`[v0] BLOCKED - ${doctorId} is on astreinte`)
           return {
             allowed: false,
             reason: `${doctorId} est assigné à l'astreinte ce jour. Il ne peut pas faire de NCT en même temps.`,
