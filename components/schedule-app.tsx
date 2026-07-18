@@ -970,9 +970,14 @@ export function ScheduleApp({
                                       {!cellBlocked && (
                                         <div className="flex flex-wrap gap-1 justify-center items-center h-full">
                                           {/* Check for vacation conflicts */}
-                                          {cellData?.value.map((doc: string, i: number) => {
-                                            const dateStr = weekDates[day]?.toISOString().split('T')[0]
-                                            const conflict = dateStr ? detectConflict(doc, dateStr, rowKey, vacations) : { hasConflict: false }
+                {cellData?.value.map((doc: string, i: number) => {
+                  // DEBUG: Vérifier ce que contient réellement doc dans la ligne Congés
+                  if (rowKey === "Congés") {
+                    console.log(`[v0] DEBUG Congés row - doc="${doc}", length=${doc.length}, isUUID=${doc.length > 30 && doc.includes('-')}`)
+                  }
+                  
+                  const dateStr = weekDates[day]?.toISOString().split('T')[0]
+                  const conflict = dateStr ? detectConflict(doc, dateStr, rowKey, vacations) : { hasConflict: false }
                                             
                                             return (
                                               <Badge
