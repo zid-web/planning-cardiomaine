@@ -255,15 +255,23 @@ export const SPECIALTIES = {
 }
 
 /**
- * Fallback mapping email → doctor_code
- * Used when vacation records contain email instead of doctor_code
- * Map every doctor's email to their doctor_code for proper display in Congés row
+ * Mapping email → doctor_code pour la ligne Congés
+ * Permet d'afficher les initiales au lieu des emails dans la ligne "Congés"
  */
 export const EMAIL_TO_INITIAL: Record<string, string> = {
-  'zidouissem@gmail.com': 'Z',
-  'martin@cardiomaine.fr': 'M',
-  'willy@cardiomaine.fr': 'W',
-  // Add more mappings as needed - format: 'email': 'DOCTOR_CODE'
+  'a.denizet@cardiomaine.fr': 'Z',
+  'c.dericbourg@cardiomaine.fr': 'K',
+  'christophe.bachelet@me.com': 'H',
+  'christophe.bros13@gmail.com': 'O',
+  'christophe.standre@yahoo.fr': 'S',
+  'e.lefebvre@cardiomaine.fr': 'V',
+  'guilalie@outlook.fr': 'U',
+  'gw.terrien@hotmail.fr': 'G',
+  'jc.amirault@me.com': 'A',
+  'phporet@orange.fr': 'P',
+  'sophie.braun59@gmail.com': 'B',
+  'waelbenamara1983@gmail.com': 'W',
+  'zidouissem@gmail.com': 'M',
 }
 
 
