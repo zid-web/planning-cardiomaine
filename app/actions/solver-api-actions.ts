@@ -117,6 +117,7 @@ export async function generateWeekWithSolver(
     }
 
     const result = await response.json()
+    console.log('🔵 [SERVER] Réponse brute complète :', JSON.stringify(result, null, 2))
     console.log(`🔵 [SERVER] Réponse reçue, ${result.assignments?.length || 0} assignations.`)
 
     // 7. Transformer les assignations en ScheduleData
