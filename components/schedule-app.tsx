@@ -87,6 +87,10 @@ export function ScheduleApp({
   const handleGenerationComplete = (schedule: ScheduleData, warnings: string[]) => {
     const currentWeekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
     
+    console.log('🔵 [CLIENT] handleGenerationComplete - schedule reçu :', schedule)
+    console.log('🔵 [CLIENT] currentWeekKey :', currentWeekKey)
+    console.log('🔵 [CLIENT] Lignes remplies :', Object.keys(schedule).filter(row => Object.values(schedule[row]).some(cell => cell.value.length > 0)))
+    
     // Merger la génération avec l'existant
     setFullSchedule((prev) => ({
       ...prev,
@@ -569,6 +573,9 @@ export function ScheduleApp({
                           const result = await generateWeekWithSolver(weekStartDate, 'ROTATION')
                           console.log('🟢 [CLIENT] Réponse reçue :', result)
                           console.log('🟢 [CLIENT] Assignations brutes :', result.assignments)
+                          
+                          console.log('🔵 [CLIENT] Résultat du solveur :', result)
+                          console.log('🔵 [CLIENT] Nombre d\'assignations dans schedule :', result.schedule ? Object.values(result.schedule).reduce((sum, row) => sum + Object.values(row).filter(cell => cell.value.length > 0).length, 0) : 0)
 
                           if (result.error) {
                             toast.error(`Erreur: ${result.error}`)
