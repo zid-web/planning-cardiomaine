@@ -104,6 +104,8 @@ export function ScheduleApp({
         },
       }
       console.log('🔍 [handleGenerationComplete] newFullSchedule:', newFullSchedule)
+      console.log('🔍 [handleGenerationComplete] newFullSchedule[currentWeekKey][\'Apm - Coro\'][\'JEUDI\']:', newFullSchedule[currentWeekKey]['Apm - Coro']?.['JEUDI'])
+      console.log('🔍 [handleGenerationComplete] newFullSchedule[currentWeekKey][\'Astreintes ATL Nuit\'][\'LUNDI\']:', newFullSchedule[currentWeekKey]['Astreintes ATL Nuit']?.['LUNDI'])
       return newFullSchedule
     })
 
@@ -157,6 +159,10 @@ export function ScheduleApp({
     }
 
     console.log('🔍 [useMemo] scheduleToUse final:', scheduleToUse)
+    console.log('🔍 [useMemo] Apm - Coro, JEUDI:', scheduleToUse['Apm - Coro']?.['JEUDI'])
+    console.log('🔍 [useMemo] Astreintes ATL Nuit, LUNDI:', scheduleToUse['Astreintes ATL Nuit']?.['LUNDI'])
+    console.log('🔍 [useMemo] Garde Matin, SAMEDI:', scheduleToUse['Garde Matin']?.['SAMEDI'])
+    console.log('🔍 [useMemo] Garde Nuit, LUNDI:', scheduleToUse['Garde Nuit']?.['LUNDI'])
 
     return scheduleToUse
   }, [fullSchedule, weekKey, vacations])
