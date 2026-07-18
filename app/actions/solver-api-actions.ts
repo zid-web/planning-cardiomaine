@@ -49,7 +49,7 @@ export async function generateWeekWithSolver(
   weekendMode: 'CH' | 'ROTATION' = 'ROTATION'
 ): Promise<SolverResponse> {
   try {
-    console.log('[solver-api] Generating week for:', weekStartDate, 'Weekend mode:', weekendMode)
+    console.log(`🔵 [SERVER] generateWeekWithSolver appelée pour ${weekStartDate}`)
 
     // 1. Récupérer tous les médecins (depuis les constantes)
     const medecins = Object.keys(DOCTOR_METADATA).map((id) => ({
@@ -87,7 +87,7 @@ export async function generateWeekWithSolver(
       last_nct_doctor: lastNctDoctor,
     }
 
-    console.log('[solver-api] Payload:', JSON.stringify(payload, null, 2))
+    console.log(`🔵 [SERVER] Payload construit, appel à l'API Render...`)
 
     // 6. Appeler l'API Render
     const controller = new AbortController()
@@ -105,14 +105,16 @@ export async function generateWeekWithSolver(
       clearTimeout(timeout)
     }
 
+    console.log(`🔵 [SERVER] Statut de la réponse Render : ${response.status}`)
+
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('[solver-api] API error:', response.status, errorText)
+      console.error(`🔴 [SERVER] Erreur API Render : ${response.status} - ${errorText}`)
       throw new Error(`API error (${response.status}): ${errorText}`)
     }
 
     const result = await response.json()
-    console.log('[solver-api] API response:', result)
+    console.log(`🔵 [SERVER] Réponse reçue, ${result.assignments?.length || 0} assignations.`)
 
     // 7. Transformer les assignations en ScheduleData
     const schedule: ScheduleData = createEmptySchedule()
@@ -168,7 +170,7 @@ export async function generateWeekWithSolver(
     return { schedule, warnings: result.warnings || [] }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
-    console.error('[solver-api] Error:', error)
+    console.error('🔴 [SERVER] Erreur dans generateWeekWithSolver :', error)
 
     // Gérer l'erreur de timeout
     if (error instanceof Error && error.name === 'AbortError') {

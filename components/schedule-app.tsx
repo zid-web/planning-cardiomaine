@@ -554,7 +554,8 @@ export function ScheduleApp({
                       variant="outline"
                       size="sm"
                       onClick={async () => {
-                        console.log('🟢 DEBUG - Bouton Solveur cliqué !')
+                        // 🟢 Ce log apparaîtra dans la Console du navigateur (F12)
+                        console.log('🟢 [CLIENT] Clic sur le bouton Solveur !')
                         setIsGenerating(true)
                         try {
                           const weekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
@@ -564,13 +565,17 @@ export function ScheduleApp({
                           monday.setDate(diff)
                           const weekStartDate = monday.toISOString().split('T')[0]
                           
+                          console.log('🟢 [CLIENT] Appel de generateWeekWithSolver pour', weekStartDate)
                           const result = await generateWeekWithSolver(weekStartDate, 'ROTATION')
+                          console.log('🟢 [CLIENT] Réponse reçue :', result)
+
                           if (result.error) {
                             toast.error(`Erreur: ${result.error}`)
                           } else if (result.schedule) {
                             handleGenerationComplete(result.schedule, result.warnings || [])
                           }
                         } catch (error) {
+                          console.error('🔴 [CLIENT] Erreur catch :', error)
                           toast.error('Erreur lors de la génération')
                         } finally {
                           setIsGenerating(false)
