@@ -33,7 +33,8 @@ const getSolverStatus = (doctorId: string) => {
   if (!meta) return 'permanent'
   if (doctorId === 'M' || doctorId === 'O' || doctorId === 'W') return 'astreinte_coro'
   if (doctorId === 'FV') return 'fv'
-  if (doctorId === 'DAAS' || doctorId === 'D') return 'daas'
+  if (doctorId === 'DAAS') return 'daas'
+  if (doctorId === 'D') return 'd'
   if (doctorId === 'CH') return 'ch'
   return 'permanent'
 }
@@ -73,6 +74,7 @@ export async function generateWeekWithSolver(
     const dateObj = new Date(weekStartDate)
     const weekInfo = getWeekNumber(dateObj)
     const semaine_iso_impaire = weekInfo % 2 === 1
+    const week_type = semaine_iso_impaire ? 2 : 1
 
     // 4. Récupérer le dernier NCT (si stocké en DB)
     const lastNctDoctor = null
@@ -80,6 +82,7 @@ export async function generateWeekWithSolver(
     // 5. Construire la requête pour l'API
     const payload = {
       week_start_date: weekStartDate,
+      week_type,
       medecins,
       vacations: vacationPayload,
       weekend_mode: weekendMode,
