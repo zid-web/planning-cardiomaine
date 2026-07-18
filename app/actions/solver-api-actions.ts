@@ -5,14 +5,15 @@ import { DOCTOR_METADATA, DAYS } from '@/lib/constants'
 import type { ScheduleData, CellData } from '@/lib/types'
 import { getWeekNumber } from '@/lib/schedule-utils'
 
-// Mapping des activités du solveur vers les lignes du planning
+// Mapping EXACT des activités retournées par le solveur
+// Basé sur la réponse brute : "slot": "nuit", "activity": "Astreinte Nuit", etc.
 const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
   matin: {
     'Astreinte Matin': 'Astreintes ATL Matin',
     'Garde Matin': 'Garde Matin',
     'Coro Matin': 'Matin - Coro',
   },
-  apres_midi: {
+  'apres_midi': { // l'API utilise "apres_midi" avec underscore
     'Astreinte Apres-midi': 'Astreintes ATL Midi',
     'Garde Apres-midi': 'Garde Midi',
     'Coro Apres-midi': 'Apm - Coro',
@@ -20,19 +21,15 @@ const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
   nuit: {
     'Astreinte Nuit': 'Astreintes ATL Nuit',
     'Garde Nuit': 'Garde Nuit',
-    NCT: 'Hors site - NCT',
+    'NCT': 'Hors site - NCT',
   },
   weekend: {
     'Astreinte Weekend': 'Garde Matin',
   },
 }
 
-// Statuts pour le solveur
 const getSolverStatus = (doctorId: string) => {
-  const meta = DOCTOR_METADATA[doctorId]
-  if (!meta) return 'permanent'
-
-  if (doctorId === 'M' || doctorId === 'O' || doctorId === 'W') return 'astreinte_coro'
+  if (['M', 'O', 'W'].includes(doctorId)) return 'astreinte_coro'
   if (doctorId === 'FV') return 'fv'
   if (doctorId === 'DAAS') return 'daas'
   if (doctorId === 'D') return 'd'
@@ -47,7 +44,7 @@ export async function generateWeekWithSolver(
   console.log(`🔵 [SERVER] generateWeekWithSolver appelée pour ${weekStartDate}`)
 
   try {
-    // 1. Médecins
+    // Médecins
     const medecins = Object.keys(DOCTOR_METADATA).map((id) => ({
       id,
       statut: getSolverStatus(id),
@@ -57,7 +54,7 @@ export async function generateWeekWithSolver(
       points_weekend: 0,
     }))
 
-    // 2. Vacances
+    // Vacances
     const vacations = await getAllVacations()
     const vacationPayload = vacations.map((v) => ({
       doctor_id: v.doctor_id,
@@ -65,14 +62,14 @@ export async function generateWeekWithSolver(
       end_date: v.end_date,
     }))
 
-    // 3. Parité et week_type
+    // Parité et week_type
     const dateObj = new Date(weekStartDate)
     const weekInfo = getWeekNumber(dateObj)
     const semaine_iso_impaire = weekInfo.week % 2 === 1
     const week_type = semaine_iso_impaire ? 2 : 1
     const lastNctDoctor = null
 
-    // 4. Payload
+    // Payload
     const payload = {
       week_start_date: weekStartDate,
       week_type,
@@ -85,7 +82,7 @@ export async function generateWeekWithSolver(
 
     console.log(`🔵 [SERVER] Payload envoyé :`, JSON.stringify(payload, null, 2))
 
-    // 5. Appel API
+    // Appel API
     const response = await fetch('https://guard-api-cardiomaine.onrender.com/generate-week', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -104,7 +101,7 @@ export async function generateWeekWithSolver(
     const result = await response.json()
     console.log('🔵 [SERVER] Réponse brute complète :', JSON.stringify(result, null, 2))
 
-    // 6. Extraction robuste des assignations
+    // Extraction
     let assignments = result.assignments
     let warnings = result.warnings || []
 
@@ -127,7 +124,7 @@ export async function generateWeekWithSolver(
 
     console.log(`🔵 [SERVER] ${assignments.length} assignations extraites.`)
 
-    // 7. Transformation en ScheduleData
+    // Transformation
     const schedule = createEmptySchedule()
 
     assignments.forEach((assign: any) => {
@@ -176,11 +173,11 @@ export async function generateWeekWithSolver(
       }
     })
 
-    // 8. Vérification finale
-    console.log(`🔵 [SERVER] Planning final contient :`, Object.keys(schedule).map(row => ({
-      row,
-      filled: DAYS.filter(day => schedule[row][day].value.length > 0).length
-    })))
+    // Vérification finale
+    const filledRows = Object.keys(schedule).filter(row =>
+      DAYS.some(day => schedule[row][day].value.length > 0)
+    )
+    console.log(`🔵 [SERVER] ${filledRows.length} lignes remplies : ${filledRows.join(', ')}`)
 
     return { schedule, warnings }
   } catch (error) {
