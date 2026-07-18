@@ -37,11 +37,11 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
 import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
 import { getAllVacations } from "@/app/actions/vacation-actions"
+import { generateWeekWithSolver } from "@/app/actions/solver-api-actions"
 import { VacationsModal } from "@/components/vacations-modal"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
 import { GuardGenerationButton } from "@/components/guard-generation-button"
-import { SolverGenerationButton } from "@/components/solver-generation-button"
 import { DoctorVacation } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -76,6 +76,7 @@ export function ScheduleApp({
   const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
+  const [isGenerating, setIsGenerating] = useState(false)
 
   // Load vacations on mount
   React.useEffect(() => {
@@ -549,11 +550,45 @@ export function ScheduleApp({
                       onGenerationComplete={handleGenerationComplete}
                     />
 
-                    <SolverGenerationButton
-                      currentDate={currentDate}
-                      weekendMode="ROTATION"
-                      onGenerationComplete={handleGenerationComplete}
-                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        setIsGenerating(true)
+                        try {
+                          const weekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
+                          const monday = new Date(currentDate)
+                          const day = monday.getDay()
+                          const diff = monday.getDate() - day + (day === 0 ? -6 : 1)
+                          monday.setDate(diff)
+                          const weekStartDate = monday.toISOString().split('T')[0]
+                          
+                          const result = await generateWeekWithSolver(weekStartDate, 'ROTATION')
+                          if (result.error) {
+                            toast.error(`Erreur: ${result.error}`)
+                          } else if (result.schedule) {
+                            handleGenerationComplete(result.schedule, result.warnings || [])
+                          }
+                        } catch (error) {
+                          toast.error('Erreur lors de la génération')
+                        } finally {
+                          setIsGenerating(false)
+                        }
+                      }}
+                      disabled={isGenerating}
+                    >
+                      {isGenerating ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+                          Génération...
+                        </>
+                      ) : (
+                        <>
+                          <Calendar className="h-4 w-4 mr-2" />
+                          Générer avec Solveur
+                        </>
+                      )}
+                    </Button>
 
                     {showProposals && (
                       <Button variant="outline" size="sm" onClick={() => setShowProposals(!showProposals)}>
