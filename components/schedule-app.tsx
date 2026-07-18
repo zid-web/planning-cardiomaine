@@ -554,6 +554,7 @@ export function ScheduleApp({
                       variant="outline"
                       size="sm"
                       onClick={async () => {
+                        console.log('🟢 DEBUG - Bouton Solveur cliqué !')
                         setIsGenerating(true)
                         try {
                           const weekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
