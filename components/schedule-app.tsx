@@ -149,6 +149,10 @@ export function ScheduleApp({
       scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
     }
 
+    console.log('🔍 [useMemo] weekKey:', weekKey)
+    console.log('🔍 [useMemo] fullSchedule[weekKey]:', fullSchedule[weekKey])
+    console.log('🔍 [useMemo] schedule final:', scheduleToUse)
+
     return scheduleToUse
   }, [fullSchedule, weekKey, vacations])
 
