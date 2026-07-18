@@ -148,6 +148,9 @@ export function ScheduleApp({
       scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
     }
 
+    console.log('🔍 [DIAG useMemo] Apm - Coro JEUDI:', scheduleToUse['Apm - Coro']?.['JEUDI'])
+    console.log('🔍 [DIAG useMemo] Astreintes ATL Nuit LUNDI:', scheduleToUse['Astreintes ATL Nuit']?.['LUNDI'])
+
     return scheduleToUse
   }, [fullSchedule, weekKey, vacations])
 
@@ -904,6 +907,10 @@ export function ScheduleApp({
                                   const cellData = rowData
                                     ? rowData[day]
                                     : { value: [], type: "empty", status: "validated" }
+
+                                  if (rowKey === 'Apm - Coro' && day === 'JEUDI') {
+                                    console.log('🔍 [DIAG RENDER] Apm - Coro JEUDI cellData:', cellData)
+                                  }
 
                                   const isSelected = selectedCell?.row === rowKey && selectedCell?.day === day
                                   const isWeekend = day === "SAMEDI" || day === "DIMANCHE"
