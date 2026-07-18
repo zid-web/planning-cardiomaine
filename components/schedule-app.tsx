@@ -840,6 +840,7 @@ export function ScheduleApp({
                       <tbody>
                         {Object.keys(generateWeekSchedule(weekKey)).map((rowKey) => {
                           const rowData = schedule[rowKey] || generateWeekSchedule(weekKey)[rowKey]
+                          console.log(`🔍 [RENDER] rowKey: ${rowKey}`, rowData)
 
                           const isSectionStart =
                             rowKey.includes("Matin - Cs PSS") ||
