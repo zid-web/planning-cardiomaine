@@ -290,6 +290,7 @@ export function ScheduleApp({
     const newSchedule = { ...scheduleData }
 
     // Step 1: Clear all "1/2 journée off Matin" entries to recalculate from scratch
+    console.log('[v0] Recalculating dynamic restrictions...')
     DAYS.forEach(day => {
       newSchedule["1/2 journée off Matin"][day] = {
         value: [],
@@ -297,6 +298,7 @@ export function ScheduleApp({
         status: "validated",
       }
     })
+    console.log('[v0] Cleared all 1/2 journée off Matin entries')
 
     // Step 2: Scan all "Garde Nuit" entries and add doctors to "1/2 journée off Matin" the next day
     DAYS.forEach(day => {
@@ -317,12 +319,16 @@ export function ScheduleApp({
               if (!offCell.value.includes(doctor)) {
                 offCell.value.push(doctor)
                 offCell.type = "doctor"
+                console.log(`[v0] Added ${doctor} to 1/2 journée off Matin on ${nextDay} (after Garde Nuit ${day})`)
               }
             }
           }
         })
       })
     })
+
+    const totalOff = DAYS.reduce((sum, day) => sum + newSchedule["1/2 journée off Matin"][day].value.length, 0)
+    console.log(`[v0] Recalculation complete. Total OFF entries: ${totalOff}`)
 
     return newSchedule
   }
