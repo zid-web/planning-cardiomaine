@@ -132,11 +132,10 @@ export default function ProtectedPage() {
 
   const isAdmin = profile.role === 'admin'
   const doctorCode = profile.doctor_code || ''
-  const currentUserEmail = user.email || ''
 
   return (
     <ScheduleApp
-      currentUser={currentUserEmail}
+      currentUser={doctorCode}
       doctorCode={doctorCode}
       isAdmin={isAdmin}
       fullSchedule={fullSchedule}
