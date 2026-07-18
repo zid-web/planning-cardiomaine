@@ -1,0 +1,201 @@
+{
+  "weekKey": "2026-W03",
+  "dateRange": "2026-01-19 to 2026-01-25",
+  "weekNumber": 3,
+  "weekType": 1,
+  "ncWeekNumber": 11,
+  
+  "summary": {
+    "title": "Semaine type 1 (motif fixe)",
+    "pattern": "Lun=CH, Mar=CH, Mer=W, Jeu=M (nuit) + NCT distinct, Ven=CH, WE=CH"
+  },
+
+  "guards": [
+    {
+      "date": "2026-01-19",
+      "day": "LUNDI",
+      "slot": "Astreinte Nuit",
+      "assignedDoctor": "CH",
+      "notes": "Semaine type 1 - CH fixe lundi nuit",
+      "rule": "RÈGLE 1: Astreinte nuit (lun-ven)"
+    },
+    {
+      "date": "2026-01-19",
+      "day": "LUNDI",
+      "slot": "Garde Nuit",
+      "assignedDoctor": "FV",
+      "notes": "FV fixe tous les lundis",
+      "rule": "RÈGLE 6: FV fixe lundi"
+    },
+    {
+      "date": "2026-01-20",
+      "day": "MARDI",
+      "slot": "Astreinte Nuit",
+      "assignedDoctor": "CH",
+      "notes": "Semaine type 1 - CH fixe mardi nuit",
+      "rule": "RÈGLE 1: Astreinte nuit (lun-ven)"
+    },
+    {
+      "date": "2026-01-21",
+      "day": "MERCREDI",
+      "slot": "Astreinte Nuit",
+      "assignedDoctor": "W",
+      "notes": "Semaine type 1 - W mercredi nuit. MAIS: W aura NCT jeudi, donc CONFLIT astreinte nuit mercredi → à RÉASSIGNER à autre médecin",
+      "rule": "RÈGLE 1 + CLARIFICATION 3: W mercredi nuit INTERDIT si W=NCT jeudi",
+      "conflict": true,
+      "resolution": "Réassigner à M ou O ou autre médecin disponible mercredi. Proposer M (équité)"
+    },
+    {
+      "date": "2026-01-21",
+      "day": "MERCREDI",
+      "slot": "Astreinte Nuit",
+      "assignedDoctor": "M",
+      "proposedBySystem": true,
+      "notes": "Remplacement: M prend la nuit mercredi car W est réservé pour NCT jeudi (et ne peut pas faire nuit mercredi = veille NCT)",
+      "rule": "CLARIFICATION 3: Médecin NCT jeudi ne peut pas assurer nuit mercredi"
+    },
+    {
+      "date": "2026-01-22",
+      "day": "JEUDI",
+      "slot": "Astreinte Nuit",
+      "assignedDoctor": "W",
+      "notes": "Semaine type 1 - W jeudi nuit (MAIS W a aussi NCT jeudi = deux gardes distinctes)",
+      "rule": "RÈGLE 1: Astreinte nuit (lun-ven) - structure fixe jeudi=W",
+      "canCumulateWithNCT": true
+    },
+    {
+      "date": "2026-01-22",
+      "day": "JEUDI",
+      "slot": "NCT (matin + après-midi)",
+      "assignedDoctor": "W",
+      "notes": "NCT jeudi - alternance W/M: semaine 11 (impair) → W cette semaine",
+      "rule": "RÈGLE 5: NCT jeudi, alternance stricte W/M (jamais O)",
+      "nctWeekNumber": 11,
+      "nctCycle": "semaine 11 (impair) = W",
+      "nextNCT": "semaine 12 (pair) = M"
+    },
+    {
+      "date": "2026-01-22",
+      "day": "JEUDI",
+      "slot": "Coro Après-midi",
+      "assignedDoctor": "FV",
+      "notes": "FV fixe tous les jeudis après-midi",
+      "rule": "RÈGLE 6: FV fixe jeudi après-midi"
+    },
+    {
+      "date": "2026-01-23",
+      "day": "VENDREDI",
+      "slot": "Astreinte Nuit",
+      "assignedDoctor": "CH",
+      "notes": "Semaine type 1 - CH fixe vendredi nuit",
+      "rule": "RÈGLE 1: Astreinte nuit (lun-ven)"
+    },
+    {
+      "date": "2026-01-24",
+      "day": "SAMEDI",
+      "slot": "Astreinte Weekend",
+      "assignedDoctor": "CH",
+      "notes": "CH assure le weekend entier (samedi + dimanche)",
+      "rule": "RÈGLE 3: Weekend = CH assure l'astreinte"
+    },
+    {
+      "date": "2026-01-25",
+      "day": "DIMANCHE",
+      "slot": "Astreinte Weekend",
+      "assignedDoctor": "CH",
+      "notes": "CH assure le weekend entier (continuation samedi)",
+      "rule": "RÈGLE 3: Weekend = CH assure l'astreinte"
+    }
+  ],
+
+  "ruleExplanation": {
+    "rule1_nightAstreinte": "Lundi-vendredi: rotation fixe type 1 (Lun=CH, Mar=CH, Mer=W, Jeu=M, Ven=CH) OU type 2 aléatoire (semaine suivante)",
+    "rule2_morningAfternoon": "Astreinte matin/après-midi suit AUTOMATIQUEMENT la coro du même créneau (ne pas assigner séparément)",
+    "rule3_weekend": "CH assure l'astreinte de weekend (samedi + dimanche ensemble)",
+    "rule4_proposalsModifiable": "Weekend M/O/W = propositions modifiables par admin (pas CH)",
+    "rule5_nct": "Jeudi: alternance stricte W/M (jamais O, jamais CH). Semaine impair=W, semaine pair=M",
+    "rule6_fv": "FV: lundi nuit fixe + jeudi après-midi fixe (sauf vacances). FV n'affecte pas les autres assignations",
+    "clarification3_nctMercredi": "Médecin NCT jeudi ne peut PAS assurer nuit mercredi (veille NCT = pas de repos). PEUT assurer nuit jeudi après (pas de restriction)."
+  },
+
+  "weekTypePatterns": {
+    "type1": {
+      "label": "Semaine type 1 (motif fixe)",
+      "nights": {
+        "LUNDI": "CH",
+        "MARDI": "CH",
+        "MERCREDI": "W",
+        "JEUDI": "M",
+        "VENDREDI": "CH"
+      },
+      "weekend": "CH",
+      "applicableWeeks": [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 33, 35, 37, 39, 41, 43, 45, 47, 49, 51]
+    },
+    "type2": {
+      "label": "Semaine type 2 (motif aléatoire)",
+      "nights": {
+        "LUNDI": "random(M, W, O)",
+        "MARDI": "random(W, O, M)",
+        "MERCREDI": "CH",
+        "JEUDI": "CH",
+        "VENDREDI": "random(M, O, W)"
+      },
+      "weekend": "random(M, O, W)",
+      "applicableWeeks": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52]
+    }
+  },
+
+  "nctCycle": {
+    "explanation": "NCT alternance hebdomadaire: semaine impair=W, semaine pair=M",
+    "week11": "2026-01-22 (jeudi) → W",
+    "week12": "2026-01-29 (jeudi) → M",
+    "week13": "2026-02-05 (jeudi) → W",
+    "week14": "2026-02-12 (jeudi) → M"
+  },
+
+  "conflictAnalysis": {
+    "mercrediConflict": {
+      "issue": "W assigné mercredi nuit MAIS W a NCT jeudi",
+      "rule": "Clarification 3: W ne peut pas assurer nuit mercredi si W=NCT jeudi (veille NCT)",
+      "resolution": "Réassigner mercredi nuit à autre médecin. Proposer M (équité)",
+      "afterResolution": {
+        "MERCREDI": "M (remplacement)",
+        "JEUDI_NUIT": "W (structure type 1)",
+        "JEUDI_NCT": "W (même médecin, deux gardes distinctes)"
+      }
+    }
+  },
+
+  "equityTracking": {
+    "nightAstreinte": {
+      "W": { "assignedWeek3": 1, "notes": "Jeudi uniquement (mercredi réassigné)" },
+      "M": { "assignedWeek3": 1, "notes": "Mercredi (remplacement W)" },
+      "O": { "assignedWeek3": 0, "notes": "Pas assigné semaine type 1" },
+      "CH": { "assignedWeek3": 3, "notes": "Lun, Mar, Ven (fixe)" }
+    },
+    "weekendAstreinte": {
+      "CH": { "assignedWeek3": 1, "notes": "Weekend entier" }
+    },
+    "nctAstreinte": {
+      "W": { "assignedWeek3": 1, "notes": "Jeudi (alternance W/M, semaine impair)" }
+    }
+  },
+
+  "validationChecklist": {
+    "rule1_nightAstreinte": "✓ Appliquée: Lun=CH, Mar=CH, Mer=M (remplacement W), Jeu=W, Ven=CH",
+    "rule2_morningAfternoon": "✓ Inchangée: Suit coro automatiquement",
+    "rule3_weekend": "✓ Appliquée: CH samedi+dimanche",
+    "rule4_proposalsModifiable": "✓ Applicable semaine type 2 seulement (week3=type1)",
+    "rule5_nct": "✓ Appliquée: Jeudi W (semaine 11=impair)",
+    "rule6_fv": "✓ Appliquée: Lundi nuit + jeudi après-midi",
+    "clarification3_conflict": "✓ Gérée: W mercredi → M (conflit veille NCT résolu)"
+  },
+
+  "notes": [
+    "Cette semaine 3 est de TYPE 1 (motif fixe) → semaine 4 sera TYPE 2 (aléatoire)",
+    "Le conflit W mercredi/NCT jeudi est AUTOMATIQUEMENT résolu en réassignant M mercredi",
+    "W peut cumuler nuit jeudi + NCT jeudi (deux gardes distinctes, pas de conflit)",
+    "FV assigné lundi nuit + jeudi après-midi (indépendamment des autres médecins)",
+    "Toutes les équités sont tracées séparément pour nuit, weekend, et NCT"
+  ]
+}

@@ -1,7 +1,6 @@
 "use client"
 
-import type React from "react"
-import { useState, useMemo } from "react"
+import React, { useState, useMemo } from "react"
 import {
   Calendar,
   Check,
@@ -31,14 +30,18 @@ import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
 import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays } from "@/lib/schedule-utils"
 import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
 import { calculateWorkloadStats } from "@/lib/scheduler-algo"
+import { canAssignDoctor, detectConflict } from "@/lib/assignment-validation"
+import { populateCongesRowFromVacations } from "@/lib/vacation-congés-mapper"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
 import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
 import { getAllVacations } from "@/app/actions/vacation-actions"
+import { generateWeekWithSolver } from "@/app/actions/solver-api-actions"
 import { VacationsModal } from "@/components/vacations-modal"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
+import { GuardGenerationButton } from "@/components/guard-generation-button"
 import { DoctorVacation } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -72,11 +75,35 @@ export function ScheduleApp({
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
   const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
+  const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
+  const [isGenerating, setIsGenerating] = useState(false)
 
   // Load vacations on mount
   React.useEffect(() => {
     loadVacations()
   }, [])
+
+  // Gère le résultat de la génération via API
+  const handleGenerationComplete = (schedule: ScheduleData, warnings: string[]) => {
+    const currentWeekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
+    
+    // Merger la génération avec l'existant
+    setFullSchedule((prev) => ({
+      ...prev,
+      [currentWeekKey]: {
+        ...schedule,
+        // Préserver les Congés et Notes existants
+        Congés: prev[currentWeekKey]?.Congés || schedule.Congés,
+        'Notes du jour': prev[currentWeekKey]?.['Notes du jour'] || schedule['Notes du jour'],
+      },
+    }))
+
+    // Afficher les warnings
+    setGeneratedScheduleWarnings(warnings)
+
+    // Toast de confirmation
+    toast.success(`Planning généré avec ${Object.values(schedule).flat().length} assignations`)
+  }
 
   const loadVacations = async () => {
     try {
@@ -93,6 +120,8 @@ export function ScheduleApp({
 
   // Ensure schedule exists for this week
   const schedule = useMemo(() => {
+    let scheduleToUse: ScheduleData
+    
     if (!fullSchedule[weekKey]) {
       const generated = generateWeekSchedule(weekKey)
       // Ensure all days in the generated schedule have empty notes for consistency
@@ -101,10 +130,18 @@ export function ScheduleApp({
           generated["Notes du jour"][day] = { value: [], type: "empty", status: "validated" }
         }
       })
-      return generated
+      scheduleToUse = generated
+    } else {
+      scheduleToUse = fullSchedule[weekKey]
     }
-    return fullSchedule[weekKey]
-  }, [fullSchedule, weekKey])
+
+    // RÈGLE ABSOLUE: Remplir automatiquement la ligne "Congés" avec les médecins en vacances
+    if (vacations.length > 0) {
+      scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
+    }
+
+    return scheduleToUse
+  }, [fullSchedule, weekKey, vacations])
 
   const workloadStats = useMemo(() => calculateWorkloadStats(schedule), [schedule])
 
@@ -169,6 +206,16 @@ export function ScheduleApp({
 
   const addDoctorToCell = (doctor: string) => {
     if (!selectedCell || !schedule) return
+
+    // Vérifier si le médecin est indisponible (en vacances)
+    const dateStr = weekDates[selectedCell.day]?.toISOString().split('T')[0]
+    if (dateStr) {
+      const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations)
+      if (!validation.allowed) {
+        toast.error(validation.reason || 'Assignation impossible')
+        return
+      }
+    }
 
     const newSchedule = { ...schedule }
     const currentCell = newSchedule[selectedCell.row][selectedCell.day]
@@ -471,6 +518,16 @@ export function ScheduleApp({
                   Aujourd'hui
                 </Button>
               </div>
+              {generatedScheduleWarnings.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <p className="font-semibold text-yellow-900 mb-2">Alertes de génération:</p>
+                  <ul className="text-sm text-yellow-800 list-disc list-inside">
+                    {generatedScheduleWarnings.map((warning, i) => (
+                      <li key={i}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <LiveClock />
                 {isAdmin && (
@@ -486,6 +543,52 @@ export function ScheduleApp({
                         setVacationsModalOpen(true)
                       }}
                     />
+
+                    <GuardGenerationButton
+                      weekKey={`${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`}
+                      vacations={vacations}
+                      onGenerationComplete={handleGenerationComplete}
+                    />
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        setIsGenerating(true)
+                        try {
+                          const weekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
+                          const monday = new Date(currentDate)
+                          const day = monday.getDay()
+                          const diff = monday.getDate() - day + (day === 0 ? -6 : 1)
+                          monday.setDate(diff)
+                          const weekStartDate = monday.toISOString().split('T')[0]
+                          
+                          const result = await generateWeekWithSolver(weekStartDate, 'ROTATION')
+                          if (result.error) {
+                            toast.error(`Erreur: ${result.error}`)
+                          } else if (result.schedule) {
+                            handleGenerationComplete(result.schedule, result.warnings || [])
+                          }
+                        } catch (error) {
+                          toast.error('Erreur lors de la génération')
+                        } finally {
+                          setIsGenerating(false)
+                        }
+                      }}
+                      disabled={isGenerating}
+                    >
+                      {isGenerating ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+                          Génération...
+                        </>
+                      ) : (
+                        <>
+                          <Calendar className="h-4 w-4 mr-2" />
+                          Générer avec Solveur
+                        </>
+                      )}
+                    </Button>
 
                     {showProposals && (
                       <Button variant="outline" size="sm" onClick={() => setShowProposals(!showProposals)}>
@@ -850,17 +953,24 @@ export function ScheduleApp({
                                       {/* Existing cell content */}
                                       {!cellBlocked && (
                                         <div className="flex flex-wrap gap-1 justify-center items-center h-full">
-                                          {cellData?.value.map((doc: string, i: number) => (
-                                            <Badge
-                                              key={i}
-                                              className={`
-                                                ${DOCTOR_COLORS[doc] || "bg-slate-500"} text-white border-none px-1 py-0 text-[9px] h-5 min-w-[20px] justify-center
-                                                ${isPending && cellData.request?.requester === doc ? "ring-2 ring-orange-400" : ""}
-                                              `}
-                                            >
-                                              {doc}
-                                            </Badge>
-                                          ))}
+                                          {/* Check for vacation conflicts */}
+                                          {cellData?.value.map((doc: string, i: number) => {
+                                            const dateStr = weekDates[day]?.toISOString().split('T')[0]
+                                            const conflict = dateStr ? detectConflict(doc, dateStr, rowKey, vacations) : { hasConflict: false }
+                                            
+                                            return (
+                                              <Badge
+                                                key={i}
+                                                className={`
+                                                  ${conflict.hasConflict ? "bg-red-500 ring-2 ring-red-300" : DOCTOR_COLORS[doc] || "bg-slate-500"} text-white border-none px-1 py-0 text-[9px] h-5 min-w-[20px] justify-center
+                                                  ${isPending && cellData.request?.requester === doc ? "ring-2 ring-orange-400" : ""}
+                                                `}
+                                                title={conflict.message}
+                                              >
+                                                {doc}
+                                              </Badge>
+                                            )
+                                          })}
                                         </div>
                                       )}
                                     </td>
@@ -1124,7 +1234,8 @@ export function ScheduleApp({
 
       {/* Vacations Modal */}
       <VacationsModal
-        doctorId={selectedDoctorForVacations || "ALL"}
+        doctorId={selectedDoctorForVacations || currentUser || ""}
+        doctorCode={doctorCode}
         isOpen={vacationsModalOpen}
         onClose={() => setVacationsModalOpen(false)}
         onVacationsUpdated={loadVacations}

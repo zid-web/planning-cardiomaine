@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { LogoutButton } from './logout-button'
+import { MessageSquare } from 'lucide-react'
 
 export async function Navbar() {
   const supabase = await createClient()
@@ -18,6 +19,12 @@ export async function Navbar() {
           {data?.user ? (
             <>
               <span className="text-gray-600">{data.user.email}</span>
+              <Link href="/protected/planning-notes" title="Consignes de planning">
+                <Button variant="outline" size="sm" className="gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  <span className="hidden sm:inline">Consignes</span>
+                </Button>
+              </Link>
               <Link href="/profile">
                 <Button variant="outline" size="sm">
                   Mon Profil

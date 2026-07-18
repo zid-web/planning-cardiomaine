@@ -37,7 +37,23 @@ export interface ScheduleData {
   [key: string]: { [day: string]: { value: string[] } }
 }
 
+// FV is an external doctor (no login account, no Supabase profile)
+// FV is used for:
+// - Night guard ("Garde Nuit") on Monday only
+// - Coro activities ("Coro") on Thursday afternoon only
+// FV cannot be assigned for other activities and never counts as an authenticated user
 const GUARD_ELIGIBLE_USERS = ["A", "B", "G", "Z", "H", "S", "O", "M", "W", "U", "P"]
+
+// External doctor assignments - can be manually assigned by admin but not included in automatic rotations
+const EXTERNAL_DOCTORS = {
+  FV: {
+    allowedActivities: ["Garde Nuit", "Coro"], // Only these activities
+    allowedDays: {
+      "Garde Nuit": ["LUNDI"], // FV only does night guard on Monday
+      "Coro": ["JEUDI"], // FV only does coro on Thursday
+    },
+  },
+}
 
 const OFF_SITE_DAYS: Record<string, string[]> = {
   S: ["LUNDI", "VENDREDI"], // S en IRM lundi et vendredi
@@ -81,6 +97,8 @@ NCT_DATES_2025_DEC.forEach((nct) => {
   if (!NCT_USERS_DATES[nct.user]) NCT_USERS_DATES[nct.user] = []
   NCT_USERS_DATES[nct.user].push(nct.date)
 })
+
+export { EXTERNAL_DOCTORS }
 
 export const constraints2026: GuardConstraints = {
   noFridayUsers: ["M", "W", "O"],
