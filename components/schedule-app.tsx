@@ -229,7 +229,8 @@ export function ScheduleApp({
     // Vérifier si le médecin est indisponible (en vacances)
     // weekDates est un array, besoin de trouver l'index du jour
     const dayIndex = DAYS.indexOf(selectedCell.day)
-    const dateStr = dayIndex >= 0 ? weekDates[dayIndex] : undefined
+    const dateObj = dayIndex >= 0 ? weekDates[dayIndex] : undefined
+    const dateStr = dateObj ? dateObj.toISOString().split('T')[0] : undefined
     
     if (dateStr) {
       const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations, schedule)
