@@ -621,8 +621,8 @@ export function ScheduleApp({
 
             {/* TODAY VIEW */}
             {activeTab === "today" && (
-              <div className="space-y-4 max-w-md mx-auto">
-                <div className="flex tabs-scroll pb-2 gap-2 scrollbar-none">
+              <div className="space-y-4 w-full max-w-[400px] mx-auto px-3">
+                <div className="flex tabs-scroll pb-2 gap-2 scrollbar-none flex-wrap justify-center">
                   {DAYS.map((day, idx) => {
                     const isSelected = idx === currentDayIndex
                     const date = weekDates[idx].split("/")[0]
@@ -738,7 +738,7 @@ export function ScheduleApp({
 
             {/* WEEK VIEW */}
             {activeTab === "week" && (
-              <div className="space-y-6 max-w-md mx-auto">
+              <div className="space-y-6 w-full max-w-[400px] mx-auto px-3">
                 <h3 className="text-xl font-bold text-slate-900">Ma Semaine {currentWeekInfo.week}</h3>
                 {DAYS.map((day, idx) => {
                   const tasks = getUserTasks(day)
