@@ -85,7 +85,8 @@ export function ScheduleApp({
 
   // Gère le résultat de la génération via API
   const handleGenerationComplete = (schedule: ScheduleData, warnings: string[]) => {
-    const currentWeekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
+    const weekInfo = getWeekNumber(currentDate)
+    const currentWeekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, '0')}`
     
     console.log('🔵 [CLIENT] handleGenerationComplete - schedule reçu :', schedule)
     console.log('🔵 [CLIENT] currentWeekKey :', currentWeekKey)
@@ -562,7 +563,8 @@ export function ScheduleApp({
                         console.log('🟢 [CLIENT] Clic sur le bouton Solveur !')
                         setIsGenerating(true)
                         try {
-                          const weekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
+                          const weekInfo = getWeekNumber(currentDate)
+                          const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, '0')}`
                           const monday = new Date(currentDate)
                           const day = monday.getDay()
                           const diff = monday.getDate() - day + (day === 0 ? -6 : 1)
