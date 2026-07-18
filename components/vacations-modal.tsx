@@ -27,7 +27,8 @@ export function VacationsModal({
   onVacationsUpdated,
   showDoctorSelector = true,
 }: VacationsModalProps) {
-  const AVAILABLE_DOCTORS = ['A', 'Z', 'S', 'B', 'G', 'O', 'W', 'M', 'P', 'H', 'U', 'K', 'V', 'FV']
+  // Médecins qui peuvent avoir des vacances (exclure DAAS et D = consultations externes fixes)
+  const AVAILABLE_DOCTORS = ['A', 'Z', 'S', 'B', 'G', 'O', 'W', 'M', 'P', 'H', 'U', 'K', 'V', 'FV', 'D']
 
   const [selectedDoctorCode, setSelectedDoctorCode] = useState<string>(initialDoctorCode)
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>(initialDoctorId)

@@ -86,7 +86,8 @@ async function calculateCurrentEquity(): Promise<EquityData[]> {
 
   const equity: { [key: string]: EquityData } = {}
 
-  // Initialiser les compteurs
+  // Initialiser les compteurs - exclure les médecins externes (DAAS, D, CH, FV)
+  // Seuls les médecins internes sont inclus dans l'équité
   const doctors = [
     'A',
     'Z',
