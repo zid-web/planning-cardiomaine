@@ -40,6 +40,7 @@ import { getAllVacations } from "@/app/actions/vacation-actions"
 import { VacationsModal } from "@/components/vacations-modal"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
+import { GuardGenerationButton } from "@/components/guard-generation-button"
 import { DoctorVacation } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -73,11 +74,34 @@ export function ScheduleApp({
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
   const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
+  const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
 
   // Load vacations on mount
   React.useEffect(() => {
     loadVacations()
   }, [])
+
+  // Gère le résultat de la génération via API
+  const handleGenerationComplete = (schedule: ScheduleData, warnings: string[]) => {
+    const currentWeekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
+    
+    // Merger la génération avec l'existant
+    setFullSchedule((prev) => ({
+      ...prev,
+      [currentWeekKey]: {
+        ...schedule,
+        // Préserver les Congés et Notes existants
+        Congés: prev[currentWeekKey]?.Congés || schedule.Congés,
+        'Notes du jour': prev[currentWeekKey]?.['Notes du jour'] || schedule['Notes du jour'],
+      },
+    }))
+
+    // Afficher les warnings
+    setGeneratedScheduleWarnings(warnings)
+
+    // Toast de confirmation
+    toast.success(`Planning généré avec ${Object.values(schedule).flat().length} assignations`)
+  }
 
   const loadVacations = async () => {
     try {
@@ -492,6 +516,16 @@ export function ScheduleApp({
                   Aujourd'hui
                 </Button>
               </div>
+              {generatedScheduleWarnings.length > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <p className="font-semibold text-yellow-900 mb-2">Alertes de génération:</p>
+                  <ul className="text-sm text-yellow-800 list-disc list-inside">
+                    {generatedScheduleWarnings.map((warning, i) => (
+                      <li key={i}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <LiveClock />
                 {isAdmin && (
@@ -506,6 +540,12 @@ export function ScheduleApp({
                         setSelectedDoctorForVacations("")
                         setVacationsModalOpen(true)
                       }}
+                    />
+
+                    <GuardGenerationButton
+                      weekKey={`${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`}
+                      vacations={vacations}
+                      onGenerationComplete={handleGenerationComplete}
                     />
 
                     {showProposals && (
