@@ -910,6 +910,8 @@ export function ScheduleApp({
                                   const cellData = rowData
                                     ? rowData[day]
                                     : { value: [], type: "empty", status: "validated" }
+                                  console.log(`🔍 [CELL] rowKey: ${rowKey}, day: ${day}`, cellData)
+                                  
                                   const isSelected = selectedCell?.row === rowKey && selectedCell?.day === day
                                   const isWeekend = day === "SAMEDI" || day === "DIMANCHE"
                                   const isPending =
