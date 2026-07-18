@@ -7,30 +7,31 @@ import { getWeekNumber } from '@/lib/schedule-utils'
 
 // Mapping des activités du solveur vers les lignes du planning
 const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
-  'matin': {
-    'ASTREINTE': 'Astreintes ATL Matin',
-    'GARDE': 'Garde Matin',
-    'CORO': 'Matin - Coro',
+  matin: {
+    ASTREINTE: 'Astreintes ATL Matin',
+    GARDE: 'Garde Matin',
+    CORO: 'Matin - Coro',
   },
-  'am': {
-    'ASTREINTE': 'Astreintes ATL Midi',
-    'GARDE': 'Garde Midi',
-    'CORO': 'Apm - Coro',
+  am: {
+    ASTREINTE: 'Astreintes ATL Midi',
+    GARDE: 'Garde Midi',
+    CORO: 'Apm - Coro',
   },
-  'nuit': {
-    'ASTREINTE': 'Astreintes ATL Nuit',
-    'GARDE': 'Garde Nuit',
-    'NCT': 'Hors site - NCT',
+  nuit: {
+    ASTREINTE: 'Astreintes ATL Nuit',
+    GARDE: 'Garde Nuit',
+    NCT: 'Hors site - NCT',
   },
-  'weekend': {
-    'ASTREINTE': 'Garde Matin',
+  weekend: {
+    ASTREINTE: 'Garde Matin',
   },
 }
 
-// Statuts pour le solveur (mapping depuis DOCTOR_METADATA)
+// Statuts pour le solveur
 const getSolverStatus = (doctorId: string) => {
   const meta = DOCTOR_METADATA[doctorId]
   if (!meta) return 'permanent'
+
   if (doctorId === 'M' || doctorId === 'O' || doctorId === 'W') return 'astreinte_coro'
   if (doctorId === 'FV') return 'fv'
   if (doctorId === 'DAAS') return 'daas'
@@ -39,20 +40,14 @@ const getSolverStatus = (doctorId: string) => {
   return 'permanent'
 }
 
-export interface SolverResponse {
-  schedule: ScheduleData | null
-  warnings: string[]
-  error?: string
-}
-
 export async function generateWeekWithSolver(
   weekStartDate: string,
   weekendMode: 'CH' | 'ROTATION' = 'ROTATION'
-): Promise<SolverResponse> {
-  try {
-    console.log(`🔵 [SERVER] generateWeekWithSolver appelée pour ${weekStartDate}`)
+) {
+  console.log(`🔵 [SERVER] generateWeekWithSolver appelée pour ${weekStartDate}`)
 
-    // 1. Récupérer tous les médecins (depuis les constantes)
+  try {
+    // 1. Médecins
     const medecins = Object.keys(DOCTOR_METADATA).map((id) => ({
       id,
       statut: getSolverStatus(id),
@@ -62,7 +57,7 @@ export async function generateWeekWithSolver(
       points_weekend: 0,
     }))
 
-    // 2. Récupérer les vacances
+    // 2. Vacances
     const vacations = await getAllVacations()
     const vacationPayload = vacations.map((v) => ({
       doctor_id: v.doctor_id,
@@ -70,16 +65,14 @@ export async function generateWeekWithSolver(
       end_date: v.end_date,
     }))
 
-    // 3. Déterminer la parité de la semaine (ISO)
+    // 3. Parité et week_type
     const dateObj = new Date(weekStartDate)
     const weekInfo = getWeekNumber(dateObj)
     const semaine_iso_impaire = weekInfo % 2 === 1
     const week_type = semaine_iso_impaire ? 2 : 1
-
-    // 4. Récupérer le dernier NCT (si stocké en DB)
     const lastNctDoctor = null
 
-    // 5. Construire la requête pour l'API
+    // 4. Payload
     const payload = {
       week_start_date: weekStartDate,
       week_type,
@@ -90,23 +83,15 @@ export async function generateWeekWithSolver(
       last_nct_doctor: lastNctDoctor,
     }
 
-    console.log(`🔵 [SERVER] Payload construit, appel à l'API Render...`)
+    console.log(`🔵 [SERVER] Payload envoyé :`, JSON.stringify(payload, null, 2))
 
-    // 6. Appeler l'API Render
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 65000)
-
-    let response: Response
-    try {
-      response = await fetch('https://guard-api-cardiomaine.onrender.com/generate-week', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      })
-    } finally {
-      clearTimeout(timeout)
-    }
+    // 5. Appel API
+    const response = await fetch('https://guard-api-cardiomaine.onrender.com/generate-week', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000),
+    })
 
     console.log(`🔵 [SERVER] Statut de la réponse Render : ${response.status}`)
 
@@ -118,21 +103,44 @@ export async function generateWeekWithSolver(
 
     const result = await response.json()
     console.log('🔵 [SERVER] Réponse brute complète :', JSON.stringify(result, null, 2))
-    console.log(`🔵 [SERVER] Réponse reçue, ${result.assignments?.length || 0} assignations.`)
 
-    // 7. Transformer les assignations en ScheduleData
-    const schedule: ScheduleData = createEmptySchedule()
+    // 6. Extraction robuste des assignations
+    let assignments = result.assignments
+    let warnings = result.warnings || []
 
-    result.assignments?.forEach((assign: any) => {
-      const { date, day_name, slot, activity, doctor } = assign
-      const dayKey = day_name.toUpperCase()
-
-      if (!DAYS.includes(dayKey)) {
-        console.warn('[solver-api] Unknown day:', dayKey)
-        return
+    // Si assignments n'est pas un tableau, on explore d'autres pistes
+    if (!Array.isArray(assignments)) {
+      // Cas où les données sont sous result.data
+      if (result.data && Array.isArray(result.data.assignments)) {
+        assignments = result.data.assignments
+        warnings = result.data.warnings || warnings
       }
+      // Cas où result est directement le tableau (peu probable)
+      else if (Array.isArray(result)) {
+        assignments = result
+      }
+      // Dernier recours : on renvoie une erreur avec les données brutes
+      else {
+        console.error('🔴 [SERVER] Aucune assignation trouvée dans la réponse :', result)
+        return {
+          schedule: null,
+          warnings: ['Erreur de structure de la réponse du solveur.'],
+          error: 'Aucune assignation trouvée',
+          rawData: result,
+        }
+      }
+    }
 
-      // Déterminer la ligne cible
+    console.log(`🔵 [SERVER] ${assignments.length} assignations extraites.`)
+
+    // 7. Transformation en ScheduleData
+    const schedule = createEmptySchedule()
+
+    assignments.forEach((assign: any) => {
+      const { date, day_name, slot, activity, doctor } = assign
+      const dayKey = day_name?.toUpperCase()
+      if (!dayKey || !DAYS.includes(dayKey)) return
+
       let rowKey = ''
       if (slot === 'weekend') {
         if (dayKey === 'SAMEDI' || dayKey === 'DIMANCHE') {
@@ -145,63 +153,35 @@ export async function generateWeekWithSolver(
         }
       }
 
-      if (!rowKey) {
-        console.warn('[solver-api] No mapping for slot:', slot, 'activity:', activity)
-        return
-      }
-
-      // Ajouter le médecin dans la cellule
-      if (!schedule[rowKey]) {
-        console.warn('[solver-api] Row not found:', rowKey)
-        return
-      }
+      if (!rowKey) return
+      if (!schedule[rowKey]) return
 
       const cell = schedule[rowKey][dayKey]
-      if (!cell) {
-        console.warn('[solver-api] Cell not found:', rowKey, dayKey)
-        return
-      }
+      if (!cell) return
 
-      // Éviter les doublons
       if (!cell.value.includes(doctor)) {
         cell.value = [...cell.value, doctor]
         cell.type = 'doctor'
-        cell.status = 'pending'
       }
     })
 
-    console.log('[solver-api] Schedule generated successfully')
-    return { schedule, warnings: result.warnings || [] }
+    return { schedule, warnings }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
     console.error('🔴 [SERVER] Erreur dans generateWeekWithSolver :', error)
-
-    // Gérer l'erreur de timeout
-    if (error instanceof Error && error.name === 'AbortError') {
-      return {
-        schedule: null,
-        warnings: [],
-        error: 'Timeout: l\'API a pris trop de temps (65s). Le serveur Render redémarre peut-être. Veuillez réessayer.',
-      }
-    }
-
     return {
       schedule: null,
       warnings: [],
-      error: errorMessage,
+      error: error instanceof Error ? error.message : 'Erreur inconnue',
     }
   }
 }
 
-/**
- * Utilitaire pour créer un planning vide
- */
 function createEmptySchedule(): ScheduleData {
   const createEmptyRow = () => {
     return DAYS.reduce(
       (acc, day) => ({
         ...acc,
-        [day]: { value: [], type: 'empty' as const, status: 'validated' as const, request: null },
+        [day]: { value: [], type: 'empty' as const, status: 'validated' as const },
       }),
       {} as { [key: string]: CellData }
     )
@@ -248,20 +228,5 @@ function createEmptySchedule(): ScheduleData {
     Congrès: createEmptyRow(),
     Congés: createEmptyRow(),
     'Notes du jour': createEmptyRow(),
-  }
-}
-
-/**
- * Vérifie la santé de l'API
- */
-export async function checkSolverAPIHealth(): Promise<boolean> {
-  try {
-    const response = await fetch('https://guard-api-cardiomaine.onrender.com/health', {
-      method: 'GET',
-      signal: AbortSignal.timeout(5000),
-    })
-    return response.ok
-  } catch {
-    return false
   }
 }
