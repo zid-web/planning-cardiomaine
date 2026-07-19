@@ -1,100 +1,89 @@
-const CACHE_NAME = 'cardio-planning-v' + Date.now()
-const STATIC_CACHE = 'cardio-static-v' + Date.now()
+// public/sw.js
+const CACHE_NAME = 'cardio-planning-v1784499101179';
+const STATIC_ASSETS = [
+  '/protected/planning',
+  '/icon-192.png',
+  '/icon-512.png',
+];
 
 self.addEventListener('install', (event) => {
-  console.log('[v0] Service Worker installing with cache:', CACHE_NAME)
+  console.log('[v0] Service Worker installing with cache:', CACHE_NAME);
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
-      console.log('[v0] Static cache opened')
-      return cache
-    })
-  )
-  self.skipWaiting() // Activate immediately without waiting for clients to close
-})
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('[v0] Static cache opened');
+        return cache.addAll(STATIC_ASSETS).catch((err) => {
+          console.warn('[v0] Some assets failed to cache:', err);
+        });
+      })
+      .then(() => self.skipWaiting())
+  );
+});
 
 self.addEventListener('activate', (event) => {
-  console.log('[v0] Service Worker activating, cleaning old caches')
+  console.log('[v0] Service Worker activating, cleaning old caches');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== STATIC_CACHE && cacheName !== CACHE_NAME) {
-            console.log('[v0] Deleting old cache:', cacheName)
-            return caches.delete(cacheName)
+          if (cacheName !== CACHE_NAME) {
+            console.log('[v0] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
           }
         })
-      )
-    })
-  )
-  self.clients.matchAll().then((clients) => {
-    clients.forEach((client) => {
-      client.postMessage({ type: 'SKIP_WAITING' })
-    })
-  })
-})
+      );
+    }).then(() => self.clients.claim())
+  );
+});
 
 self.addEventListener('fetch', (event) => {
-  const { request } = event
-  const url = new URL(request.url)
+  const request = event.request;
 
-  // Skip non-HTTP/HTTPS and chrome-extension requests
-  if (!url.protocol.startsWith('http')) {
-    return
+  // Ignorer les requêtes non-GET, les extensions, et les APIs
+  if (request.method !== 'GET') {
+    return;
   }
 
-  // Skip POST, PUT, DELETE requests (only cache GET/HEAD)
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    event.respondWith(fetch(request))
-    return
+  // Ignorer les requêtes vers des URLs non HTTP/HTTPS
+  if (!request.url.startsWith('http')) {
+    return;
   }
 
-  // For HTML pages (navigate mode), always fetch from network first
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).then((response) => {
-        return response
-      }).catch(() => {
-        return caches.match(request)
-      })
-    )
-    return
+  // Ignorer les requêtes vers les API et les assets Next.js internes
+  if (request.url.includes('/api/') || request.url.includes('/_next/') || request.url.includes('/auth/')) {
+    return event.respondWith(fetch(request));
   }
 
-  // For API calls, always fetch from network
-  if (url.pathname.includes('/api/')) {
-    event.respondWith(fetch(request))
-    return
-  }
-
-  // For assets (JS, CSS, images), fetch from network with fallback to cache
   event.respondWith(
-    fetch(request)
-      .then((response) => {
-        // Don't cache if response is not ok or status not 200
-        if (!response || response.status !== 200 || response.type === 'error') {
-          return response
-        }
-        
-        // Only cache valid cacheable content types
-        const contentType = response.headers.get('content-type') || ''
-        const isCacheable = 
-          contentType.includes('application/javascript') ||
-          contentType.includes('text/css') ||
-          contentType.includes('image/') ||
-          contentType.includes('font/')
-        
-        if (isCacheable) {
-          const responseClone = response.clone()
+    caches.match(request).then((cachedResponse) => {
+      // Si la ressource est en cache, la retourner
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      // Sinon, fetch depuis le réseau
+      return fetch(request)
+        .then((response) => {
+          // Ne mettre en cache que les réponses valides (200) et de type approprié
+          if (!response || response.status !== 200 || response.type !== 'basic') {
+            return response;
+          }
+
+          const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone).catch((err) => {
-              console.log('[v0] Cache put failed:', err.message)
-            })
-          })
-        }
-        return response
-      })
-      .catch(() => {
-        return caches.match(request)
-      })
-  )
-})
+            try {
+              cache.put(request, responseClone);
+            } catch (err) {
+              console.warn('[v0] Failed to cache:', request.url, err);
+            }
+          });
+          return response;
+        })
+        .catch((err) => {
+          console.warn('[v0] Fetch failed, returning offline fallback:', request.url, err);
+          // Optionnel : retourner une page offline personnalisée
+          // return caches.match('/offline.html');
+        });
+    })
+  );
+});
