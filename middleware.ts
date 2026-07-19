@@ -2,6 +2,19 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Allow Service Worker, API routes, static assets, and next assets
+  if (
+    pathname === '/sw.js' ||
+    pathname === '/api/sw' ||
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/icon-') ||
+    pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico)$/)
+  ) {
+    return NextResponse.next()
+  }
+
   const response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -34,8 +47,6 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
 
   // Allow public routes
   const publicRoutes = ['/auth/login', '/auth/sign-up', '/auth/forgot-password', '/']
