@@ -8,8 +8,8 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Plateforme de gestion : planning Cardiomaine",
-  description: "Created with v0",
+  title: "CardioPlanning - Optimisez vos plannings médicaux avec l'IA",
+  description: "Plateforme intelligente de gestion des plannings hospitaliers. Réduisez les conflits, équilibrez les charges de travail et augmentez la satisfaction des médecins.",
   generator: "v0.app",
   icons: {
     icon: [

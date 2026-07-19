@@ -1,8 +1,5 @@
-'use server'
+import { LandingPageNew } from '@/components/landing-page-new'
 
-import { redirect } from 'next/navigation'
-
-export default async function HomePage() {
-  // Redirect all homepage traffic to the Supabase auth login page
-  redirect('/auth/login')
+export default function HomePage() {
+  return <LandingPageNew />
 }
