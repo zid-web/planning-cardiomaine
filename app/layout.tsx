@@ -2,6 +2,7 @@ import React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { ServiceWorkerRegistrar } from "@/components/sw-registrar"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -45,6 +46,7 @@ export default function RootLayout({
         <div id="root" className="h-full overflow-hidden">
           {children}
         </div>
+        <ServiceWorkerRegistrar />
         <Analytics />
       </body>
     </html>
