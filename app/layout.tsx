@@ -11,22 +11,26 @@ export const metadata: Metadata = {
   title: "CardioPlanning - Optimisez vos plannings médicaux avec l'IA",
   description: "Plateforme intelligente de gestion des plannings hospitaliers. Réduisez les conflits, équilibrez les charges de travail et augmentez la satisfaction des médecins.",
   generator: "v0.app",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "CardioPlanning",
+  },
   icons: {
     icon: [
       {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
+        url: "/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
       },
       {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
-        url: "/icon.svg",
-        type: "image/svg+xml",
+        url: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
       },
     ],
-    apple: "/apple-icon.png",
+    apple: "/icon-192.png",
   },
 }
 

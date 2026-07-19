@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   Calendar,
   Check,
@@ -34,6 +35,7 @@ import { canAssignDoctor, detectConflict } from "@/lib/assignment-validation"
 import { populateCongesRowFromVacations } from "@/lib/vacation-congés-mapper"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { createClient } from "@/lib/supabase/client"
 import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
 import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
 import { getAllVacations } from "@/app/actions/vacation-actions"
@@ -50,20 +52,94 @@ import { toast } from "sonner"
 export function ScheduleApp({
   currentUser,
   doctorCode,
-  isAdmin,
-  fullSchedule,
-  setFullSchedule,
+  isAdmin: propIsAdmin,
+  fullSchedule: propFullSchedule,
+  setFullSchedule: propSetFullSchedule,
   onLogout,
   onChangePassword,
 }: {
-  currentUser: string
-  doctorCode: string
-  isAdmin: boolean
-  fullSchedule: FullSchedule
-  setFullSchedule: React.Dispatch<React.SetStateAction<FullSchedule>>
-  onLogout: () => void
-  onChangePassword: () => void
-}) {
+  currentUser?: string
+  doctorCode?: string
+  isAdmin?: boolean
+  fullSchedule?: FullSchedule
+  setFullSchedule?: React.Dispatch<React.SetStateAction<FullSchedule>>
+  onLogout?: () => void
+  onChangePassword?: () => void
+} = {}) {
+  const router = useRouter()
+  const supabase = createClient()
+  
+  // State management for auto-loaded data
+  const [internalUser, setInternalUser] = useState<string>(currentUser || '')
+  const [internalDoctorCode, setInternalDoctorCode] = useState<string>(doctorCode || '')
+  const [internalIsAdmin, setInternalIsAdmin] = useState<boolean>(propIsAdmin || false)
+  const [internalFullSchedule, setInternalFullSchedule] = useState<FullSchedule>(propFullSchedule || {})
+  const [isInitializing, setIsInitializing] = useState(!currentUser)
+  
+  // Use provided or internal values
+  const currentUserCode = currentUser || internalUser
+  const doctorCodeValue = doctorCode || internalDoctorCode
+  const isAdmin = propIsAdmin !== undefined ? propIsAdmin : internalIsAdmin
+  const fullSchedule = propFullSchedule || internalFullSchedule
+  const setFullSchedule = propSetFullSchedule || setInternalFullSchedule
+  
+  // Auto-load user and schedule if not provided
+  useEffect(() => {
+    if (currentUser) return // Skip if props provided
+    
+    const initializeApp = async () => {
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (!authUser) {
+          router.push('/auth/login')
+          return
+        }
+        setInternalUser(authUser.user_metadata?.name || '')
+
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('role, doctor_code')
+          .eq('id', authUser.id)
+          .single()
+
+        if (profileData) {
+          setInternalDoctorCode(profileData.doctor_code || '')
+          setInternalIsAdmin(profileData.role === 'admin')
+        }
+
+        const { data: schedules } = await supabase
+          .from('schedules')
+          .select('week_key, schedule_data')
+          .order('week_key', { ascending: true })
+
+        const loadedSchedule: FullSchedule = {}
+        if (schedules) {
+          schedules.forEach((schedule: any) => {
+            if (schedule.week_key && schedule.week_key !== 'full_schedule') {
+              loadedSchedule[schedule.week_key] = schedule.schedule_data as ScheduleData
+            }
+          })
+        }
+
+        const today = new Date()
+        const weekInfo = getWeekNumber(today)
+        const currentWeekKey = `${weekInfo.year}-W${weekInfo.week}`
+        
+        if (!loadedSchedule[currentWeekKey]) {
+          loadedSchedule[currentWeekKey] = generateWeekSchedule(currentWeekKey)
+        }
+
+        setInternalFullSchedule(loadedSchedule)
+        setIsInitializing(false)
+      } catch (error) {
+        console.error('[v0] Error initializing:', error)
+        setIsInitializing(false)
+      }
+    }
+
+    initializeApp()
+  }, [currentUser, router, supabase])
+
   const [activeTab, setActiveTab] = useState<"today" | "week" | "all">("today")
   const [currentDate, setCurrentDate] = useState(new Date()) // Track current date
   const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null)
