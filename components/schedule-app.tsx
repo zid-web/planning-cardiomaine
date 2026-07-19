@@ -42,6 +42,8 @@ import { VacationsModal } from "@/components/vacations-modal"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
 import { GuardGenerationButton } from "@/components/guard-generation-button"
+import VoiceAndUploadPanel from "@/components/VoiceAndUploadPanel"
+import { buildCurrentWeekRequest, convertSolverResponseToScheduleData } from "@/lib/voice-panel-utils"
 import { DoctorVacation } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -418,6 +420,35 @@ export function ScheduleApp({
     setCurrentDate(newDate)
   }
 
+  // Build the week request for VoiceAndUploadPanel
+  const buildWeekRequestForVoicePanel = useMemo(() => {
+    const weekInfo = getWeekNumber(currentDate)
+    const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, '0')}`
+    const currentSchedule = schedule || generateWeekSchedule(weekKey)
+    
+    // Get Monday date for the week
+    const monday = new Date(currentDate)
+    const day = monday.getDay()
+    const diff = monday.getDate() - day + (day === 0 ? -6 : 1)
+    monday.setDate(diff)
+    const weekStartDate = monday.toISOString().split('T')[0]
+
+    return buildCurrentWeekRequest(weekStartDate, currentSchedule, vacations, null)
+  }, [currentDate, schedule, vacations])
+
+  // Handle voice panel schedule update
+  const handleVoicePanelScheduleUpdate = (newSchedule: ScheduleData) => {
+    const weekInfo = getWeekNumber(currentDate)
+    const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, '0')}`
+    
+    setFullSchedule(prev => ({
+      ...prev,
+      [weekKey]: newSchedule
+    }))
+    
+    toast.success("Planning mis à jour par commande vocale")
+  }
+
   const getRowColor = (rowKey: string) => {
     if (rowKey.includes("Vacance")) return "bg-orange-100/50 hover:bg-orange-100"
     if (rowKey.includes("Rythmo")) return "bg-yellow-100/50 hover:bg-yellow-100"
@@ -680,6 +711,22 @@ export function ScheduleApp({
                 </Button>
               </div>
             </div>
+
+            {/* Voice and Upload Panel */}
+            {isAdmin && process.env.NEXT_PUBLIC_GUARD_API_KEY && (
+              <div className="mb-6">
+                <VoiceAndUploadPanel
+                  apiBaseUrl={process.env.NEXT_PUBLIC_GUARD_API_BASE_URL || "https://guard-api-cardiomaine.onrender.com"}
+                  apiKey={process.env.NEXT_PUBLIC_GUARD_API_KEY}
+                  currentWeekRequest={buildWeekRequestForVoicePanel}
+                  knownDoctors={DOCTORS}
+                  onScheduleUpdated={handleVoicePanelScheduleUpdate}
+                  onPdfParsed={(data) => {
+                    console.log('[v0] PDF parsed:', data)
+                  }}
+                />
+              </div>
+            )}
 
             {/* TODAY VIEW */}
             {activeTab === "today" && (
