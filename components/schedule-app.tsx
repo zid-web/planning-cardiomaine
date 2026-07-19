@@ -634,7 +634,7 @@ export function ScheduleApp({
                           monday.setDate(diff)
                           const weekStartDate = monday.toISOString().split('T')[0]
 
-                          const result = await generateWeekWithSolver(weekStartDate, 'ROTATION')
+                          const result = await generateWeekWithSolver(weekStartDate, 'ROTATION', schedule)
 
                           if (result.error) {
                             toast.error(`Erreur: ${result.error}`)

@@ -39,7 +39,8 @@ const getSolverStatus = (doctorId: string) => {
 
 export async function generateWeekWithSolver(
   weekStartDate: string,
-  weekendMode: 'CH' | 'ROTATION' = 'ROTATION'
+  weekendMode: 'CH' | 'ROTATION' = 'ROTATION',
+  existingSchedule?: ScheduleData
 ) {
   try {
     // Médecins
@@ -86,6 +87,20 @@ export async function generateWeekWithSolver(
     const week_type = semaine_iso_impaire ? 2 : 1
     const lastNctDoctor = null
 
+    // Convert existingSchedule to payload format
+    let existingAssignments: Record<string, Record<string, string[]>> | undefined
+    if (existingSchedule) {
+      existingAssignments = {}
+      Object.entries(existingSchedule).forEach(([rowKey, daysData]) => {
+        Object.entries(daysData).forEach(([dayKey, cellData]) => {
+          if (cellData.value && cellData.value.length > 0) {
+            const key = `${rowKey}|${dayKey}`
+            existingAssignments![key] = cellData.value
+          }
+        })
+      })
+    }
+
     // Payload
     const payload = {
       week_start_date: weekStartDate,
@@ -95,6 +110,7 @@ export async function generateWeekWithSolver(
       weekend_mode: weekendMode,
       semaine_iso_impaire,
       last_nct_doctor: lastNctDoctor,
+      existing_schedule: existingAssignments, // Preserve manual assignments
     }
 
     // Appel API
@@ -174,6 +190,23 @@ export async function generateWeekWithSolver(
         cell.type = 'doctor'
       }
     })
+
+    // Preserve existing manual assignments - merge with solver results
+    // Priority: existing assignments > solver results
+    if (existingSchedule) {
+      Object.entries(existingSchedule).forEach(([rowKey, daysData]) => {
+        Object.entries(daysData).forEach(([dayKey, cellData]) => {
+          if (cellData.value && cellData.value.length > 0) {
+            // Preserve the existing assignment
+            schedule[rowKey][dayKey] = {
+              value: cellData.value,
+              type: cellData.type || 'doctor',
+              status: cellData.status || 'validated',
+            }
+          }
+        })
+      })
+    }
 
     // Combiner les warnings du solveur avec les exclusions de vacances
     const allWarnings = [...exclusionWarnings, ...warnings]

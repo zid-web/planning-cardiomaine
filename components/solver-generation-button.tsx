@@ -11,6 +11,7 @@ import { getWeekNumber } from '@/lib/schedule-utils'
 interface SolverGenerationButtonProps {
   currentDate: Date
   weekendMode: 'CH' | 'ROTATION'
+  currentSchedule?: ScheduleData
   onGenerationComplete: (schedule: ScheduleData, warnings: string[]) => void
   disabled?: boolean
 }
@@ -18,6 +19,7 @@ interface SolverGenerationButtonProps {
 export function SolverGenerationButton({
   currentDate,
   weekendMode,
+  currentSchedule,
   onGenerationComplete,
   disabled = false,
 }: SolverGenerationButtonProps) {
@@ -34,7 +36,7 @@ export function SolverGenerationButton({
 
       console.log('[v0] Calling solver API for week starting:', weekStartStr)
 
-      const result = await generateWeekWithSolver(weekStartStr, weekendMode)
+      const result = await generateWeekWithSolver(weekStartStr, weekendMode, currentSchedule)
 
       if (result.error) {
         toast.error(`Erreur: ${result.error}`, { id: toastId })
