@@ -18,8 +18,8 @@ export function ServiceWorkerRegistrar() {
           await registration.unregister()
         }
 
-        // Register new service worker
-        const registration = await navigator.serviceWorker.register('/sw.js', {
+        // Register new service worker from API route (avoids Vercel redirect issues)
+        const registration = await navigator.serviceWorker.register('/api/sw', {
           scope: '/',
           updateViaCache: 'none', // Always fetch fresh sw.js
         })
