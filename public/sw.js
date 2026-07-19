@@ -34,41 +34,67 @@ self.addEventListener('activate', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
-  // For HTML pages, always fetch from network first
-  if (event.request.mode === 'navigate') {
+  const { request } = event
+  const url = new URL(request.url)
+
+  // Skip non-HTTP/HTTPS and chrome-extension requests
+  if (!url.protocol.startsWith('http')) {
+    return
+  }
+
+  // Skip POST, PUT, DELETE requests (only cache GET/HEAD)
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    event.respondWith(fetch(request))
+    return
+  }
+
+  // For HTML pages (navigate mode), always fetch from network first
+  if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).then((response) => {
-        // Don't cache HTML in service worker
+      fetch(request).then((response) => {
         return response
       }).catch(() => {
-        // Return cached version if offline
-        return caches.match(event.request)
+        return caches.match(request)
       })
     )
     return
   }
 
   // For API calls, always fetch from network
-  if (event.request.url.includes('/api/')) {
-    event.respondWith(fetch(event.request))
+  if (url.pathname.includes('/api/')) {
+    event.respondWith(fetch(request))
     return
   }
 
   // For assets (JS, CSS, images), fetch from network with fallback to cache
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then((response) => {
-        if (!response || response.status !== 200) {
+        // Don't cache if response is not ok or status not 200
+        if (!response || response.status !== 200 || response.type === 'error') {
           return response
         }
-        const responseClone = response.clone()
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseClone)
-        })
+        
+        // Only cache valid cacheable content types
+        const contentType = response.headers.get('content-type') || ''
+        const isCacheable = 
+          contentType.includes('application/javascript') ||
+          contentType.includes('text/css') ||
+          contentType.includes('image/') ||
+          contentType.includes('font/')
+        
+        if (isCacheable) {
+          const responseClone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseClone).catch((err) => {
+              console.log('[v0] Cache put failed:', err.message)
+            })
+          })
+        }
         return response
       })
       .catch(() => {
-        return caches.match(event.request)
+        return caches.match(request)
       })
   )
 })
