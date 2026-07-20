@@ -4,30 +4,18 @@ import { useEffect } from 'react'
 
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
+    // Unregister any existing Service Workers to clean up 502 errors
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
       return
     }
 
-    const registerSW = async () => {
-      try {
-        // Register Service Worker directly from /sw.js
-        // Headers configured in next.config.js prevent redirects
-        const registration = await navigator.serviceWorker.register('/sw.js', {
-          scope: '/',
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((reg) => {
+        reg.unregister().catch(() => {
+          // Ignore errors during unregistration
         })
-        
-        console.log('✅ Service Worker registered successfully')
-
-        // Check for updates periodically
-        setInterval(() => {
-          registration.update()
-        }, 60 * 1000)
-      } catch (error) {
-        console.error('❌ Service Worker registration failed:', error)
-      }
-    }
-
-    registerSW()
+      })
+    })
   }, [])
 
   return null
