@@ -124,6 +124,7 @@ export default function PlanningPage() {
 
         if (profile) {
           console.log('[v0] Profile loaded:', { role: profile.role, doctor_code: profile.doctor_code });
+          console.log('🔍 [Planning] isAdmin:', profile.role === "admin");
           setIsAdmin(profile.role === "admin");
           setDoctorCode(profile.doctor_code || "");
         }

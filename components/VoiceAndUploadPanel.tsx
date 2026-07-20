@@ -25,6 +25,8 @@ export default function VoiceAndUploadPanel({
   onScheduleUpdated,
   onPdfParsed,
 }: VoiceAndUploadPanelProps) {
+  console.log('🔍 [VoiceAndUploadPanel] Composant chargé')
+  console.log('🔍 [VoiceAndUploadPanel] API Base URL:', apiBaseUrl)
   const [isListening, setIsListening] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [transcript, setTranscript] = useState('')
@@ -143,11 +145,15 @@ export default function VoiceAndUploadPanel({
     }
 
     setIsProcessing(true)
+    console.log('🔍 [Upload] Début upload PDF:', file.name)
+    console.log('🔍 [Upload] URL:', `${apiBaseUrl}/upload-planning-pdf`)
+    console.log('🔍 [Upload] API Key présent:', !!apiKey)
     try {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('week_request', JSON.stringify(currentWeekRequest))
 
+      console.log('🔍 [Upload] Envoi requête POST...')
       const response = await fetch(`${apiBaseUrl}/upload-planning-pdf`, {
         method: 'POST',
         headers: {
@@ -155,6 +161,7 @@ export default function VoiceAndUploadPanel({
         },
         body: formData,
       })
+      console.log('🔍 [Upload] Réponse reçue:', response.status, response.statusText)
 
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`)
