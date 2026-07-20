@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, Fragment } from 'react'
+import { useState, useCallback, useMemo, Fragment, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Mic, MicOff, Upload, FileText, Loader2, Plus, X, RefreshCw, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -45,7 +45,7 @@ const DAYS = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM']
 type Doctor = {
   id: string
   code: string
-  status: 'Astreinte/Coro' | 'Permanent' | 'CH' | 'FV' | 'DAAS' | 'D' | 'Admin'
+  status: 'permanent' | 'astreinte_coro' | 'ch' | 'fv' | 'daas' | 'd' | 'admin'
 }
 
 type GridCell = {
@@ -62,6 +62,20 @@ export default function PlanningCardiomainePage() {
   const [transcript, setTranscript] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
   const [statusMessage, setStatusMessage] = useState('')
+
+  // Initialiser les médecins par défaut au premier chargement
+  useEffect(() => {
+    if (doctors.length === 0) {
+      setDoctors([
+        { id: 'W', code: 'W', status: 'astreinte_coro' },
+        { id: 'O', code: 'O', status: 'astreinte_coro' },
+        { id: 'M', code: 'M', status: 'astreinte_coro' },
+        { id: 'CH', code: 'CH', status: 'ch' },
+        { id: 'FV', code: 'FV', status: 'fv' },
+        { id: 'A', code: 'A', status: 'permanent' },
+      ])
+    }
+  }, [])
 
   // Calculer les dates de la semaine
   const weekDates = useMemo(() => {
@@ -103,7 +117,7 @@ export default function PlanningCardiomainePage() {
 
   // Gestion roster médecins
   const addDoctor = useCallback(() => {
-    setDoctors([...doctors, { id: Date.now().toString(), code: '', status: 'Permanent' }])
+    setDoctors([...doctors, { id: Date.now().toString(), code: '', status: 'permanent' }])
   }, [doctors])
 
   const updateDoctor = useCallback((id: string, field: string, value: string) => {
@@ -122,11 +136,11 @@ export default function PlanningCardiomainePage() {
     try {
       const payload = {
         week_start_date: weekDates[0].toISOString().split('T')[0],
-        week_type: weekType,
+        week_type: parseInt(String(weekType), 10),
         medecins: doctors.map(d => ({ id: d.code, statut: d.status })),
         vacations: [],
         congres: [],
-        weekend_mode: 'normal',
+        weekend_mode: 'ROTATION',
       }
 
       const response = await fetch('https://guard-api-cardiomaine.onrender.com/generate-week', {
@@ -375,7 +389,7 @@ export default function PlanningCardiomainePage() {
                         className="text-xs px-2 py-1 border rounded flex-1"
                         style={{ borderColor: PALETTE.border }}
                       >
-                        {['Astreinte/Coro', 'Permanent', 'CH', 'FV', 'DAAS', 'D', 'Admin'].map(s => (
+                        {['astreinte_coro', 'permanent', 'ch', 'fv', 'daas', 'd', 'admin'].map(s => (
                           <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
