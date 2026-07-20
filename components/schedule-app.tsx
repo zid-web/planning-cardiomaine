@@ -85,12 +85,19 @@ export function ScheduleApp({
   
   // Auto-load user and schedule if not provided
   useEffect(() => {
-    if (currentUser) return // Skip if props provided
+    console.log('[v0] ScheduleApp useEffect - currentUser:', currentUser)
+    if (currentUser) {
+      console.log('[v0] Props provided, skipping auto-load')
+      return // Skip if props provided
+    }
     
     const initializeApp = async () => {
       try {
+        console.log('[v0] Starting auto-load initialization...')
         const { data: { user: authUser } } = await supabase.auth.getUser()
+        console.log('[v0] Auth user retrieved:', authUser?.id)
         if (!authUser) {
+          console.log('[v0] No auth user, redirecting to login')
           router.push('/auth/login')
           return
         }
@@ -102,9 +109,12 @@ export function ScheduleApp({
           .eq('id', authUser.id)
           .single()
 
+        console.log('[v0] Profile data retrieved:', { role: profileData?.role, doctor_code: profileData?.doctor_code })
         if (profileData) {
           setInternalDoctorCode(profileData.doctor_code || '')
-          setInternalIsAdmin(profileData.role === 'admin')
+          const isAdminValue = profileData.role === 'admin'
+          setInternalIsAdmin(isAdminValue)
+          console.log('[v0] isAdmin set to:', isAdminValue)
         }
 
         const { data: schedules } = await supabase

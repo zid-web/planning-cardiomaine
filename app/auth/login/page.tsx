@@ -88,7 +88,8 @@ export default function Page() {
       console.log('[v0] ===== LOGIN SUCCESSFUL =====')
       console.log('[v0] User ID:', data.user.id)
       console.log('[v0] User email:', data.user.email)
-      router.push('/protected')
+      console.log('[v0] Redirecting to /protected/planning...')
+      router.push('/protected/planning')
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred'
       console.error('[v0] Login failed:', errorMessage)
