@@ -36,6 +36,7 @@ import { VacationsModal } from "@/components/vacations-modal"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
 import { GuardGenerationButton } from "@/components/guard-generation-button"
+import { VoiceAndUploadPanel } from "@/components/VoiceAndUploadPanel"
 import { DoctorVacation } from "@/lib/types"
 import { toast } from "sonner"
 
@@ -518,11 +519,17 @@ export default function PlanningPage({
               </div>
             </div>
 
-            {/* Voice & Upload Panel Placeholder */}
-            <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl border border-purple-200">
-              <h3 className="font-semibold text-purple-900 mb-2">Panneau Vocal & Upload PDF</h3>
-              <p className="text-sm text-purple-700">À implémenter : Commandes vocales et upload de fichier PDF pour générer le planning</p>
-            </div>
+            {/* Voice and Upload Panel */}
+            <VoiceAndUploadPanel
+              onCommandExecuted={(result) => {
+                // Rafraîchir le planning après exécution d'une commande vocale
+                console.log("[v0] Voice command executed:", result)
+                if (result?.updated) {
+                  // Recharger les données si nécessaire
+                }
+              }}
+              isOpen={true}
+            />
           </div>
         </ScrollArea>
       </div>
