@@ -4,13 +4,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Mic, MicOff, Upload, Loader2, CheckCircle2, AlertCircle, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { toast } from 'sonner'
+
+// URL de l'API Render pour l'upload du planning PDF
+const PLANNING_API_URL = 'https://guard-api-cardiomaine.onrender.com'
 
 interface VoiceAndUploadPanelProps {
   onCommandExecuted?: (result: any) => void
   isOpen?: boolean
+  weekStartDate?: string // Date de début de semaine (YYYY-MM-DD)
 }
 
-export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true }: VoiceAndUploadPanelProps) {
+export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStartDate: initialWeekStartDate }: VoiceAndUploadPanelProps) {
   const [transcript, setTranscript] = useState("")
   const [editedTranscript, setEditedTranscript] = useState("")
   const [isListening, setIsListening] = useState(false)
@@ -104,12 +109,19 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true }: VoiceA
 
   const sendVoiceCommand = useCallback(async (text: string) => {
     if (!text.trim()) {
+      const errorMsg = "Veuillez entrer ou dicter une commande"
       setStatus({
         type: "error",
-        message: "Veuillez entrer ou dicter une commande"
+        message: errorMsg
       })
+      toast.error(errorMsg)
       return
     }
+
+    console.log("[v0] Voice Command - Envoi:", {
+      command: text.trim(),
+      timestamp: new Date().toISOString()
+    })
 
     setIsLoading(true)
     setStatus({ type: "loading", message: "Interprétation de la consigne..." })
@@ -129,14 +141,27 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true }: VoiceA
 
       const data = await response.json()
 
+      console.log("[v0] Voice Command - Backend Response:", {
+        status: response.status,
+        statusText: response.statusText,
+        data: data,
+        timestamp: new Date().toISOString()
+      })
+
       if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors du traitement de la commande')
+        throw new Error(data.error || data.message || 'Erreur lors du traitement de la commande')
       }
 
+      const successMessage = `Succès: ${data.message || 'Commande exécutée'}`
       setStatus({
         type: "success",
-        message: `Succès: ${data.message || 'Commande exécutée'}`
+        message: successMessage
       })
+
+      // Afficher un toast de succès
+      toast.success(successMessage)
+
+      console.log("[v0] Voice Command - Succès!")
 
       // Réinitialiser le transcript
       setTranscript("")
@@ -152,11 +177,22 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true }: VoiceA
         setStatus({ type: "idle", message: "" })
       }, 3000)
     } catch (error: any) {
-      console.error('[v0] Voice command error:', error)
+      const errorMessage = error.message || "Erreur lors du traitement de la commande"
+      
+      console.error('[v0] Voice Command - Erreur détaillée:', {
+        error: error.toString(),
+        message: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      })
+      
       setStatus({
         type: "error",
-        message: error.message || "Erreur lors du traitement de la commande"
+        message: errorMessage
       })
+
+      // Afficher un toast d'erreur
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -169,33 +205,77 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true }: VoiceA
     // Vérifier que c'est un PDF
     if (file.type !== 'application/pdf') {
       setUploadError("Veuillez sélectionner un fichier PDF")
+      toast.error("Veuillez sélectionner un fichier PDF")
+      return
+    }
+
+    // Vérifier la taille du fichier (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError("Le fichier est trop volumineux (max 10MB)")
+      toast.error("Le fichier est trop volumineux (max 10MB)")
       return
     }
 
     setUploadError("")
     setIsLoading(true)
     setStatus({ type: "loading", message: "Upload et traitement du PDF..." })
+    
+    console.log("[v0] PDF Upload - Fichier sélectionné:", {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      timestamp: new Date().toISOString()
+    })
 
     try {
+      // Créer le FormData avec le fichier et la date de début de semaine
       const formData = new FormData()
       formData.append('file', file)
+      
+      // Ajouter la date de début de semaine
+      const computedWeekStartDate = initialWeekStartDate || new Date().toISOString().split('T')[0]
+      formData.append('week_start_date', computedWeekStartDate)
+      
+      console.log("[v0] PDF Upload - FormData contents:", {
+        fileName: file.name,
+        fileSize: file.size,
+        weekStartDate: computedWeekStartDate,
+        apiUrl: `${PLANNING_API_URL}/upload-planning-pdf`
+      })
 
-      const response = await fetch('/api/upload-pdf', {
+      // Envoyer le fichier à Render
+      const response = await fetch(`${PLANNING_API_URL}/upload-planning-pdf`, {
         method: 'POST',
         body: formData,
+        // N'ajouter pas de Content-Type - le navigateur le définira automatiquement avec le boundary
       })
 
       const data = await response.json()
+      
+      console.log("[v0] PDF Upload - Backend Response:", {
+        status: response.status,
+        statusText: response.statusText,
+        data: data,
+        timestamp: new Date().toISOString()
+      })
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors du upload du PDF')
+        const errorMessage = data.error || data.message || 'Erreur lors du upload du PDF'
+        throw new Error(errorMessage)
       }
 
       setUploadedFileName(file.name)
+      const successMessage = `PDF traité: ${data.message || 'Fichier importé avec succès'}`
+      
       setStatus({
         type: "success",
-        message: `PDF traité: ${data.message || 'Fichier importé avec succès'}`
+        message: successMessage
       })
+
+      // Afficher un toast de succès
+      toast.success(successMessage)
+
+      console.log("[v0] PDF Upload - Succès!")
 
       if (onCommandExecuted) {
         onCommandExecuted(data)
@@ -206,11 +286,22 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true }: VoiceA
         setStatus({ type: "idle", message: "" })
       }, 3000)
     } catch (error: any) {
-      console.error('[v0] PDF upload error:', error)
+      const errorMessage = error.message || "Erreur lors du traitement du PDF"
+      
+      console.error('[v0] PDF Upload - Erreur détaillée:', {
+        error: error.toString(),
+        message: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      })
+      
       setStatus({
         type: "error",
-        message: error.message || "Erreur lors du traitement du PDF"
+        message: errorMessage
       })
+
+      // Afficher un toast d'erreur
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
       // Réinitialiser l'input
@@ -218,7 +309,7 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true }: VoiceA
         fileInputRef.current.value = ''
       }
     }
-  }, [onCommandExecuted])
+  }, [onCommandExecuted, initialWeekStartDate])
 
   const copyToClipboard = useCallback(() => {
     if (editedTranscript) {

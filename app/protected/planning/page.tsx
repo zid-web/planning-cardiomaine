@@ -529,6 +529,11 @@ export default function PlanningPage({
                 }
               }}
               isOpen={true}
+              weekStartDate={
+                weekDates[0] instanceof Date 
+                  ? weekDates[0].toISOString().split('T')[0]
+                  : weekDates[0]
+              }
             />
           </div>
         </ScrollArea>
