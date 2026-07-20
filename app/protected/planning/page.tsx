@@ -127,6 +127,14 @@ export default function PlanningPage({
 
   const workloadStats = useMemo(() => calculateWorkloadStats(schedule), [schedule])
 
+  // Debug: Log selectedCell changes
+  useEffect(() => {
+    console.log('🔍 selectedCell mis à jour:', selectedCell)
+    if (selectedCell) {
+      console.log('🔍 Schedule data for selected cell:', schedule?.[selectedCell.row]?.[selectedCell.day])
+    }
+  }, [selectedCell, schedule])
+
   const updateSchedule = async (newSchedule: ScheduleData) => {
     const updatedFullSchedule = {
       ...fullSchedule,
@@ -148,8 +156,19 @@ export default function PlanningPage({
   const currentDayIndex = (currentDate.getDay() + 6) % 7
 
   const handleCellClick = (rowKey: string, day: string) => {
-    if (isCellBlocked(rowKey, day)) return
-    if (rowKey === "Notes du jour" || rowKey === "Congés") return
+    console.log('🔍 handleCellClick appelé pour', rowKey, day)
+    console.log('🔍 isCellBlocked résultat:', isCellBlocked(rowKey, day))
+    
+    if (isCellBlocked(rowKey, day)) {
+      console.log('🔍 Cellule bloquée, retour')
+      return
+    }
+    if (rowKey === "Notes du jour" || rowKey === "Congés") {
+      console.log('🔍 Rangée bloquée (Notes/Congés), retour')
+      return
+    }
+    
+    console.log('🔍 Mise à jour selectedCell avec:', { row: rowKey, day })
     setSelectedCell({ row: rowKey, day })
   }
 
