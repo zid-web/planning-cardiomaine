@@ -395,46 +395,63 @@ export function ScheduleApp({
   const recalculateDynamicRestrictions = (scheduleData: ScheduleData): ScheduleData => {
     const newSchedule = { ...scheduleData }
 
-    // Step 1: Clear all "1/2 journée off Matin" entries to recalculate from scratch
-    console.log('[v0] Recalculating dynamic restrictions...')
+    // 1. Réinitialiser les cases off (matin et après-midi)
     DAYS.forEach(day => {
       newSchedule["1/2 journée off Matin"][day] = {
         value: [],
         type: "empty",
         status: "validated",
       }
+      newSchedule["1/2 journée off Après-midi"][day] = {
+        value: [],
+        type: "empty",
+        status: "validated",
+      }
     })
-    console.log('[v0] Cleared all 1/2 journée off Matin entries')
 
-    // Step 2: Scan all "Garde Nuit" entries and add doctors to "1/2 journée off Matin" the next day
-    DAYS.forEach(day => {
-      const gardeNuitRows = Object.keys(newSchedule).filter(row => row.includes("Garde Nuit"))
+    // 2. Définir les off fixes (tableau des règles)
+    const fixedOffAfternoon: Record<string, string[]> = {
+      "VENDREDI": ["A", "Z", "O"],
+      "MERCREDI": ["M", "W", "G", "B", "Z"],
+      "MARDI": ["S"],
+      "JEUDI": ["U", "P"],
+    }
+
+    // Appliquer les off fixes
+    Object.entries(fixedOffAfternoon).forEach(([day, doctors]) => {
+      doctors.forEach(doc => {
+        const cell = newSchedule["1/2 journée off Après-midi"][day]
+        if (!cell.value.includes(doc)) {
+          cell.value.push(doc)
+          cell.type = "doctor"
+        }
+      })
+    })
+
+    // 3. Appliquer les off après garde de nuit
+    Object.keys(newSchedule).forEach(rowKey => {
+      if (!rowKey.includes("Garde Nuit")) return
       
-      gardeNuitRows.forEach(rowKey => {
+      DAYS.forEach((day, dayIndex) => {
         const doctors = newSchedule[rowKey][day].value || []
-        
-        doctors.forEach(doctor => {
-          const dayIndex = DAYS.indexOf(day)
-          // Only add OFF if next day exists and is not weekend
-          if (dayIndex >= 0 && dayIndex < DAYS.length - 1) {
-            const nextDay = DAYS[dayIndex + 1]
-            
-            // Don't add OFF on weekends (Saturday/Sunday are last, so skip)
-            if (nextDay !== "SAMEDI" && nextDay !== "DIMANCHE") {
-              const offCell = newSchedule["1/2 journée off Matin"][nextDay]
-              if (!offCell.value.includes(doctor)) {
-                offCell.value.push(doctor)
-                offCell.type = "doctor"
-                console.log(`[v0] Added ${doctor} to 1/2 journée off Matin on ${nextDay} (after Garde Nuit ${day})`)
-              }
-            }
+        doctors.forEach(doc => {
+          // Le lendemain
+          const nextDayIndex = (dayIndex + 1) % 7
+          const nextDay = DAYS[nextDayIndex]
+
+          // Vérifier si le médecin a déjà une 1/2 journée off AM fixe le lendemain
+          const hasFixedOffAfternoon = fixedOffAfternoon[nextDay]?.includes(doc) || false
+
+          // Déterminer le créneau
+          const slot = hasFixedOffAfternoon ? "1/2 journée off Matin" : "1/2 journée off Après-midi"
+          const cell = newSchedule[slot][nextDay]
+          if (!cell.value.includes(doc)) {
+            cell.value.push(doc)
+            cell.type = "doctor"
           }
         })
       })
     })
-
-    const totalOff = DAYS.reduce((sum, day) => sum + newSchedule["1/2 journée off Matin"][day].value.length, 0)
-    console.log(`[v0] Recalculation complete. Total OFF entries: ${totalOff}`)
 
     return newSchedule
   }
