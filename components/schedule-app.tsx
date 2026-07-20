@@ -439,15 +439,24 @@ export function ScheduleApp({
           const nextDayIndex = (dayIndex + 1) % 7
           const nextDay = DAYS[nextDayIndex]
 
-          // Vérifier si le médecin a déjà une 1/2 journée off AM fixe le lendemain
-          const hasFixedOffAfternoon = fixedOffAfternoon[nextDay]?.includes(doc) || false
+          // RÈGLE SPÉCIALE: Garde de nuit DIMANCHE → TOUJOURS 1/2 journée off MATIN lundi
+          if (day === "DIMANCHE") {
+            const cell = newSchedule["1/2 journée off Matin"][nextDay]
+            if (!cell.value.includes(doc)) {
+              cell.value.push(doc)
+              cell.type = "doctor"
+            }
+          } else {
+            // Pour les autres jours: vérifier s'il y a un off fixe l'après-midi le lendemain
+            const hasFixedOffAfternoon = fixedOffAfternoon[nextDay]?.includes(doc) || false
 
-          // Déterminer le créneau
-          const slot = hasFixedOffAfternoon ? "1/2 journée off Matin" : "1/2 journée off Après-midi"
-          const cell = newSchedule[slot][nextDay]
-          if (!cell.value.includes(doc)) {
-            cell.value.push(doc)
-            cell.type = "doctor"
+            // Déterminer le créneau
+            const slot = hasFixedOffAfternoon ? "1/2 journée off Matin" : "1/2 journée off Après-midi"
+            const cell = newSchedule[slot][nextDay]
+            if (!cell.value.includes(doc)) {
+              cell.value.push(doc)
+              cell.type = "doctor"
+            }
           }
         })
       })
