@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback, Fragment } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import VoiceAndUploadPanel from "@/components/VoiceAndUploadPanel";
+import { VoiceAndUploadPanel } from "@/components/VoiceAndUploadPanel";
 import { DAYS, DOCTORS, DOCTOR_COLORS } from "@/lib/constants";
 import { getWeekNumber, getWeekDates } from "@/lib/schedule-utils";
 import {
