@@ -1,374 +1,421 @@
-'use client'
+"use client";
 
-import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { Calendar, ChevronLeft, ChevronRight, Clock, Info } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
-import { VoiceAndUploadPanel } from '@/components/VoiceAndUploadPanel'
-import { toast } from 'sonner'
+import React, { useState, useEffect, useMemo, useCallback, Fragment } from "react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import VoiceAndUploadPanel from "@/components/VoiceAndUploadPanel";
+import { DAYS, DOCTORS, DOCTOR_COLORS } from "@/lib/constants";
+import { getWeekNumber, getWeekDates } from "@/lib/schedule-utils";
+import {
+  buildCurrentWeekRequest,
+  convertSolverResponseToScheduleData,
+} from "@/lib/voice-panel-utils";
+import { createClient } from "@/lib/supabase/client";
 
 // Types
-interface ScheduleEntry {
-  value: string[]
-  type: 'doctor' | 'note'
-  status: 'validated' | 'pending'
-  updatedAt?: string
+type CellData = {
+  value: string[];
+  type: "empty" | "doctor" | "shift";
+  status: "pending" | "validated";
+};
+
+type ScheduleData = {
+  [rowKey: string]: {
+    [day: string]: CellData;
+  };
+};
+
+// Lignes complètes du planning
+const ROW_KEYS = [
+  "Astreintes ATL Matin",
+  "Astreintes ATL Midi",
+  "Astreintes ATL Nuit",
+  "Garde Matin",
+  "Garde Midi",
+  "Garde Nuit",
+  "Hors site - NCT",
+  "Hors site - CDL",
+  "Hors site - IRM",
+  "Hors site - Scinti",
+  "Hors site - LFB",
+  "Hors site - PSSL",
+  "Matin - Cs PSS",
+  "Matin - Cs Tessée",
+  "Matin - Stress",
+  "Matin - ETT salle 1",
+  "Matin - ETT salle 2",
+  "Matin - EE1",
+  "Matin - EE2",
+  "Matin - Rythmo",
+  "Matin - Coro",
+  "Apm - Cs PSS",
+  "Apm - Cs Tessée",
+  "Apm - Stress",
+  "Apm - ETT salle 1",
+  "Apm - ETT salle 2",
+  "Apm - RÉEDUCATION",
+  "Apm - EE1",
+  "Apm - EE2",
+  "Apm - Rythmo",
+  "Apm - Coro",
+  "Entrées PSS",
+  "Pré-op",
+  "1/2 journée off Matin",
+  "1/2 journée off Après-midi",
+  "Vacances",
+  "Congrès",
+  "Congés",
+  "Notes du jour",
+];
+
+const ROW_GROUPS = [
+  { label: "ASTREINTES & GARDES", rows: ["Astreintes ATL Matin", "Astreintes ATL Midi", "Astreintes ATL Nuit", "Garde Matin", "Garde Midi", "Garde Nuit"] },
+  { label: "HORS SITE", rows: ["Hors site - NCT", "Hors site - CDL", "Hors site - IRM", "Hors site - Scinti", "Hors site - LFB", "Hors site - PSSL"] },
+  { label: "VACATIONS MATIN", rows: ["Matin - Cs PSS", "Matin - Cs Tessée", "Matin - Stress", "Matin - ETT salle 1", "Matin - ETT salle 2", "Matin - EE1", "Matin - EE2", "Matin - Rythmo", "Matin - Coro"] },
+  { label: "VACATIONS APRÈS-MIDI", rows: ["Apm - Cs PSS", "Apm - Cs Tessée", "Apm - Stress", "Apm - ETT salle 1", "Apm - ETT salle 2", "Apm - RÉEDUCATION", "Apm - EE1", "Apm - EE2", "Apm - Rythmo", "Apm - Coro"] },
+  { label: "AUTRES", rows: ["Entrées PSS", "Pré-op", "1/2 journée off Matin", "1/2 journée off Après-midi", "Vacances", "Congrès", "Congés"] },
+];
+
+function createEmptyCell(): CellData {
+  return { value: [], type: "empty", status: "validated" };
 }
 
-interface ScheduleData {
-  [key: string]: {
-    [day: string]: ScheduleEntry
-  }
+function createEmptySchedule(): ScheduleData {
+  const schedule: ScheduleData = {};
+  ROW_KEYS.forEach((row) => {
+    schedule[row] = {};
+    DAYS.forEach((day) => {
+      schedule[row][day] = createEmptyCell();
+    });
+  });
+  return schedule;
 }
-
-// Constants
-const DOCTORS = [
-  'P', 'E', 'Z', 'B', 'G', 'W', 'M', 'S', 'O', 'H', 
-  'U', 'A', 'V', 'Val', 'K', 'CH', 'FV', 'D', 'DAAS', 'R', 'T'
-]
-
-const DOCTOR_COLORS: { [key: string]: string } = {
-  'P': 'bg-blue-500',
-  'E': 'bg-orange-500',
-  'Z': 'bg-green-500',
-  'B': 'bg-purple-500',
-  'G': 'bg-pink-500',
-  'W': 'bg-red-500',
-  'M': 'bg-indigo-500',
-  'S': 'bg-cyan-500',
-  'O': 'bg-orange-400',
-  'H': 'bg-yellow-500',
-  'U': 'bg-lime-500',
-  'A': 'bg-teal-500',
-  'V': 'bg-rose-500',
-  'Val': 'bg-amber-500',
-  'K': 'bg-violet-500',
-  'CH': 'bg-sky-500',
-  'FV': 'bg-fuchsia-500',
-  'D': 'bg-slate-500',
-  'DAAS': 'bg-stone-500',
-  'R': 'bg-zinc-500',
-  'T': 'bg-gray-500',
-}
-
-const ROWS = [
-  'Astreintes ATL Matin',
-  'Astreintes ATL Midi',
-  'Astreintes ATL Nuit',
-  'Garde Matin',
-  'Garde Midi',
-  'Garde Nuit',
-  'Hors Site Matin',
-  'Hors Site Midi',
-  'Hors Site Nuit',
-  'RÉEDUCATION',
-  'PSSL',
-  'Notes du jour',
-  'Congés'
-]
-
-const DAYS = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM']
 
 export default function PlanningPage() {
-  const [currentDate, setCurrentDate] = useState<Date>(new Date())
-  const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null)
-  const [schedule, setSchedule] = useState<ScheduleData>({})
-  const [currentCellDoctors, setCurrentCellDoctors] = useState<string[]>([])
+  const supabase = createClient();
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [schedule, setSchedule] = useState<ScheduleData>(createEmptySchedule());
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [doctorCode, setDoctorCode] = useState("");
+  const [vacations, setVacations] = useState<any[]>([]);
+  const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null);
 
-  // Get week dates
-  const getWeekDates = (date: Date): Date[] => {
-    const d = new Date(date)
-    const day = d.getDay()
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1)
-    const monday = new Date(d.setDate(diff))
-    
-    const dates = []
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(monday)
-      date.setDate(monday.getDate() + i)
-      dates.push(date)
-    }
-    return dates
-  }
+  const weekInfo = useMemo(() => getWeekNumber(currentDate), [currentDate]);
+  const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, "0")}`;
+  const weekDates = useMemo(() => getWeekDates(currentDate), [currentDate]);
 
-  const weekDates = getWeekDates(currentDate)
-  const weekKey = `week_${weekDates[0].getTime()}`
-
-  // Initialize schedule
+  // Charger les données
   useEffect(() => {
-    const newSchedule: ScheduleData = {}
-    ROWS.forEach(row => {
-      newSchedule[row] = {}
-      DAYS.forEach((_, index) => {
-        const dayKey = weekDates[index].toISOString().split('T')[0]
-        newSchedule[row][dayKey] = {
-          value: [],
-          type: 'doctor',
-          status: 'pending'
+    const loadData = async () => {
+      try {
+        const { data: user } = await supabase.auth.getUser();
+        if (!user?.user) return;
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role, doctor_code")
+          .eq("id", user.user.id)
+          .single();
+
+        if (profile) {
+          setIsAdmin(profile.role === "admin");
+          setDoctorCode(profile.doctor_code || "");
         }
-      })
-    })
-    setSchedule(newSchedule)
-  }, [weekKey])
 
-  // Update current cell doctors when selectedCell changes
-  useEffect(() => {
-    if (selectedCell && schedule[selectedCell.row]) {
-      const entry = schedule[selectedCell.row][selectedCell.day]
-      setCurrentCellDoctors(entry?.value || [])
-      console.log('🔍 selectedCell mis à jour:', selectedCell)
-      console.log('🔍 Schedule data for selected cell:', entry)
-    }
-  }, [selectedCell, schedule])
+        const { data: scheduleData } = await supabase
+          .from("schedules")
+          .select("schedule_data")
+          .eq("week_key", weekKey)
+          .single();
 
-  // Handle cell click
-  const handleCellClick = (rowKey: string, day: string) => {
-    console.log('🔍 handleCellClick appelé pour', rowKey, day)
-    
-    if (rowKey === 'Notes du jour' || rowKey === 'Congés') {
-      console.log('🔍 Rangée bloquée (Notes/Congés), retour')
-      return
-    }
-    
-    const dayDate = weekDates[DAYS.indexOf(day)].toISOString().split('T')[0]
-    console.log('🔍 Mise à jour selectedCell avec:', { row: rowKey, day: dayDate })
-    setSelectedCell({ row: rowKey, day: dayDate })
-  }
+        if (scheduleData) {
+          setSchedule(scheduleData.schedule_data);
+        } else {
+          setSchedule(createEmptySchedule());
+        }
 
-  // Add doctor to cell
-  const addDoctorToCell = (doctor: string) => {
-    if (!selectedCell || !schedule[selectedCell.row]) return
-    
-    const newDoctors = [...currentCellDoctors]
-    if (!newDoctors.includes(doctor)) {
-      newDoctors.push(doctor)
-      setCurrentCellDoctors(newDoctors)
-      
-      const newSchedule = { ...schedule }
-      newSchedule[selectedCell.row][selectedCell.day] = {
-        value: newDoctors,
-        type: 'doctor',
-        status: 'pending'
+        const { data: vacationsData } = await supabase
+          .from("doctor_vacations")
+          .select("*");
+        setVacations(vacationsData || []);
+
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Erreur de chargement:", error);
+        setIsLoading(false);
       }
-      setSchedule(newSchedule)
-    }
-  }
+    };
+    loadData();
+  }, [weekKey, supabase]);
 
-  // Remove doctor from cell
-  const removeDoctorFromCell = (doctor: string) => {
-    const newDoctors = currentCellDoctors.filter(d => d !== doctor)
-    setCurrentCellDoctors(newDoctors)
-    
-    if (selectedCell && schedule[selectedCell.row]) {
-      const newSchedule = { ...schedule }
-      newSchedule[selectedCell.row][selectedCell.day] = {
-        value: newDoctors,
-        type: 'doctor',
-        status: 'pending'
-      }
-      setSchedule(newSchedule)
+  // Sauvegarder
+  const saveSchedule = useCallback(async (newSchedule: ScheduleData) => {
+    try {
+      const { error } = await supabase
+        .from("schedules")
+        .upsert({
+          week_key: weekKey,
+          schedule_data: newSchedule,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+      setSchedule(newSchedule);
+    } catch (error) {
+      console.error("Erreur de sauvegarde:", error);
     }
-  }
+  }, [weekKey, supabase]);
 
   // Navigation
-  const goToPreviousWeek = () => {
-    const newDate = new Date(currentDate)
-    newDate.setDate(newDate.getDate() - 7)
-    setCurrentDate(newDate)
-  }
+  const prevWeek = () => {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() - 7);
+    setCurrentDate(d);
+  };
+  const nextWeek = () => {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() + 7);
+    setCurrentDate(d);
+  };
+  const goToToday = () => setCurrentDate(new Date());
 
-  const goToNextWeek = () => {
-    const newDate = new Date(currentDate)
-    newDate.setDate(newDate.getDate() + 7)
-    setCurrentDate(newDate)
-  }
+  // Interactivité
+  const handleCellClick = (rowKey: string, day: string) => {
+    if (rowKey === "Notes du jour" || rowKey === "Congés") return;
+    setSelectedCell({ row: rowKey, day });
+  };
 
-  const goToToday = () => {
-    setCurrentDate(new Date())
+  const addDoctorToCell = (doctor: string) => {
+    if (!selectedCell) return;
+    const newSchedule = { ...schedule };
+    const cell = newSchedule[selectedCell.row][selectedCell.day];
+    if (!cell.value.includes(doctor)) {
+      cell.value.push(doctor);
+      cell.type = "doctor";
+      saveSchedule(newSchedule);
+    }
+    setSelectedCell(null);
+  };
+
+  const removeDoctorFromCell = (index: number) => {
+    if (!selectedCell) return;
+    const newSchedule = { ...schedule };
+    const cell = newSchedule[selectedCell.row][selectedCell.day];
+    cell.value.splice(index, 1);
+    if (cell.value.length === 0) cell.type = "empty";
+    saveSchedule(newSchedule);
+    setSelectedCell(null);
+  };
+
+  // Build request pour le solveur
+  const currentWeekRequest = useMemo(() => {
+    const monday = new Date(currentDate);
+    const day = monday.getDay();
+    const diff = monday.getDate() - day + (day === 0 ? -6 : 1);
+    monday.setDate(diff);
+    const weekStartDate = monday.toISOString().split("T")[0];
+    return buildCurrentWeekRequest(weekStartDate, weekInfo.week, vacations, DOCTORS);
+  }, [currentDate, weekInfo.week, vacations]);
+
+  const handleScheduleUpdate = useCallback((newSchedule: any) => {
+    const scheduleData = convertSolverResponseToScheduleData(newSchedule);
+    const updated = { ...schedule };
+    Object.keys(scheduleData).forEach(row => {
+      if (updated[row]) {
+        Object.keys(scheduleData[row]).forEach(day => {
+          if (updated[row][day]) {
+            updated[row][day].value = scheduleData[row][day].value;
+            updated[row][day].type = scheduleData[row][day].type || "doctor";
+            updated[row][day].status = "validated";
+          }
+        });
+      }
+    });
+    saveSchedule(updated);
+  }, [schedule, saveSchedule]);
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-screen">Chargement...</div>;
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Calendar className="w-8 h-8 text-blue-600" />
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Planning Cardiomaine</h1>
-              <p className="text-sm text-slate-500">Semaine {weekDates[0].toLocaleDateString('fr-FR', { month: 'long', day: 'numeric' })} - {weekDates[6].toLocaleDateString('fr-FR', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-            </div>
-          </div>
-          
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+      <div className="max-w-7xl mx-auto space-y-4">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border">
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToPreviousWeek}
-              className="px-2"
-            >
-              <ChevronLeft className="w-4 h-4" />
+            <Button variant="outline" size="icon" onClick={prevWeek}>
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToToday}
-            >
+            <div className="text-center">
+              <h2 className="text-lg font-bold">Semaine {weekInfo.week}</h2>
+              <p className="text-xs text-gray-500">{weekInfo.year}</p>
+            </div>
+            <Button variant="outline" size="icon" onClick={nextWeek}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={goToToday}>
               Aujourd'hui
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToNextWeek}
-              className="px-2"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 hidden md:inline">
+              {weekDates[0]} → {weekDates[6]}
+            </span>
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <ScrollArea className="flex-1 w-full">
-        <div className="p-6">
-          <Card className="overflow-hidden border-slate-200">
-            <table className="w-full border-collapse">
+        {/* Panneau vocal */}
+        {isAdmin && (
+          <div className="bg-white p-4 rounded-xl shadow-sm border">
+            <VoiceAndUploadPanel
+              apiBaseUrl={process.env.NEXT_PUBLIC_GUARD_API_BASE_URL || "https://guard-api-cardiomaine.onrender.com"}
+              apiKey={process.env.NEXT_PUBLIC_GUARD_API_KEY || ""}
+              currentWeekRequest={currentWeekRequest}
+              knownDoctors={DOCTORS}
+              onScheduleUpdated={handleScheduleUpdate}
+              onPdfParsed={(data) => {
+                console.log("Données PDF extraites:", data);
+              }}
+            />
+          </div>
+        )}
+
+        {/* Grille */}
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="bg-slate-100 border-b border-slate-200">
-                  <th className="p-3 text-left text-sm font-semibold text-slate-700 w-40 border-r border-slate-200">Ligne</th>
-                  {DAYS.map((day, index) => (
-                    <th key={day} className="p-3 text-center text-sm font-semibold text-slate-700 border-r last:border-r-0 border-slate-200">
-                      <div>{day}</div>
-                      <div className="text-xs font-normal text-slate-500">
-                        {weekDates[index].toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
-                      </div>
+                <tr className="bg-slate-100 border-b">
+                  <th className="sticky left-0 z-20 bg-slate-100 p-2 text-left font-bold text-slate-700 border-r min-w-[140px]">
+                    Activité
+                  </th>
+                  {DAYS.map((day, i) => (
+                    <th
+                      key={day}
+                      className={`p-2 text-center font-medium min-w-[80px] border-r last:border-r-0 ${
+                        day === "SAMEDI" || day === "DIMANCHE" ? "bg-gray-100" : ""
+                      }`}
+                    >
+                      <div className="text-[10px] uppercase tracking-wider">{day.slice(0, 3)}</div>
+                      <div className="text-xs font-bold">{weekDates[i]}</div>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {ROWS.map((rowKey) => (
-                  <tr key={rowKey} className="border-b border-slate-200 hover:bg-slate-50">
-                    <td className="p-3 text-sm font-medium text-slate-700 border-r border-slate-200 bg-slate-50">
-                      {rowKey}
-                    </td>
-                    {DAYS.map((day, index) => {
-                      const dayDate = weekDates[index].toISOString().split('T')[0]
-                      const entry = schedule[rowKey]?.[dayDate]
-                      const isSelected = selectedCell?.row === rowKey && selectedCell?.day === dayDate
-                      const isClickable = rowKey !== 'Notes du jour' && rowKey !== 'Congés'
-
+                {ROW_GROUPS.map((group, groupIdx) => (
+                  <Fragment key={`group-${groupIdx}`}>
+                    <tr className="bg-slate-50">
+                      <td colSpan={8} className="sticky left-0 z-20 bg-slate-50 p-1.5 text-xs font-semibold text-slate-600 tracking-wider border-r">
+                        {group.label}
+                      </td>
+                    </tr>
+                    {group.rows.map((rowKey) => {
+                      const rowData = schedule[rowKey] || {};
                       return (
-                        <td
-                          key={`${rowKey}-${day}`}
-                          onClick={() => isClickable && handleCellClick(rowKey, day)}
-                          className={`p-2 text-center border-r last:border-r-0 h-16 ${
-                            isSelected ? 'bg-blue-100' : ''
-                          } ${isClickable ? 'cursor-pointer hover:bg-slate-100' : 'bg-gray-100 cursor-not-allowed'} border-slate-200`}
-                        >
-                          <div className="flex flex-wrap gap-1 justify-center h-full items-center">
-                            {entry?.value?.map((doctor) => (
-                              <Badge
-                                key={doctor}
-                                className={`${DOCTOR_COLORS[doctor] || 'bg-gray-500'} text-white text-xs cursor-pointer`}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                }}
+                        <tr key={rowKey} className="border-b hover:bg-gray-50/50 transition-colors">
+                          <td className="sticky left-0 z-10 bg-white p-2 text-xs font-medium text-slate-700 border-r min-w-[140px]">
+                            {rowKey}
+                          </td>
+                          {DAYS.map((day) => {
+                            const cell = rowData[day] || { value: [], type: "empty", status: "validated" };
+                            const doctors = cell.value || [];
+                            return (
+                              <td
+                                key={day}
+                                onClick={() => handleCellClick(rowKey, day)}
+                                className="p-1 text-center border-r last:border-r-0 min-w-[80px] max-w-[100px] cursor-pointer hover:bg-gray-50"
                               >
-                                {doctor}
-                              </Badge>
-                            ))}
-                          </div>
-                        </td>
-                      )
+                                {doctors.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1 justify-center">
+                                    {doctors.map((doc: string, idx: number) => (
+                                      <span
+                                        key={idx}
+                                        className={`inline-block px-1.5 py-0.5 rounded-full text-white text-[10px] font-medium shadow-sm ${
+                                          DOCTOR_COLORS[doc] || "bg-gray-500"
+                                        }`}
+                                      >
+                                        {doc}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-300 text-xs">·</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
                     })}
-                  </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
-          </Card>
-
-          {/* Voice and Upload Panel */}
-          <div className="mt-8">
-            <VoiceAndUploadPanel
-              onCommandExecuted={(result) => {
-                console.log('[v0] Voice command executed:', result)
-                if (result?.updated) {
-                  // Refresh planning
-                }
-              }}
-              isOpen={true}
-              weekStartDate={weekDates[0]?.toISOString().split('T')[0]}
-            />
           </div>
         </div>
-      </ScrollArea>
 
-      {/* Modal de sélection des médecins */}
-      <Dialog open={!!selectedCell} onOpenChange={(open) => !open && setSelectedCell(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedCell?.row} - {selectedCell?.day}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            {/* Grille de sélection */}
-            <div>
-              <p className="text-sm font-medium text-slate-700 mb-3">Ajouter un médecin</p>
-              <div className="grid grid-cols-7 gap-2">
-                {DOCTORS.map(doctor => (
-                  <Button
-                    key={doctor}
-                    onClick={() => addDoctorToCell(doctor)}
-                    className={`${DOCTOR_COLORS[doctor] || 'bg-gray-500'} text-white text-xs h-8`}
-                    variant="default"
+        {/* Pied de page */}
+        <div className="text-xs text-gray-400 text-center py-2">
+          Planning Cardiomaine – Semaine {weekInfo.week} • {weekInfo.year}
+        </div>
+      </div>
+
+      {/* Modal */}
+      {selectedCell && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-t-2xl bg-white p-4 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900">Modifier l'affectation</h3>
+                <p className="text-xs text-slate-500">{selectedCell.day} - {selectedCell.row}</p>
+              </div>
+              <button onClick={() => setSelectedCell(null)} className="p-2 hover:bg-gray-100 rounded-full">
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-lg border border-slate-100">
+              {schedule[selectedCell.row][selectedCell.day].value.length === 0 && (
+                <span className="text-slate-400 text-sm italic self-center">Aucun médecin sélectionné</span>
+              )}
+              {schedule[selectedCell.row][selectedCell.day].value.map((doc, index) => (
+                <div key={index} className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${DOCTOR_COLORS[doc] || 'bg-gray-500'}`}>
+                  {doc}
+                  <button onClick={() => removeDoctorFromCell(index)} className="ml-1 hover:bg-black/20 rounded-full p-0.5">
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
+              {DOCTORS.map((doc) => {
+                const isSelected = schedule[selectedCell.row][selectedCell.day].value.includes(doc);
+                return (
+                  <button
+                    key={doc}
+                    onClick={() => addDoctorToCell(doc)}
+                    disabled={isSelected}
+                    className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all
+                      ${isSelected ? 'opacity-20 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95'}
+                    `}
                   >
-                    {doctor}
-                  </Button>
-                ))}
-              </div>
+                    <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
+                    {doc}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Médecins présents */}
-            <div>
-              <p className="text-sm font-medium text-slate-700 mb-2">Médecins présents</p>
-              <div className="flex flex-wrap gap-2">
-                {currentCellDoctors.length === 0 ? (
-                  <p className="text-sm text-slate-500">Aucun médecin assigné</p>
-                ) : (
-                  currentCellDoctors.map(doctor => (
-                    <Badge
-                      key={doctor}
-                      className={`${DOCTOR_COLORS[doctor] || 'bg-gray-500'} text-white`}
-                    >
-                      {doctor}
-                      <button
-                        onClick={() => removeDoctorFromCell(doctor)}
-                        className="ml-1 text-white hover:opacity-75"
-                      >
-                        ×
-                      </button>
-                    </Badge>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <Button
-              onClick={() => setSelectedCell(null)}
-              variant="outline"
-              className="w-full"
-            >
+            <button className="w-full py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
               Fermer
-            </Button>
+            </button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
-  )
+  );
 }
