@@ -786,11 +786,15 @@ export function ScheduleApp({
                 </div>
 
                 <div className="rounded-xl border bg-white shadow-sm">
-                  <div className="overflow-x-auto w-full max-w-[100vw] md:max-w-none -webkit-overflow-scrolling-touch max-h-[calc(100vh-200px)] md:max-h-[70vh] overflow-y-auto">
+                  <div className="relative">
+                    {/* Scroll indicator gradient */}
+                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white/50 to-transparent pointer-events-none z-10 md:hidden" />
+                  </div>
+                  <div className="overflow-x-auto w-full md:max-w-none -webkit-overflow-scrolling-touch">
                     <table className="text-xs border-collapse table-layout-fixed w-max md:w-full min-w-[700px]">
                       <thead className="sticky top-0 z-40 bg-slate-100 shadow-sm">
                         <tr>
-                          <th className="sticky left-0 z-50 bg-slate-100 p-2 md:p-3 text-left font-bold text-slate-700 border-b border-r min-w-[120px] text-[10px] md:text-xs">
+                          <th className="sticky left-0 z-50 bg-slate-100 p-2 md:p-3 text-left font-bold text-slate-700 border-b border-r min-w-[120px] text-[10px] md:text-xs shadow-[4px_0_8px_-2px_rgba(0,0,0,0.15)]">
                             Activité
                           </th>
                           {DAYS.map((d, i) => (
@@ -835,7 +839,7 @@ export function ScheduleApp({
                           if (rowKey === "Notes du jour") {
                             return (
                               <tr key={rowKey} className="border-b last:border-0 bg-yellow-50">
-                                <td className="sticky left-0 z-20 bg-yellow-50 p-2 font-bold text-yellow-700 border-r text-[11px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[120px] text-[10px] md:text-xs">
+                                <td className="sticky left-0 z-20 bg-yellow-50 p-2 font-bold text-yellow-700 border-r-2 border-yellow-300 text-[11px] shadow-[4px_0_8px_-2px_rgba(0,0,0,0.15)] min-w-[120px] text-[10px] md:text-xs">
                                   📝 Notes
                                 </td>
                                 {DAYS.map((day) => (
@@ -861,7 +865,7 @@ export function ScheduleApp({
                                 <tr className="bg-slate-200">
                                   <td
                                     colSpan={8}
-                                    className="sticky left-0 z-20 p-2 font-bold text-slate-600 text-[10px] tracking-wider bg-slate-200 min-w-[120px] text-[10px] md:text-xs"
+                                    className="sticky left-0 z-20 p-2 font-bold text-slate-600 text-[10px] tracking-wider bg-slate-200 min-w-[120px] text-[10px] md:text-xs border-r-2 border-slate-300 shadow-[4px_0_8px_-2px_rgba(0,0,0,0.1)]"
                                   >
                                     {sectionTitle}
                                   </td>
@@ -871,7 +875,7 @@ export function ScheduleApp({
                                 key={rowKey}
                                 className={`border-b last:border-0 transition-colors ${getRowColor(rowKey)}`}
                               >
-                                <td className="sticky left-0 z-20 bg-white p-2 font-medium text-slate-700 border-r text-[11px] truncate max-w-[140px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[120px] text-[10px] md:text-xs">
+                                <td className="sticky left-0 z-20 bg-white p-2 font-medium text-slate-700 border-r-2 border-slate-300 text-[11px] truncate max-w-[140px] shadow-[4px_0_8px_-2px_rgba(0,0,0,0.15)] min-w-[120px] text-[10px] md:text-xs">
                                   <span className="mr-1 inline-block w-4 text-center">
                                     {/* @ts-ignore */}
                                     {ACTIVITY_ICONS[
