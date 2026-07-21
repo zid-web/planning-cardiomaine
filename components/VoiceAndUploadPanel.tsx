@@ -21,7 +21,7 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
   const [isListening, setIsListening] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<{
-    type: "idle" | "loading" | "success" | "error"
+    type: "idle" | "loading" | "success" | "error" | "info"
     message: string
   }>({
     type: "idle",
@@ -74,6 +74,7 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
       recognitionRef.current.onerror = (event: any) => {
         console.error('[v0] Speech recognition error:', event.error)
         let message = ""
+        let type: "error" | "info" = "error"
         switch (event.error) {
           case 'not-allowed':
           case 'service-not-allowed':
@@ -89,14 +90,14 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
             message = "Erreur réseau pendant la reconnaissance vocale. Vérifiez votre connexion."
             break
           case 'aborted':
-            // Annulation volontaire : pas de message d'erreur
-            message = ""
+            type = "info"
+            message = "Enregistrement annulé (peut-être un clic involontaire). Réessayez."
             break
           default:
             message = `Erreur de reconnaissance vocale : ${event.error}`
         }
         if (message) {
-          setStatus({ type: "error", message })
+          setStatus({ type, message })
         }
         setIsListening(false)
       }
@@ -511,16 +512,17 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
         {status.type !== "idle" && (
           <div
             className={`p-3 rounded-lg text-sm flex items-center gap-2 ${
-              status.type === "loading"
-                ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                : status.type === "success"
-                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                status.type === "loading" || status.type === "info"
+                  ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                  : status.type === "success"
+                  ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                  : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
             }`}
           >
             {status.type === "loading" && <Loader2 className="w-4 h-4 animate-spin" />}
             {status.type === "success" && <CheckCircle2 className="w-4 h-4" />}
-            {status.type === "error" && <AlertCircle className="w-4 h-4" />}
+              {status.type === "error" && <AlertCircle className="w-4 h-4" />}
+              {status.type === "info" && <AlertCircle className="w-4 h-4" />}
             <span>{status.message}</span>
           </div>
         )}
