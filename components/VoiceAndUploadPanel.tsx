@@ -469,3 +469,4 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
     </Card>
   )
 }
+export default VoiceAndUploadPanel;
