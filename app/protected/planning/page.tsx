@@ -284,10 +284,10 @@ export default function PlanningPage() {
 
         {/* Grille */}
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-auto max-h-[70vh]">
             <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="bg-slate-100 border-b">
+              <thead className="sticky top-0 z-10 bg-slate-100">
+                <tr className="border-b">
                   <th className="sticky left-0 z-20 bg-slate-100 p-2 text-left font-bold text-slate-700 border-r min-w-[140px]">
                     Activité
                   </th>
