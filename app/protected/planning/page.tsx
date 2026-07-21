@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, Fragment } from "react";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VoiceAndUploadPanel } from "@/components/VoiceAndUploadPanel";
 import { DAYS, DOCTORS, DOCTOR_COLORS } from "@/lib/constants";
@@ -100,6 +100,7 @@ export default function PlanningPage() {
   const [doctorCode, setDoctorCode] = useState("");
   const [vacations, setVacations] = useState<any[]>([]);
   const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null);
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false);
 
   const weekInfo = useMemo(() => getWeekNumber(currentDate), [currentDate]);
   const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, "0")}`;
@@ -240,50 +241,34 @@ export default function PlanningPage() {
   }
 
   return (
-    <div className="h-screen bg-gray-50 p-4 md:p-6 flex flex-col overflow-hidden">
-      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col gap-4 overflow-hidden">
+    <div className="h-screen bg-gray-50 p-1 md:p-4 lg:p-6 flex flex-col overflow-hidden">
+      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col gap-1 md:gap-4 overflow-hidden">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border">
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" onClick={prevWeek}>
+        <div className="flex flex-wrap items-center justify-between gap-1 md:gap-4 bg-white p-2 md:p-4 rounded-lg md:rounded-xl shadow-sm border">
+          <div className="flex items-center gap-1 md:gap-2">
+            <Button variant="outline" size="icon" className="h-8 w-8 md:h-10 md:w-10" onClick={prevWeek}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <div className="text-center">
-              <h2 className="text-lg font-bold">Semaine {weekInfo.week}</h2>
-              <p className="text-xs text-gray-500">{weekInfo.year}</p>
+              <h2 className="text-sm md:text-lg font-bold">Semaine {weekInfo.week}</h2>
+              <p className="text-[10px] md:text-xs text-gray-500">{weekInfo.year}</p>
             </div>
-            <Button variant="outline" size="icon" onClick={nextWeek}>
+            <Button variant="outline" size="icon" className="h-8 w-8 md:h-10 md:w-10" onClick={nextWeek}>
               <ChevronRight className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={goToToday}>
+            <Button variant="ghost" size="sm" className="text-xs h-8 md:h-10" onClick={goToToday}>
               Aujourd'hui
             </Button>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500 hidden md:inline">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] md:text-sm text-gray-500 hidden sm:inline">
               {weekDates[0]} → {weekDates[6]}
             </span>
           </div>
         </div>
 
-        {/* Panneau vocal */}
-        {isAdmin && (
-          <div className="bg-white p-4 rounded-xl shadow-sm border">
-            <VoiceAndUploadPanel
-              apiBaseUrl={process.env.NEXT_PUBLIC_GUARD_API_BASE_URL || "https://guard-api-cardiomaine.onrender.com"}
-              apiKey={process.env.NEXT_PUBLIC_GUARD_API_KEY || ""}
-              currentWeekRequest={currentWeekRequest}
-              knownDoctors={DOCTORS}
-              onScheduleUpdated={handleScheduleUpdate}
-              onPdfParsed={(data) => {
-                console.log("Données PDF extraites:", data);
-              }}
-            />
-          </div>
-        )}
-
-        {/* Grille */}
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col flex-1">
+        {/* Grille pleine hauteur */}
+        <div className="bg-white rounded-lg md:rounded-xl shadow-sm border overflow-hidden flex flex-col flex-1 min-h-0">
           <div className="w-full h-full overflow-auto">
             <table className="w-full border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-slate-100">
@@ -362,6 +347,44 @@ export default function PlanningPage() {
           Planning Cardiomaine – Semaine {weekInfo.week} • {weekInfo.year}
         </div>
       </div>
+
+      {/* Bouton flottant pour le panneau vocal (admin uniquement) */}
+      {isAdmin && (
+        <>
+          <button
+            onClick={() => setVoicePanelOpen(!voicePanelOpen)}
+            className="fixed bottom-4 right-4 z-50 bg-teal-600 hover:bg-teal-700 text-white rounded-full p-3 shadow-lg transition-all hover:shadow-xl"
+            aria-label="Ouvrir le panneau vocal"
+          >
+            <Mic className="w-6 h-6" />
+          </button>
+
+          {/* Panneau vocal popup */}
+          {voicePanelOpen && (
+            <div className="fixed bottom-20 right-4 z-50 w-80 max-w-[calc(100vw-32px)] bg-white rounded-xl shadow-2xl border p-4 max-h-[70vh] overflow-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-lg">Panneau Vocal & Upload</h3>
+                <button
+                  onClick={() => setVoicePanelOpen(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <VoiceAndUploadPanel
+                apiBaseUrl={process.env.NEXT_PUBLIC_GUARD_API_BASE_URL || "https://guard-api-cardiomaine.onrender.com"}
+                apiKey={process.env.NEXT_PUBLIC_GUARD_API_KEY || ""}
+                currentWeekRequest={currentWeekRequest}
+                knownDoctors={DOCTORS}
+                onScheduleUpdated={handleScheduleUpdate}
+                onPdfParsed={(data) => {
+                  console.log("Données PDF extraites:", data);
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       {/* Modal */}
       {selectedCell && (
