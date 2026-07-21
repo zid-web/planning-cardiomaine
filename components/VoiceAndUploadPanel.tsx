@@ -29,6 +29,7 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
   })
   const [uploadedFileName, setUploadedFileName] = useState("")
   const [uploadError, setUploadError] = useState("")
+  const [micSupported, setMicSupported] = useState(true)
 
   const recognitionRef = useRef<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -72,16 +73,36 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
 
       recognitionRef.current.onerror = (event: any) => {
         console.error('[v0] Speech recognition error:', event.error)
-        // Ne pas afficher l'erreur "not-allowed" au démarrage
-        if (event.error !== 'not-allowed') {
-          setStatus({
-            type: "error",
-            message: `Erreur: ${event.error}`
-          })
+        let message = ""
+        switch (event.error) {
+          case 'not-allowed':
+          case 'service-not-allowed':
+            message = "Accès au micro refusé. Autorisez le microphone dans les réglages de votre navigateur, puis réessayez."
+            break
+          case 'no-speech':
+            message = "Aucune voix détectée. Rapprochez-vous du micro et réessayez."
+            break
+          case 'audio-capture':
+            message = "Aucun micro détecté sur cet appareil."
+            break
+          case 'network':
+            message = "Erreur réseau pendant la reconnaissance vocale. Vérifiez votre connexion."
+            break
+          case 'aborted':
+            // Annulation volontaire : pas de message d'erreur
+            message = ""
+            break
+          default:
+            message = `Erreur de reconnaissance vocale : ${event.error}`
+        }
+        if (message) {
+          setStatus({ type: "error", message })
         }
         setIsListening(false)
       }
     }
+
+    setMicSupported(!!SpeechRecognition)
   }, [])
 
   // Mettre à jour editedTranscript quand la transcription change
@@ -89,21 +110,51 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
     setEditedTranscript(transcript)
   }, [transcript])
 
-  const toggleListening = useCallback(() => {
+  const toggleListening = useCallback(async () => {
     if (!recognitionRef.current) {
       setStatus({
         type: "error",
-        message: "La reconnaissance vocale n'est pas disponible dans votre navigateur"
+        message: "La reconnaissance vocale n'est pas disponible sur cet appareil. Saisissez votre commande manuellement ci-dessous."
       })
       return
     }
 
     if (isListening) {
-      recognitionRef.current.stop()
-    } else {
-      setTranscript("")
-      setEditedTranscript("")
+      try {
+        recognitionRef.current.stop()
+      } catch (err) {
+        console.error('[v0] Erreur à l\'arrêt de l\'écoute:', err)
+      }
+      return
+    }
+
+    // Demander explicitement l'autorisation micro : indispensable et fiable sur mobile.
+    // Sans ça, SpeechRecognition échoue souvent silencieusement (surtout sur Android/Chrome mobile).
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        // Libérer immédiatement le flux : SpeechRecognition ouvre son propre canal audio.
+        stream.getTracks().forEach((track) => track.stop())
+      }
+    } catch (err) {
+      console.error('[v0] Permission micro refusée:', err)
+      setStatus({
+        type: "error",
+        message: "Accès au micro refusé. Autorisez le microphone dans les réglages de votre navigateur, puis réessayez."
+      })
+      return
+    }
+
+    setTranscript("")
+    setEditedTranscript("")
+    try {
       recognitionRef.current.start()
+    } catch (err) {
+      // start() lève une InvalidStateError si la reconnaissance est déjà active.
+      console.error('[v0] Erreur au démarrage de l\'écoute:', err)
+      try {
+        recognitionRef.current.stop()
+      } catch {}
     }
   }, [isListening])
 
@@ -370,11 +421,19 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
             )}
           </button>
 
-          {/* Affichage du Transcript */}
-          {(transcript || editedTranscript) && !isListening && (
+          {/* Message si le micro n'est pas supporté (ex: certains navigateurs iOS / mode PWA) */}
+          {!micSupported && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              Reconnaissance vocale indisponible ici. Saisissez votre commande dans le champ ci-dessous.
+            </p>
+          )}
+
+          {/* Affichage du Transcript / saisie manuelle (toujours disponible en secours) */}
+          {!isListening && (
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Transcription (modifiable):
+                Transcription (modifiable) :
               </label>
               <textarea
                 value={editedTranscript}

@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { LogoutButton } from './logout-button'
 import { MessageSquare } from 'lucide-react'
+import InstallButton from './install-button'
 
 export async function Navbar() {
   const supabase = await createClient()
@@ -16,6 +17,7 @@ export async function Navbar() {
         </Link>
 
         <div className="flex items-center gap-4">
+          <InstallButton />
           {data?.user ? (
             <>
               <span className="text-gray-600">{data.user.email}</span>

@@ -7,20 +7,34 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export default function InstallButton() {
   const [promptEvent, setPromptEvent] = useState<any>(null)
   const [isIOS, setIsIOS] = useState(false)
+  const [isStandalone, setIsStandalone] = useState(false)
   const [showIOSInstructions, setShowIOSInstructions] = useState(false)
 
   useEffect(() => {
-    // Check if user is on iOS
+    // Détecter iOS
     const isIosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream
     setIsIOS(isIosDevice)
 
-    // Listen for beforeinstallprompt event (Android/Chrome)
+    // Détecter si l'app est déjà installée (mode standalone) pour masquer l'icône
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true
+    setIsStandalone(standalone)
+
+    // Écouter l'événement beforeinstallprompt (Android/Chrome)
     const handler = (e: any) => {
       e.preventDefault()
       setPromptEvent(e)
     }
     window.addEventListener("beforeinstallprompt", handler)
-    return () => window.removeEventListener("beforeinstallprompt", handler)
+
+    // Masquer l'icône une fois l'installation effectuée
+    const installedHandler = () => setPromptEvent(null)
+    window.addEventListener("appinstalled", installedHandler)
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler)
+      window.removeEventListener("appinstalled", installedHandler)
+    }
   }, [])
 
   const installApp = () => {
@@ -32,23 +46,32 @@ export default function InstallButton() {
     }
   }
 
+  // Ne rien afficher si déjà installée, ou si aucune méthode d'installation n'est disponible
+  if (isStandalone) return null
   if (!promptEvent && !isIOS) return null
 
   return (
     <>
-      <Button onClick={installApp} className="gap-2 shadow-lg" variant="default">
-        <Download className="h-4 w-4" />
-        Installer l'application
+      <Button
+        onClick={installApp}
+        variant="ghost"
+        size="icon"
+        title="Installer l'application"
+        aria-label="Installer l'application sur l'écran d'accueil"
+        className="text-gray-500 hover:text-blue-600"
+      >
+        <Download className="h-5 w-5" />
       </Button>
 
       {showIOSInstructions && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in">
           <Card className="w-full max-w-md relative">
             <Button
               variant="ghost"
               size="icon"
               className="absolute right-2 top-2"
               onClick={() => setShowIOSInstructions(false)}
+              aria-label="Fermer"
             >
               <X className="h-4 w-4" />
             </Button>
@@ -57,7 +80,7 @@ export default function InstallButton() {
                 <Share className="h-6 w-6" />
                 Installation sur iPhone
               </CardTitle>
-              <CardDescription>Suivez ces étapes pour ajouter l'app à votre écran d'accueil</CardDescription>
+              <CardDescription>Suivez ces étapes pour ajouter l&apos;app à votre écran d&apos;accueil</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <ol className="list-decimal list-inside space-y-3 text-sm text-slate-600">
@@ -67,7 +90,7 @@ export default function InstallButton() {
                 </li>
                 <li className="flex items-center gap-2">
                   Faites défiler vers le bas et choisissez{" "}
-                  <span className="font-bold text-slate-900">"Sur l'écran d'accueil"</span>
+                  <span className="font-bold text-slate-900">&quot;Sur l&apos;écran d&apos;accueil&quot;</span>
                 </li>
                 <li className="flex items-center gap-2">
                   Appuyez sur <span className="font-bold text-slate-900">Ajouter</span> en haut à droite

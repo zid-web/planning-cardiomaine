@@ -1,16 +1,27 @@
 import React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import ServiceWorkerRegistrar from "@/components/service-worker-registrar"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
+export const viewport: Viewport = {
+  themeColor: "#1e40af",
+}
+
 export const metadata: Metadata = {
   title: "Plateforme de gestion : planning Cardiomaine",
-  description: "Created with v0",
+  description: "Plateforme de gestion de planning pour le Groupe Cardiomaine",
   generator: "v0.app",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Cardiomaine",
+  },
   icons: {
     icon: [
       {
@@ -41,6 +52,7 @@ export default function RootLayout({
         <div id="root" className="h-full overflow-hidden">
           {children}
         </div>
+        <ServiceWorkerRegistrar />
         <Analytics />
       </body>
     </html>
