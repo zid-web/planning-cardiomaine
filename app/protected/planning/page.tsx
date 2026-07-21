@@ -284,7 +284,7 @@ export default function PlanningPage() {
 
         {/* Grille */}
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-          <div className="overflow-x-auto overflow-y-auto max-h-[70vh]">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)]">
             <table className="w-full border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-slate-100">
                 <tr className="border-b">
