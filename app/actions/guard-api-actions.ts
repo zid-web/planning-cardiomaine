@@ -1,343 +1,288 @@
-'use server'
+"use server";
 
-import { createClient } from '@/lib/supabase/server'
-import { DoctorVacation, ScheduleData } from '@/lib/types'
-import { DAYS } from '@/lib/constants'
-import { format, parseISO } from 'date-fns'
+import { createClient } from "@/lib/supabase/server";
+import { DoctorVacation } from "@/lib/types";
 
-const GUARD_API_URL = 'https://guard-api-cardiomaine.onrender.com'
+// Configuration
+const GUARD_API_URL = process.env.GUARD_API_URL || "https://guard-api-cardiomaine.onrender.com";
+const GUARD_API_KEY = process.env.GUARD_API_KEY;
 
-interface EquityData {
-  doctor_id: string
-  astreinte_count: number
-  nct_count: number
-  weekend_count: number
+// Types pour les médecins
+interface Doctor {
+  id: string;
+  nom: string;
+  statut: "permanent" | "astreinte_coro" | "fv" | "daas" | "d" | "ch" | "admin";
+  points_astreinte: number;
+  points_garde: number;
+  points_nct: number;
+  points_weekend: number;
 }
 
-interface GuardAPIRequest {
-  week_start_date: string
-  week_type: 1 | 2
-  weekend_mode: 'CH' | 'ROTATION'
-  vacations: Array<{ doctor_id: string; start_date: string; end_date: string }>
-  equity: EquityData[]
-  last_nct_doctor: string
-}
-
-interface GuardAPIResponse {
-  week_start_date: string
-  week_type: 1 | 2
-  assignments: Array<{
-    date: string
-    day_name: string
-    slot: string
-    activity: string
-    doctor: string
-    note?: string
-  }>
-  warnings: string[]
+interface EquityPoints {
+  astreinte: Record<string, number>;
+  garde: Record<string, number>;
+  nct: Record<string, number>;
+  weekend: Record<string, number>;
 }
 
 /**
- * Détermine le type de semaine (1 ou 2) en alternant par rapport à une semaine de référence
- * Référence: 2026-01-19 (semaine 3) = type 1
+ * Récupère la liste des médecins depuis Supabase
  */
-function getWeekType(weekStartDate: string): 1 | 2 {
-  const referenceDate = parseISO('2026-01-19') // Semaine 3 = type 1
-  const currentDate = parseISO(weekStartDate)
-  const daysDiff = Math.floor(
-    (currentDate.getTime() - referenceDate.getTime()) / (7 * 24 * 60 * 60 * 1000)
-  )
-  const weeksFromReference = daysDiff
-  return (weeksFromReference % 2 === 0 ? 1 : 2) as 1 | 2
-}
+async function getDoctorsFromSupabase(): Promise<Doctor[]> {
+  const supabase = await createClient();
+  
+  // Récupère tous les médecins actifs
+  const { data: doctors, error } = await supabase
+    .from("doctors")
+    .select("id, nom, statut")
+    .eq("actif", true);
 
-/**
- * Détermine le mode weekend (CH ou ROTATION) en alternant
- * Référence: semaine 3/2026 (weekend 19-25 jan) = CH (impair)
- */
-function getWeekendMode(weekStartDate: string): 'CH' | 'ROTATION' {
-  const date = parseISO(weekStartDate)
-  const year = date.getFullYear()
-  const dayOfYear = Math.floor(
-    (date.getTime() - new Date(year, 0, 0).getTime()) / (24 * 60 * 60 * 1000)
-  )
-  const weekendNumber = Math.ceil(dayOfYear / 7)
-
-  // Semaine 3 (weekend 3) = CH (impair)
-  return weekendNumber % 2 === 1 ? 'CH' : 'ROTATION'
-}
-
-/**
- * Calcule les compteurs d'équité actuels depuis l'historique des gardes
- */
-async function calculateCurrentEquity(): Promise<EquityData[]> {
-  const supabase = await createClient()
-
-  // Récupérer tous les schedules
-  const { data: schedules, error } = await supabase
-    .from('schedules')
-    .select('schedule_data')
-    .order('week_key', { ascending: true })
-
-  if (error || !schedules) {
-    console.warn('[v0] Could not fetch schedules for equity calculation:', error)
-    return []
+  if (error) {
+    console.error("Erreur lors de la récupération des médecins :", error);
+    return [];
   }
 
-  const equity: { [key: string]: EquityData } = {}
+  // Récupère les points d'équité historiques pour chaque médecin
+  const equityPoints = await calculateEquityPoints();
 
-  // Initialiser les compteurs - exclure les médecins externes (DAAS, D, CH, FV)
-  // Seuls les médecins internes sont inclus dans l'équité
-  const doctors = [
-    'A',
-    'Z',
-    'S',
-    'B',
-    'G',
-    'O',
-    'W',
-    'M',
-    'P',
-    'H',
-    'U',
-    'K',
-    'V',
-  ]
-  doctors.forEach((doc) => {
-    equity[doc] = { doctor_id: doc, astreinte_count: 0, nct_count: 0, weekend_count: 0 }
-  })
+  return doctors.map((doc) => ({
+    id: doc.id,
+    nom: doc.nom,
+    statut: doc.statut || "permanent",
+    points_astreinte: equityPoints.astreinte[doc.id] || 0,
+    points_garde: equityPoints.garde[doc.id] || 0,
+    points_nct: equityPoints.nct[doc.id] || 0,
+    points_weekend: equityPoints.weekend[doc.id] || 0,
+  }));
+}
 
-  // Parcourir tous les schedules et compter
+/**
+ * Calcule les points d'équité historiques pour chaque médecin
+ */
+async function calculateEquityPoints(): Promise<EquityPoints> {
+  const supabase = await createClient();
+  
+  // Récupère les 13 dernières semaines de planning
+  const { data: schedules, error } = await supabase
+    .from("schedules")
+    .select("schedule_data")
+    .order("week_key", { ascending: false })
+    .limit(13);
+
+  if (error || !schedules || schedules.length === 0) {
+    return { astreinte: {}, garde: {}, nct: {}, weekend: {} };
+  }
+
+  const points: EquityPoints = {
+    astreinte: {},
+    garde: {},
+    nct: {},
+    weekend: {},
+  };
+
+  // Parcours chaque semaine pour cumuler les points
   schedules.forEach((schedule) => {
-    const scheduleData = schedule.schedule_data as ScheduleData
+    const data = schedule.schedule_data;
+    if (!data) return;
 
-    if (!scheduleData) return
+    // Parcours chaque ligne du planning
+    Object.values(data).forEach((row: any) => {
+      Object.values(row).forEach((cell: any) => {
+        if (!cell || !cell.doctor) return;
 
-    // Compter les astreintes et NCT
-    Object.entries(scheduleData).forEach(([activity, dayData]) => {
-      if (activity === 'Congés' || activity === 'Notes du jour') return
+        const doctorId = cell.doctor;
+        const activity = cell.activity || cell.type;
 
-      Object.entries(dayData).forEach(([day, cellData]) => {
-        if (
-          activity === 'Astreinte Nuit' ||
-          activity === 'Astreinte Matin' ||
-          activity === 'Astreinte Midi'
-        ) {
-          const doctors = (cellData as any).value || []
-          doctors.forEach((doc: string) => {
-            if (equity[doc]) equity[doc].astreinte_count++
-          })
+        // Compte les points selon l'activité
+        if (activity === "ASTREINTE") {
+          points.astreinte[doctorId] = (points.astreinte[doctorId] || 0) + 1;
+        } else if (activity === "GARDE") {
+          points.garde[doctorId] = (points.garde[doctorId] || 0) + 1;
+        } else if (activity === "NCT") {
+          points.nct[doctorId] = (points.nct[doctorId] || 0) + 1;
+        } else if (activity === "ASTREINTE_WEEKEND" || activity === "GARDE_WEEKEND") {
+          points.weekend[doctorId] = (points.weekend[doctorId] || 0) + 1;
         }
+      });
+    });
+  });
 
-        if (activity === 'NCT') {
-          const doctors = (cellData as any).value || []
-          doctors.forEach((doc: string) => {
-            if (equity[doc]) equity[doc].nct_count++
-          })
-        }
-
-        if (activity === 'Astreinte Weekend') {
-          const doctors = (cellData as any).value || []
-          doctors.forEach((doc: string) => {
-            if (equity[doc]) equity[doc].weekend_count++
-          })
-        }
-      })
-    })
-  })
-
-  return Object.values(equity).filter((e) => e.astreinte_count > 0 || e.nct_count > 0 || e.weekend_count > 0)
+  return points;
 }
 
 /**
- * Récupère le dernier médecin qui a fait une NCT
- */
-async function getLastNCTDoctor(): Promise<string> {
-  const supabase = await createClient()
-
-  const { data: schedules, error } = await supabase
-    .from('schedules')
-    .select('schedule_data')
-    .order('week_key', { ascending: false })
-    .limit(4)
-
-  if (error || !schedules) return 'W' // Défaut
-
-  for (const schedule of schedules) {
-    const scheduleData = schedule.schedule_data as ScheduleData
-    if (!scheduleData?.NCT) continue
-
-    for (const dayData of Object.values(scheduleData.NCT)) {
-      const doctors = (dayData as any).value || []
-      if (doctors.length > 0) {
-        return doctors[0] // Retourner le premier médecin trouvé
-      }
-    }
-  }
-
-  return 'W' // Défaut si aucune NCT trouvée
-}
-
-/**
- * Appelle l'API externe pour générer les gardes
+ * Génère le planning via l'API Render
  */
 export async function generateGuardsViaAPI(
-  weekKey: string,
-  vacations: DoctorVacation[]
-): Promise<{
-  success: boolean
-  error?: string
-  schedule?: ScheduleData
-  warnings?: string[]
-}> {
+  weekStartDate: string,
+  vacations: DoctorVacation[],
+  weekendMode: "ROTATION" | "CH" = "ROTATION",
+  weekType: 1 | 2 = 1
+) {
   try {
-    // Déterminer week_type et weekend_mode
-    const weekStartDate = `${weekKey.split('-W')[0]}-${String(parseInt(weekKey.split('-W')[1]) * 7 - 5)
-      .padStart(2, '0')}`
-    const mondayOfWeek = new Date(parseISO(weekKey.split('-W')[0] + '-01-01'))
-    mondayOfWeek.setDate(
-      mondayOfWeek.getDate() + (parseInt(weekKey.split('-W')[1]) - 1) * 7 + (1 - mondayOfWeek.getDay())
-    )
-    const weekStartISO = format(mondayOfWeek, 'yyyy-MM-dd')
+    // 1. Récupère la liste des médecins depuis Supabase
+    const doctors = await getDoctorsFromSupabase();
 
-    const weekType = getWeekType(weekStartISO)
-    const weekendMode = getWeekendMode(weekStartISO)
+    if (doctors.length === 0) {
+      return {
+        success: false,
+        error: "Aucun médecin trouvé dans la base de données.",
+      };
+    }
 
-    // Calculer l'équité et récupérer la dernière NCT
-    const [equityData, lastNCTDoctor] = await Promise.all([
-      calculateCurrentEquity(),
-      getLastNCTDoctor(),
-    ])
+    // 2. Récupère le dernier médecin NCT (depuis la base ou une variable)
+    const lastNctDoctor = await getLastNctDoctor();
 
-    // Construire la requête
-    const request: GuardAPIRequest = {
-      week_start_date: weekStartISO,
+    // 3. Récupère les congés
+    const congres = await getCongres();
+
+    // 4. Construit le payload pour Render
+    const payload = {
+      week_start_date: weekStartDate,
       week_type: weekType,
       weekend_mode: weekendMode,
+      last_nct_doctor: lastNctDoctor || doctors[0]?.id || "M",
       vacations: vacations.map((v) => ({
         doctor_id: v.doctor_id,
         start_date: v.start_date,
         end_date: v.end_date,
+        reason: v.reason || "congé",
       })),
-      equity: equityData,
-      last_nct_doctor: lastNCTDoctor,
-    }
+      congres: congres.map((c) => ({
+        doctor_id: c.doctor_id,
+        start_date: c.start_date,
+        end_date: c.end_date,
+        type: c.type || "congrès",
+      })),
+      medecins: doctors.map((doc) => ({
+        id: doc.id,
+        statut: doc.statut,
+        points_astreinte: doc.points_astreinte,
+        points_garde: doc.points_garde,
+        points_nct: doc.points_nct,
+        points_weekend: doc.points_weekend,
+      })),
+    };
 
-    console.log('[v0] Sending to Guard API:', JSON.stringify(request, null, 2))
+    console.log("🚀 Envoi à Render :", JSON.stringify(payload, null, 2));
 
-    // Appeler l'API
+    // 5. Appel à l'API Render
     const response = await fetch(`${GUARD_API_URL}/generate-week`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-      timeout: 65000, // 65 secondes pour gérer le délai de démarrage
-    })
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(GUARD_API_KEY ? { "X-API-Key": GUARD_API_KEY } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
 
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error('[v0] Guard API error:', response.status, errorText)
+      const errorText = await response.text();
+      console.error("❌ Erreur Render :", response.status, errorText);
       return {
         success: false,
-        error: `API error: ${response.status} - ${errorText}`,
-      }
+        error: `Erreur ${response.status}: ${errorText}`,
+      };
     }
 
-    const apiResponse: GuardAPIResponse = await response.json()
+    const data = await response.json();
 
-    // Convertir la réponse au format schedule_data
-    const schedule = convertAPIResponseToSchedule(apiResponse)
+    // 6. Convertit la réponse en format ScheduleData pour l'affichage
+    const scheduleData = convertAPIResponseToSchedule(data);
 
     return {
       success: true,
-      schedule,
-      warnings: apiResponse.warnings,
-    }
+      data: scheduleData,
+      raw: data,
+    };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('[v0] Error generating guards via API:', error)
+    console.error("❌ Erreur dans generateGuardsViaAPI :", error);
     return {
       success: false,
-      error: errorMessage,
-    }
+      error: error instanceof Error ? error.message : "Erreur inconnue",
+    };
   }
 }
 
 /**
- * Convertit la réponse API au format schedule_data
+ * Récupère le dernier médecin NCT
  */
-function convertAPIResponseToSchedule(apiResponse: GuardAPIResponse): ScheduleData {
-  const schedule: ScheduleData = {}
+async function getLastNctDoctor(): Promise<string | null> {
+  const supabase = await createClient();
+  
+  const { data, error } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", "last_nct_doctor")
+    .single();
 
-  // Initialiser toutes les activités pour tous les jours
-  DAYS.forEach((day) => {
-    schedule['CS'] = schedule['CS'] || {}
-    schedule['CS'][day] = { value: [], status: 'pending', request: null }
+  if (error || !data) {
+    return null;
+  }
 
-    schedule['CORO'] = schedule['CORO'] || {}
-    schedule['CORO'][day] = { value: [], status: 'pending', request: null }
-
-    schedule['RYTHMO'] = schedule['RYTHMO'] || {}
-    schedule['RYTHMO'][day] = { value: [], status: 'pending', request: null }
-
-    schedule['Garde Nuit'] = schedule['Garde Nuit'] || {}
-    schedule['Garde Nuit'][day] = { value: [], status: 'pending', request: null }
-
-    schedule['Astreinte Nuit'] = schedule['Astreinte Nuit'] || {}
-    schedule['Astreinte Nuit'][day] = { value: [], status: 'pending', request: null }
-
-    schedule['Astreinte Matin'] = schedule['Astreinte Matin'] || {}
-    schedule['Astreinte Matin'][day] = { value: [], status: 'pending', request: null }
-
-    schedule['Astreinte Midi'] = schedule['Astreinte Midi'] || {}
-    schedule['Astreinte Midi'][day] = { value: [], status: 'pending', request: null }
-
-    schedule['Astreinte Weekend'] = schedule['Astreinte Weekend'] || {}
-    schedule['Astreinte Weekend'][day] = { value: [], status: 'pending', request: null }
-
-    schedule['NCT'] = schedule['NCT'] || {}
-    schedule['NCT'][day] = { value: [], status: 'pending', request: null }
-
-    schedule['Coro Après-midi'] = schedule['Coro Après-midi'] || {}
-    schedule['Coro Après-midi'][day] = { value: [], status: 'pending', request: null }
-
-    schedule['Congés'] = schedule['Congés'] || {}
-    schedule['Congés'][day] = { value: [], status: 'validated', request: null }
-
-    schedule['Notes du jour'] = schedule['Notes du jour'] || {}
-    schedule['Notes du jour'][day] = { value: [], status: 'validated', request: null }
-  })
-
-  // Remplir avec les assignations API
-  apiResponse.assignments.forEach((assignment) => {
-    const dayIndex = DAYS.findIndex(
-      (d) => d.toUpperCase() === assignment.day_name.toUpperCase()
-    )
-    if (dayIndex === -1) return
-
-    const dayName = DAYS[dayIndex]
-    const activity = assignment.activity
-
-    if (schedule[activity] && schedule[activity][dayName]) {
-      if (!schedule[activity][dayName].value.includes(assignment.doctor)) {
-        schedule[activity][dayName].value.push(assignment.doctor)
-      }
-    }
-  })
-
-  return schedule
+  return data.value;
 }
 
 /**
- * Vérifie si l'API est disponible
+ * Récupère les congés (congrès, formations, etc.)
  */
-export async function checkGuardAPIHealth(): Promise<boolean> {
-  try {
-    const response = await fetch(`${GUARD_API_URL}/`, {
-      method: 'GET',
-      timeout: 5000,
-    })
-    return response.ok
-  } catch {
-    return false
+async function getCongres(): Promise<{ doctor_id: string; start_date: string; end_date: string; type?: string }[]> {
+  const supabase = await createClient();
+  
+  const { data, error } = await supabase
+    .from("congres")
+    .select("doctor_id, start_date, end_date, type")
+    .gte("end_date", new Date().toISOString().split("T")[0]);
+
+  if (error) {
+    console.error("Erreur récupération congés :", error);
+    return [];
   }
+
+  return data || [];
 }
+
+/**
+ * Convertit la réponse de l'API Render en format ScheduleData
+ */
+function convertAPIResponseToSchedule(response: any): any {
+  if (!response || !response.assignments) {
+    console.warn("Réponse Render sans assignments :", response);
+    return {};
+  }
+
+  const scheduleData: any = {};
+
+  // Parcours chaque assignment
+  response.assignments.forEach((assignment: any) => {
+    const date = assignment.date;
+    const dayName = assignment.day_name; // LUNDI, MARDI, ...
+    const slot = assignment.slot; // matin, am, nuit
+    const activity = assignment.activity;
+    const doctor = assignment.doctor;
+    const note = assignment.note || null;
+
+    // Construit la clé du jour (ex: "2026-07-27_LUNDI")
+    const dayKey = `${date}_${dayName}`;
+
+    if (!scheduleData[dayKey]) {
+      scheduleData[dayKey] = {};
+    }
+
+    // Construit la clé du slot (ex: "matin", "am", "nuit")
+    const slotKey = slot;
+
+    scheduleData[dayKey][slotKey] = {
+      activity,
+      doctor,
+      note,
+      status: "confirmed",
+      type: activity,
+    };
+  });
+
+  return scheduleData;
+}
+
+// Export pour compatibilité avec l'ancien code
+export { convertAPIResponseToSchedule };
