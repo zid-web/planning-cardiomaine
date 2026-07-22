@@ -1,0 +1,574 @@
+diff --git a/app/actions/solver-api-actions.ts b/app/actions/solver-api-actions.ts
+deleted file mode 100644
+index f1fe289..0000000
+--- a/app/actions/solver-api-actions.ts
++++ /dev/null
+@@ -1,261 +0,0 @@
+-'use server'
+-
+-import { getAllVacations } from './vacation-actions'
+-import { DOCTOR_METADATA, DAYS } from '@/lib/constants'
+-import type { ScheduleData, CellData } from '@/lib/types'
+-import { getWeekNumber } from '@/lib/schedule-utils'
+-
+-// Mapping des activités du solveur vers les lignes du planning
+-const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
+-  'matin': {
+-    'ASTREINTE': 'Astreintes ATL Matin',
+-    'GARDE': 'Garde Matin',
+-    'CORO': 'Matin - Coro',
+-  },
+-  'am': {
+-    'ASTREINTE': 'Astreintes ATL Midi',
+-    'GARDE': 'Garde Midi',
+-    'CORO': 'Apm - Coro',
+-  },
+-  'nuit': {
+-    'ASTREINTE': 'Astreintes ATL Nuit',
+-    'GARDE': 'Garde Nuit',
+-    'NCT': 'Hors site - NCT',
+-  },
+-  'weekend': {
+-    'ASTREINTE': 'Garde Matin',
+-  },
+-}
+-
+-// Statuts pour le solveur (mapping depuis DOCTOR_METADATA)
+-const getSolverStatus = (doctorId: string) => {
+-  const meta = DOCTOR_METADATA[doctorId]
+-  if (!meta) return 'permanent'
+-  if (doctorId === 'M' || doctorId === 'O' || doctorId === 'W') return 'astreinte_coro'
+-  if (doctorId === 'FV') return 'fv'
+-  if (doctorId === 'DAAS' || doctorId === 'D') return 'daas'
+-  if (doctorId === 'CH') return 'ch'
+-  return 'permanent'
+-}
+-
+-export interface SolverResponse {
+-  schedule: ScheduleData | null
+-  warnings: string[]
+-  error?: string
+-}
+-
+-export async function generateWeekWithSolver(
+-  weekStartDate: string,
+-  weekendMode: 'CH' | 'ROTATION' = 'ROTATION'
+-): Promise<SolverResponse> {
+-  try {
+-    console.log('[solver-api] Generating week for:', weekStartDate, 'Weekend mode:', weekendMode)
+-
+-    // 1. Récupérer tous les médecins (depuis les constantes)
+-    const medecins = Object.keys(DOCTOR_METADATA).map((id) => ({
+-      id,
+-      statut: getSolverStatus(id),
+-      points_astreinte: 0,
+-      points_garde: 0,
+-      points_nct: 0,
+-      points_weekend: 0,
+-    }))
+-
+-    // 2. Récupérer les vacances
+-    const vacations = await getAllVacations()
+-    const vacationPayload = vacations.map((v) => ({
+-      doctor_id: v.doctor_id,
+-      start_date: v.start_date,
+-      end_date: v.end_date,
+-    }))
+-
+-    // 3. Déterminer la parité de la semaine (ISO)
+-    const dateObj = new Date(weekStartDate)
+-    const weekInfo = getWeekNumber(dateObj)
+-    const semaine_iso_impaire = weekInfo % 2 === 1
+-
+-    // 4. Récupérer le dernier NCT (si stocké en DB)
+-    const lastNctDoctor = null
+-
+-    // 5. Construire la requête pour l'API
+-    const payload = {
+-      week_start_date: weekStartDate,
+-      medecins,
+-      vacations: vacationPayload,
+-      weekend_mode: weekendMode,
+-      semaine_iso_impaire,
+-      last_nct_doctor: lastNctDoctor,
+-    }
+-
+-    console.log('[solver-api] Payload:', JSON.stringify(payload, null, 2))
+-
+-    // 6. Appeler l'API Render
+-    const controller = new AbortController()
+-    const timeout = setTimeout(() => controller.abort(), 65000)
+-
+-    let response: Response
+-    try {
+-      response = await fetch('https://guard-api-cardiomaine.onrender.com/generate-week', {
+-        method: 'POST',
+-        headers: { 'Content-Type': 'application/json' },
+-        body: JSON.stringify(payload),
+-        signal: controller.signal,
+-      })
+-    } finally {
+-      clearTimeout(timeout)
+-    }
+-
+-    if (!response.ok) {
+-      const errorText = await response.text()
+-      console.error('[solver-api] API error:', response.status, errorText)
+-      throw new Error(`API error (${response.status}): ${errorText}`)
+-    }
+-
+-    const result = await response.json()
+-    console.log('[solver-api] API response:', result)
+-
+-    // 7. Transformer les assignations en ScheduleData
+-    const schedule: ScheduleData = createEmptySchedule()
+-
+-    result.assignments?.forEach((assign: any) => {
+-      const { date, day_name, slot, activity, doctor } = assign
+-      const dayKey = day_name.toUpperCase()
+-
+-      if (!DAYS.includes(dayKey)) {
+-        console.warn('[solver-api] Unknown day:', dayKey)
+-        return
+-      }
+-
+-      // Déterminer la ligne cible
+-      let rowKey = ''
+-      if (slot === 'weekend') {
+-        if (dayKey === 'SAMEDI' || dayKey === 'DIMANCHE') {
+-          rowKey = 'Garde Matin'
+-        }
+-      } else {
+-        const mapping = ACTIVITY_TO_ROW[slot]
+-        if (mapping && mapping[activity]) {
+-          rowKey = mapping[activity]
+-        }
+-      }
+-
+-      if (!rowKey) {
+-        console.warn('[solver-api] No mapping for slot:', slot, 'activity:', activity)
+-        return
+-      }
+-
+-      // Ajouter le médecin dans la cellule
+-      if (!schedule[rowKey]) {
+-        console.warn('[solver-api] Row not found:', rowKey)
+-        return
+-      }
+-
+-      const cell = schedule[rowKey][dayKey]
+-      if (!cell) {
+-        console.warn('[solver-api] Cell not found:', rowKey, dayKey)
+-        return
+-      }
+-
+-      // Éviter les doublons
+-      if (!cell.value.includes(doctor)) {
+-        cell.value = [...cell.value, doctor]
+-        cell.type = 'doctor'
+-        cell.status = 'pending'
+-      }
+-    })
+-
+-    console.log('[solver-api] Schedule generated successfully')
+-    return { schedule, warnings: result.warnings || [] }
+-  } catch (error) {
+-    const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
+-    console.error('[solver-api] Error:', error)
+-
+-    // Gérer l'erreur de timeout
+-    if (error instanceof Error && error.name === 'AbortError') {
+-      return {
+-        schedule: null,
+-        warnings: [],
+-        error: 'Timeout: l\'API a pris trop de temps (65s). Le serveur Render redémarre peut-être. Veuillez réessayer.',
+-      }
+-    }
+-
+-    return {
+-      schedule: null,
+-      warnings: [],
+-      error: errorMessage,
+-    }
+-  }
+-}
+-
+-/**
+- * Utilitaire pour créer un planning vide
+- */
+-function createEmptySchedule(): ScheduleData {
+-  const createEmptyRow = () => {
+-    return DAYS.reduce(
+-      (acc, day) => ({
+-        ...acc,
+-        [day]: { value: [], type: 'empty' as const, status: 'validated' as const, request: null },
+-      }),
+-      {} as { [key: string]: CellData }
+-    )
+-  }
+-
+-  return {
+-    'Astreintes ATL Matin': createEmptyRow(),
+-    'Astreintes ATL Midi': createEmptyRow(),
+-    'Astreintes ATL Nuit': createEmptyRow(),
+-    'Garde Matin': createEmptyRow(),
+-    'Garde Midi': createEmptyRow(),
+-    'Garde Nuit': createEmptyRow(),
+-    'Matin - Visite': createEmptyRow(),
+-    'Hors site - NCT': createEmptyRow(),
+-    'Hors site - CDL': createEmptyRow(),
+-    'Hors site - IRM': createEmptyRow(),
+-    'Hors site - Scinti': createEmptyRow(),
+-    'Hors site - LFB': createEmptyRow(),
+-    'Hors site - PSSL': createEmptyRow(),
+-    'Matin - Cs PSS': createEmptyRow(),
+-    'Matin - Cs Tessée': createEmptyRow(),
+-    'Matin - Stress': createEmptyRow(),
+-    'Matin - ETT salle 1': createEmptyRow(),
+-    'Matin - ETT salle 2': createEmptyRow(),
+-    'Matin - EE1': createEmptyRow(),
+-    'Matin - EE2': createEmptyRow(),
+-    'Matin - Rythmo': createEmptyRow(),
+-    'Matin - Coro': createEmptyRow(),
+-    'Apm - Cs PSS': createEmptyRow(),
+-    'Apm - Cs Tessée': createEmptyRow(),
+-    'Apm - Stress': createEmptyRow(),
+-    'Apm - ETT salle 1': createEmptyRow(),
+-    'Apm - ETT salle 2': createEmptyRow(),
+-    'Apm - RÉEDUCATION': createEmptyRow(),
+-    'Apm - EE1': createEmptyRow(),
+-    'Apm - EE2': createEmptyRow(),
+-    'Apm - Rythmo': createEmptyRow(),
+-    'Apm - Coro': createEmptyRow(),
+-    'Entrées PSS': createEmptyRow(),
+-    'Pré-op': createEmptyRow(),
+-    '1/2 journée off Matin': createEmptyRow(),
+-    '1/2 journée off Après-midi': createEmptyRow(),
+-    Vacances: createEmptyRow(),
+-    Congrès: createEmptyRow(),
+-    Congés: createEmptyRow(),
+-    'Notes du jour': createEmptyRow(),
+-  }
+-}
+-
+-/**
+- * Vérifie la santé de l'API
+- */
+-export async function checkSolverAPIHealth(): Promise<boolean> {
+-  try {
+-    const response = await fetch('https://guard-api-cardiomaine.onrender.com/health', {
+-      method: 'GET',
+-      signal: AbortSignal.timeout(5000),
+-    })
+-    return response.ok
+-  } catch {
+-    return false
+-  }
+-}
+diff --git a/components/schedule-app.tsx b/components/schedule-app.tsx
+index e04578d..ff7b97e 100644
+--- a/components/schedule-app.tsx
++++ b/components/schedule-app.tsx
+@@ -37,7 +37,6 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
+ import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
+ import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
+ import { getAllVacations } from "@/app/actions/vacation-actions"
+-import { generateWeekWithSolver } from "@/app/actions/solver-api-actions"
+ import { VacationsModal } from "@/components/vacations-modal"
+ import { VacationsButton } from "@/components/vacations-button"
+ import { VacationsBadge } from "@/components/vacations-badge"
+@@ -76,7 +75,6 @@ export function ScheduleApp({
+   const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
+   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
+   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
+-  const [isGenerating, setIsGenerating] = useState(false)
+ 
+   // Load vacations on mount
+   React.useEffect(() => {
+@@ -550,45 +548,12 @@ export function ScheduleApp({
+                       onGenerationComplete={handleGenerationComplete}
+                     />
+ 
+-                    <Button
+-                      variant="outline"
+-                      size="sm"
+-                      onClick={async () => {
+-                        setIsGenerating(true)
+-                        try {
+-                          const weekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
+-                          const monday = new Date(currentDate)
+-                          const day = monday.getDay()
+-                          const diff = monday.getDate() - day + (day === 0 ? -6 : 1)
+-                          monday.setDate(diff)
+-                          const weekStartDate = monday.toISOString().split('T')[0]
+-                          
+-                          const result = await generateWeekWithSolver(weekStartDate, 'ROTATION')
+-                          if (result.error) {
+-                            toast.error(`Erreur: ${result.error}`)
+-                          } else if (result.schedule) {
+-                            handleGenerationComplete(result.schedule, result.warnings || [])
+-                          }
+-                        } catch (error) {
+-                          toast.error('Erreur lors de la génération')
+-                        } finally {
+-                          setIsGenerating(false)
+-                        }
+-                      }}
+-                      disabled={isGenerating}
+-                    >
+-                      {isGenerating ? (
+-                        <>
+-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+-                          Génération...
+-                        </>
+-                      ) : (
+-                        <>
+-                          <Calendar className="h-4 w-4 mr-2" />
+-                          Générer avec Solveur
+-                        </>
+-                      )}
+-                    </Button>
++                    {/* Ancien bouton "Générer avec Solveur" retiré le 22/07/2026 :
++                        appelait le même backend Render que GuardGenerationButton
++                        mais avec l'équité (astreinte/garde/nct/weekend) codée en dur à 0,
++                        ce qui cassait le calcul d'équité réel entre les médecins.
++                        Le bouton GuardGenerationButton ci-dessus est désormais l'unique
++                        point d'entrée vers le moteur d'optimisation Render. */}
+ 
+                     {showProposals && (
+                       <Button variant="outline" size="sm" onClick={() => setShowProposals(!showProposals)}>
+diff --git a/components/solver-generation-button.tsx b/components/solver-generation-button.tsx
+deleted file mode 100644
+index b0fbecb..0000000
+--- a/components/solver-generation-button.tsx
++++ /dev/null
+@@ -1,89 +0,0 @@
+-'use client'
+-
+-import React, { useState } from 'react'
+-import { Button } from '@/components/ui/button'
+-import { Loader2, Brain } from 'lucide-react'
+-import { generateWeekWithSolver } from '@/app/actions/solver-api-actions'
+-import { ScheduleData } from '@/lib/types'
+-import { toast } from 'sonner'
+-import { getWeekNumber } from '@/lib/schedule-utils'
+-
+-interface SolverGenerationButtonProps {
+-  currentDate: Date
+-  weekendMode: 'CH' | 'ROTATION'
+-  onGenerationComplete: (schedule: ScheduleData, warnings: string[]) => void
+-  disabled?: boolean
+-}
+-
+-export function SolverGenerationButton({
+-  currentDate,
+-  weekendMode,
+-  onGenerationComplete,
+-  disabled = false,
+-}: SolverGenerationButtonProps) {
+-  const [isLoading, setIsLoading] = useState(false)
+-
+-  const handleGenerateWithSolver = async () => {
+-    setIsLoading(true)
+-    const toastId = toast.loading('Génération avec solveur en cours... (jusqu\'à 65s)')
+-
+-    try {
+-      const weekStart = new Date(currentDate)
+-      weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1) // Lundi
+-      const weekStartStr = weekStart.toISOString().split('T')[0]
+-
+-      console.log('[v0] Calling solver API for week starting:', weekStartStr)
+-
+-      const result = await generateWeekWithSolver(weekStartStr, weekendMode)
+-
+-      if (result.error) {
+-        toast.error(`Erreur: ${result.error}`, { id: toastId })
+-        return
+-      }
+-
+-      if (!result.schedule) {
+-        toast.error('Aucun planning généré', { id: toastId })
+-        return
+-      }
+-
+-      if (result.warnings && result.warnings.length > 0) {
+-        toast.warning(
+-          `Planning généré avec ${result.warnings.length} avertissement(s):\n${result.warnings.slice(0, 3).join('\n')}`,
+-          { id: toastId, duration: 5000 }
+-        )
+-      } else {
+-        toast.success('Planning généré avec succès!', { id: toastId })
+-      }
+-
+-      onGenerationComplete(result.schedule, result.warnings)
+-    } catch (error) {
+-      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
+-      console.error('[v0] Solver error:', error)
+-      toast.error(`Erreur: ${errorMessage}`, { id: toastId })
+-    } finally {
+-      setIsLoading(false)
+-    }
+-  }
+-
+-  return (
+-    <Button
+-      onClick={handleGenerateWithSolver}
+-      disabled={disabled || isLoading}
+-      className="gap-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white"
+-      title="Génère le planning avec le solveur d'optimisation avancé (moteur IA)"
+-    >
+-      {isLoading ? (
+-        <>
+-          <Loader2 className="w-4 h-4 animate-spin" />
+-          <span>Solveur...</span>
+-        </>
+-      ) : (
+-        <>
+-          <Brain className="w-4 h-4" />
+-          <span>Solveur (IA)</span>
+-          <span className="text-xs font-medium opacity-75">v2</span>
+-        </>
+-      )}
+-    </Button>
+-  )
+-}
+diff --git a/lib/scheduler-algo.ts b/lib/scheduler-algo.ts
+index 134c7fd..328d0e9 100644
+--- a/lib/scheduler-algo.ts
++++ b/lib/scheduler-algo.ts
+@@ -21,10 +21,4 @@ export function calculateWorkloadStats(schedule: ScheduleData): Record<string, n
+   return doctorCounts
+ }
+ 
+-// Fallback: Minimal Coverage Heuristic
+-export function generateFallbackSchedule(weekKey: string): ScheduleData {
+-  console.log("[v0] Running Fallback Generation...")
+-  // This would generate a basic valid schedule
+-  // For now, we rely on the existing generator but we could add safety rules here
+-  return {} as ScheduleData // Placeholder
+-}
++
+diff --git a/scripts/scheduler.py b/scripts/scheduler.py
+deleted file mode 100644
+index 11ac98e..0000000
+--- a/scripts/scheduler.py
++++ /dev/null
+@@ -1,118 +0,0 @@
+-import sys
+-import random
+-from ortools.sat.python import cp_model
+-
+-# Mock Data
+-DOCTORS = ["Dr. A", "Dr. B", "Dr. C", "Dr. D", "Dr. E"]
+-DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+-SHIFTS = ["Matin", "Apm", "Garde"]
+-
+-def solve_schedule(num_days=30):
+-    """
+-    Phase 1: Solve MIP/CP-SAT on the entire horizon.
+-    Minimizing inequity + penalties.
+-    """
+-    model = cp_model.CpModel()
+-    
+-    # Variables
+-    # shifts[(doctor, day, shift)]
+-    shifts = {}
+-    for d in DOCTOR:
+-        for day in range(num_days):
+-            for s in SHIFTS:
+-                shifts[(d, day, s)] = model.NewBoolVar(f'shift_d{d}_day{day}_s{s}')
+-
+-    # Constraints
+-    
+-    # 1. Each shift must be covered by exactly one doctor (simplified)
+-    for day in range(num_days):
+-        for s in SHIFTS:
+-            model.Add(sum(shifts[(d, day, s)] for d in DOCTORS) == 1)
+-
+-    # 2. A doctor can work at most one shift per day (simplified)
+-    for d in DOCTORS:
+-        for day in range(num_days):
+-            model.Add(sum(shifts[(d, day, s)] for s in SHIFTS) <= 1)
+-
+-    # Objective: Minimize inequity (variance in total shifts)
+-    # This is hard in CP-SAT directly, so we minimize the difference between max and min shifts
+-    
+-    total_shifts = {}
+-    for d in DOCTORS:
+-        total_shifts[d] = sum(shifts[(d, day, s)] for day in range(num_days) for s in SHIFTS)
+-        
+-    min_shifts = model.NewIntVar(0, num_days, 'min_shifts')
+-    max_shifts = model.NewIntVar(0, num_days, 'max_shifts')
+-    
+-    for d in DOCTORS:
+-        model.Add(min_shifts <= total_shifts[d])
+-        model.Add(max_shifts >= total_shifts[d])
+-        
+-    model.Minimize(max_shifts - min_shifts)
+-
+-    # Solve
+-    solver = cp_model.CpSolver()
+-    status = solver.Solve(model)
+-
+-    if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+-        print("Solution found!")
+-        results = {}
+-        for day in range(num_days):
+-            results[day] = {}
+-            for s in SHIFTS:
+-                for d in DOCTORS:
+-                    if solver.Value(shifts[(d, day, s)]):
+-                        results[day][s] = d
+-        return results
+-    else:
+-        print("No solution found.")
+-        return None
+-
+-def heuristic_optimization(current_schedule):
+-    """
+-    Phase 2: Local heuristic (greedy + simulated annealing) for swaps.
+-    """
+-    # Simplified Simulated Annealing
+-    print("Running Phase 2: Heuristic Optimization...")
+-    
+-    # In a real implementation, we would swap shifts to improve the score
+-    # Here we just return the current schedule as a placeholder
+-    return current_schedule
+-
+-def fallback_schedule():
+-    """
+-    Fallback: Heuristic prioritizing minimal coverage + safety rules.
+-    """
+-    print("Running Fallback Strategy...")
+-    schedule = {}
+-    for day in range(30):
+-        schedule[day] = {}
+-        available_doctors = list(DOCTORS)
+-        random.shuffle(available_doctors)
+-        
+-        for s in SHIFTS:
+-            if available_doctors:
+-                schedule[day][s] = available_doctors.pop()
+-            else:
+-                schedule[day][s] = "UNASSIGNED"
+-    return schedule
+-
+-if __name__ == "__main__":
+-    print("Starting Scheduler...")
+-    try:
+-        # Try Phase 1
+-        schedule = solve_schedule()
+-        if not schedule:
+-            # Try Phase 2 / Fallback
+-            schedule = fallback_schedule()
+-            
+-        # Apply Phase 2 Heuristics
+-        final_schedule = heuristic_optimization(schedule)
+-        
+-        print("Final Schedule Generated.")
+-        # In a real app, we would save this to a JSON file or database
+-        
+-    except Exception as e:
+-        print(f"Error: {e}")
+-        print("Using Fallback...")
+-        fallback_schedule()
