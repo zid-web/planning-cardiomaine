@@ -1,0 +1,229 @@
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' frontend-baseline/app/profile/page.tsx planning-cardiomaine/app/profile/page.tsx
+--- frontend-baseline/app/profile/page.tsx	2026-07-23 05:40:25.893867359 +0000
++++ planning-cardiomaine/app/profile/page.tsx	2026-07-22 21:04:32.773633357 +0000
+@@ -2,6 +2,7 @@
+ import { LogoutButton } from '@/components/logout-button'
+ import { ProfileForm } from '@/components/profile-form'
+ import { requireAuthWithPasswordSetup } from '@/lib/auth-utils'
++import { redirect } from 'next/navigation'
+ 
+ export default async function ProfilePage() {
+   await requireAuthWithPasswordSetup()
+@@ -9,6 +10,13 @@
+ 
+   const { data } = await supabase.auth.getUser()
+ 
++  // requireAuthWithPasswordSetup() garantit normalement une session valide, mais on
++  // se protège explicitement du cas rare où la session expire entre les deux appels,
++  // plutôt que de forcer le typage avec un "!" qui masquerait ce cas au runtime.
++  if (!data.user) {
++    redirect('/auth/login')
++  }
++
+   return (
+     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+       <nav className="border-b bg-white shadow-sm">
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' frontend-baseline/app/protected/planning/page.tsx planning-cardiomaine/app/protected/planning/page.tsx
+--- frontend-baseline/app/protected/planning/page.tsx	2026-07-23 05:40:25.894831145 +0000
++++ planning-cardiomaine/app/protected/planning/page.tsx	2026-07-22 21:03:25.151802192 +0000
+@@ -372,13 +372,13 @@
+                 </button>
+               </div>
+               <VoiceAndUploadPanel
+-                apiBaseUrl={process.env.NEXT_PUBLIC_GUARD_API_BASE_URL || "https://guard-api-cardiomaine.onrender.com"}
+-                apiKey={process.env.NEXT_PUBLIC_GUARD_API_KEY || ""}
+-                currentWeekRequest={currentWeekRequest}
+-                knownDoctors={DOCTORS}
+-                onScheduleUpdated={handleScheduleUpdate}
+-                onPdfParsed={(data) => {
+-                  console.log("Données PDF extraites:", data);
++                isOpen={voicePanelOpen}
++                weekStartDate={currentWeekRequest.week_start_date}
++                onCommandExecuted={(data) => {
++                  // Le composant appelle ce callback aussi bien après une commande vocale
++                  // qu'après un upload PDF analysé — dans les deux cas la réponse contient
++                  // un planning (format solveur) à convertir et fusionner.
++                  handleScheduleUpdate(data);
+                 }}
+               />
+             </div>
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' frontend-baseline/app/setup-supabase/page.tsx planning-cardiomaine/app/setup-supabase/page.tsx
+--- frontend-baseline/app/setup-supabase/page.tsx	2026-07-23 05:40:25.894831145 +0000
++++ planning-cardiomaine/app/setup-supabase/page.tsx	2026-07-22 21:04:41.836523142 +0000
+@@ -1,4 +1,3 @@
+-import { getOrRequestIntegration } from '@/lib/supabase/server'
+ import { Button } from '@/components/ui/button'
+ import Link from 'next/link'
+ 
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' frontend-baseline/components/schedule-app.tsx planning-cardiomaine/components/schedule-app.tsx
+--- frontend-baseline/components/schedule-app.tsx	2026-07-23 05:40:26.105106813 +0000
++++ planning-cardiomaine/components/schedule-app.tsx	2026-07-22 21:02:25.054596616 +0000
+@@ -25,9 +25,9 @@
+ import { Textarea } from "@/components/ui/textarea"
+ import { LiveClock } from "@/components/live-clock"
+ import { LearnMoreModal } from "@/components/learn-more-modal"
+-import type { FullSchedule, ScheduleData } from "@/lib/types"
++import type { FullSchedule, ScheduleData, CellData } from "@/lib/types"
+ import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
+-import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays } from "@/lib/schedule-utils"
++import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays, frDateToIso } from "@/lib/schedule-utils"
+ import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
+ import { calculateWorkloadStats } from "@/lib/scheduler-algo"
+ import { canAssignDoctor, detectConflict } from "@/lib/assignment-validation"
+@@ -206,7 +206,11 @@
+     if (!selectedCell || !schedule) return
+ 
+     // Vérifier si le médecin est indisponible (en vacances)
+-    const dateStr = weekDates[selectedCell.day]?.toISOString().split('T')[0]
++    // NB: weekDates est indexé par position (0=lundi..6=dimanche), pas par nom de jour -
++    // ancien bug : weekDates[selectedCell.day] renvoyait toujours undefined, ce qui
++    // désactivait silencieusement toute vérification de conflit avec les vacances.
++    const dayIdx = DAYS.indexOf(selectedCell.day)
++    const dateStr = dayIdx !== -1 ? frDateToIso(weekDates[dayIdx]) : undefined
+     if (dateStr) {
+       const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations)
+       if (!validation.allowed) {
+@@ -880,9 +884,8 @@
+                                 </td>
+                                 {DAYS.map((day, dayIndex) => {
+                                   // Ensure rowData exists before accessing day
+-                                  const cellData = rowData
+-                                    ? rowData[day]
+-                                    : { value: [], type: "empty", status: "validated" }
++                                  const emptyCell: CellData = { value: [], type: "empty", status: "validated" }
++                                  const cellData = rowData ? rowData[day] : emptyCell
+                                   const isSelected = selectedCell?.row === rowKey && selectedCell?.day === day
+                                   const isWeekend = day === "SAMEDI" || day === "DIMANCHE"
+                                   const isPending =
+@@ -953,7 +956,9 @@
+                                         <div className="flex flex-wrap gap-1 justify-center items-center h-full">
+                                           {/* Check for vacation conflicts */}
+                                           {cellData?.value.map((doc: string, i: number) => {
+-                                            const dateStr = weekDates[day]?.toISOString().split('T')[0]
++                                            // Même bug que addDoctorToCell corrigé plus haut :
++                                            // weekDates est indexé par position (dayIndex), pas par nom de jour.
++                                            const dateStr = frDateToIso(weekDates[dayIndex])
+                                             const conflict = dateStr ? detectConflict(doc, dateStr, rowKey, vacations) : { hasConflict: false }
+                                             
+                                             return (
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' frontend-baseline/components/vacations-modal.tsx planning-cardiomaine/components/vacations-modal.tsx
+--- frontend-baseline/components/vacations-modal.tsx	2026-07-23 05:40:25.899541311 +0000
++++ planning-cardiomaine/components/vacations-modal.tsx	2026-07-22 21:03:46.282617837 +0000
+@@ -39,7 +39,7 @@
+   const [success, setSuccess] = useState<string | null>(null)
+   const [isSelectingRange, setIsSelectingRange] = useState(false)
+   const [isClickDisabled, setIsClickDisabled] = useState(false)
+-  const clickTimeoutRef = useRef<NodeJS.Timeout>()
++  const clickTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
+ 
+   const loadVacations = async () => {
+     if (!selectedDoctorId) return
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' frontend-baseline/lib/guard-generation.ts planning-cardiomaine/lib/guard-generation.ts
+--- frontend-baseline/lib/guard-generation.ts	2026-07-23 05:40:26.105106813 +0000
++++ planning-cardiomaine/lib/guard-generation.ts	2026-07-22 21:03:59.274682140 +0000
+@@ -352,9 +352,9 @@
+       )
+ 
+       if (available.length > 0) {
+-        const selected = selectByEquity(available, equity, 'weekendCount')
++        const selected = selectByEquity(available, equity, 'weekendCount');
+ 
+-        ['SAMEDI', 'DIMANCHE'].forEach((dayName) => {
++        ;['SAMEDI', 'DIMANCHE'].forEach((dayName: string) => {
+           const dayObj = days.find((d) => format(d, 'EEEE', { locale: fr }).toUpperCase() === dayName)
+           if (dayObj) {
+             const dateStr = format(dayObj, 'yyyy-MM-dd')
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' frontend-baseline/lib/schedule-utils.ts planning-cardiomaine/lib/schedule-utils.ts
+--- frontend-baseline/lib/schedule-utils.ts	2026-07-23 05:40:25.901148691 +0000
++++ planning-cardiomaine/lib/schedule-utils.ts	2026-07-22 21:00:34.577436822 +0000
+@@ -36,6 +36,17 @@
+   return dates
+ }
+ 
++/**
++ * Convertit une date au format français "dd/mm/yy" (celui renvoyé par getWeekDates)
++ * en ISO "yyyy-mm-dd". Nécessaire car weekDates est indexé par position (0-6),
++ * pas par nom de jour ("LUNDI", etc.) - voir le bug corrigé dans addDoctorToCell.
++ */
++export const frDateToIso = (frDate: string): string => {
++  const [day, month, year] = frDate.split("/")
++  const fullYear = year.length === 2 ? `20${year}` : year
++  return `${fullYear}-${month}-${day}`
++}
++
+ export const getFrenchPublicHolidays = (year: number) => {
+   const holidays: Record<string, string> = {
+     [`01/01/${year}`]: "Jour de l'an",
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' "frontend-baseline/lib/vacation-cong\303\251s-mapper.ts" "planning-cardiomaine/lib/vacation-cong\303\251s-mapper.ts"
+--- "frontend-baseline/lib/vacation-cong\303\251s-mapper.ts"	2026-07-23 05:40:25.902048631 +0000
++++ "planning-cardiomaine/lib/vacation-cong\303\251s-mapper.ts"	2026-07-22 21:01:33.532235505 +0000
+@@ -1,5 +1,5 @@
+ import { DoctorVacation } from './types'
+-import { FullSchedule } from './types'
++import { ScheduleData } from './types'
+ import { DAYS } from './constants'
+ import { parseISO, isBefore, isAfter } from 'date-fns'
+ 
+@@ -9,10 +9,10 @@
+  * correspondant à chaque jour de sa période de vacances
+  */
+ export function populateCongesRowFromVacations(
+-  schedule: FullSchedule,
++  schedule: ScheduleData,
+   vacations: DoctorVacation[],
+   weekKey: string
+-): FullSchedule {
++): ScheduleData {
+   if (!schedule.Congés) {
+     return schedule
+   }
+@@ -42,19 +42,14 @@
+       const endDate = parseISO(vacation.end_date)
+       const checkDate = parseISO(dateStr)
+ 
+-      // Vérifier si ce jour est dans la période de vacances
++      // Vérifier : startDate <= checkDate <= endDate
++      // (l'ancienne condition composite excluait à tort le premier jour de vacances,
++      //  quand checkDate == startDate — corrigé le 22/07/2026)
+       if (
+-        (isBefore(checkDate, startDate) && isBefore(startDate, endDate)) ||
+-        isBefore(checkDate, endDate) &&
+-        (isAfter(checkDate, startDate) || isBefore(checkDate, startDate))
++        !isBefore(checkDate, startDate) &&
++        !isAfter(checkDate, endDate)
+       ) {
+-        // En fait, simplement vérifier: startDate <= checkDate <= endDate
+-        if (
+-          !isBefore(checkDate, startDate) &&
+-          !isAfter(checkDate, endDate)
+-        ) {
+-          doctorsOnVacationThisDay.push(vacation.doctor_id)
+-        }
++        doctorsOnVacationThisDay.push(vacation.doctor_id)
+       }
+     })
+ 
+@@ -76,7 +71,7 @@
+  * Vérifie si tous les médecins en vacances sont présents dans la ligne "Congés"
+  */
+ export function validateCongesRowCompleteness(
+-  schedule: FullSchedule,
++  schedule: ScheduleData,
+   vacations: DoctorVacation[],
+   weekKey: string
+ ): { isComplete: boolean; missingDoctors: Set<string>; issueDetails: string[] } {
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' frontend-baseline/lib/voice-panel-utils.ts planning-cardiomaine/lib/voice-panel-utils.ts
+--- frontend-baseline/lib/voice-panel-utils.ts	2026-07-23 05:40:25.902048631 +0000
++++ planning-cardiomaine/lib/voice-panel-utils.ts	2026-07-22 21:03:37.507939442 +0000
+@@ -24,10 +24,9 @@
+     week_start_date: weekStartDate,
+     week_number: weekNumber,
+     vacations: vacations.map((v) => ({
+-      doctor: v.doctor,
++      doctor_id: v.doctor_id,
+       start_date: v.start_date,
+       end_date: v.end_date,
+-      type: v.type,
+     })),
+     doctors: doctors,
+     constraints: {
