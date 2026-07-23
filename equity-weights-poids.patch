@@ -1,0 +1,176 @@
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' equity-weights-baseline/app/actions/guard-api-actions.ts planning-cardiomaine/app/actions/guard-api-actions.ts
+--- equity-weights-baseline/app/actions/guard-api-actions.ts	2026-07-23 20:37:39.088337482 +0000
++++ planning-cardiomaine/app/actions/guard-api-actions.ts	2026-07-23 20:36:36.822073535 +0000
+@@ -42,6 +42,7 @@
+   points_garde: number
+   points_nct: number
+   points_weekend: number
++  poids_equite_pct: number
+ }
+ 
+ interface VacationPayload {
+@@ -224,7 +225,38 @@
+ /**
+  * Construit la liste complète des médecins à envoyer au solveur (statut + équité historique).
+  */
+-function buildMedecinsPayload(equity: Record<string, EquityCounts>): Medecin[] {
++/**
++ * Charge les pondérations d'équité (temps partiel / ancienneté) depuis
++ * doctor_equity_weights. Un médecin absent de la table = 100 (plein temps).
++ * Ne fait jamais échouer la génération : en cas d'erreur, tout le monde
++ * retombe simplement à 100 (comportement identique à avant l'ajout de cette
++ * fonctionnalité).
++ */
++async function getEquityWeights(): Promise<Record<string, number>> {
++  try {
++    const supabase = await createClient()
++    const { data, error } = await supabase.from('doctor_equity_weights').select('doctor_id, poids_equite_pct')
++
++    if (error) {
++      console.warn('[guard-api] Table doctor_equity_weights indisponible, pondération 100 par défaut pour tous:', error.message)
++      return {}
++    }
++
++    const weights: Record<string, number> = {}
++    ;(data || []).forEach((row: { doctor_id: string; poids_equite_pct: number }) => {
++      weights[row.doctor_id] = row.poids_equite_pct
++    })
++    return weights
++  } catch (err) {
++    console.warn('[guard-api] Erreur inattendue lors du chargement des pondérations:', err)
++    return {}
++  }
++}
++
++function buildMedecinsPayload(
++  equity: Record<string, EquityCounts>,
++  weights: Record<string, number>,
++): Medecin[] {
+   const ids = [...INTERNAL_DOCTORS, 'FV', 'DAAS', 'D']
+   return ids.map((id) => {
+     const counts = equity[id] || { astreinte_count: 0, garde_count: 0, nct_count: 0, weekend_count: 0 }
+@@ -235,6 +267,7 @@
+       points_garde: counts.garde_count,
+       points_nct: counts.nct_count,
+       points_weekend: counts.weekend_count,
++      poids_equite_pct: weights[id] || 100,
+     }
+   })
+ }
+@@ -262,15 +295,16 @@
+     const weekType = getWeekType(weekStartISO)
+     const weekendMode = getWeekendMode(weekStartISO)
+ 
+-    const [equity, lastNctDoctor] = await Promise.all([
++    const [equity, lastNctDoctor, equityWeights] = await Promise.all([
+       calculateHistoricalEquity(),
+       getLastNCTDoctor(),
++      getEquityWeights(),
+     ])
+ 
+     const request: GuardAPIRequest = {
+       week_start_date: weekStartISO,
+       week_type: weekType,
+-      medecins: buildMedecinsPayload(equity),
++      medecins: buildMedecinsPayload(equity, equityWeights),
+       vacations: vacations.map((v) => ({
+         doctor_id: v.doctor_id,
+         start_date: v.start_date,
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' equity-weights-baseline/supabase/SCHEMA_ACTUEL.md planning-cardiomaine/supabase/SCHEMA_ACTUEL.md
+--- equity-weights-baseline/supabase/SCHEMA_ACTUEL.md	1970-01-01 00:00:00.000000000 +0000
++++ planning-cardiomaine/supabase/SCHEMA_ACTUEL.md	2026-07-23 14:55:11.130061703 +0000
+@@ -0,0 +1,59 @@
++# Schéma Supabase réel (basé sur l'usage effectif dans le code, juillet 2026)
++
++⚠️ **Le fichier `supabase/migrations/20240712_create_schedules_table.sql` est obsolète et trompeur** :
++il décrit une table `schedules` avec les colonnes `user_id` / `full_schedule`, alors que **tout le
++code** (`app/actions/schedule-actions.ts`, `app/actions/guard-api-actions.ts`, etc.) utilise en
++réalité `week_key` / `schedule_data` / `updated_by`. La table en production a visiblement été
++modifiée manuellement (dashboard Supabase) sans mettre à jour le fichier de migration correspondant.
++**Ne vous fiez pas à ce fichier pour reconstruire la base depuis zéro** — il donnerait un schéma
++qui ne correspond pas à ce que l'application attend.
++
++Ce document décrit ce qui est **réellement** interrogé par le code aujourd'hui.
++
++## `schedules`
++| colonne | type (déduit) | usage |
++|---|---|---|
++| `week_key` | text, clé unique | identifiant de semaine (`"2026-W31"`), ou `"full_schedule"` pour une pseudo-ligne agrégée legacy (voir note ci-dessous) |
++| `schedule_data` | jsonb | `{ [rowKey: string]: { [day: string]: CellData } }` pour une vraie semaine ; structure différente `{ [weekKey]: ScheduleData }` pour la ligne `"full_schedule"` |
++| `updated_by` | text | utilisateur ayant sauvegardé |
++| `updated_at` | timestamptz | |
++
++⚠️ **La ligne `"full_schedule"`** est un cache legacy écrit par `saveFullScheduleToDb()` — sa
++`schedule_data` n'a **pas la même forme** que les autres lignes (c'est un dictionnaire de semaines,
++pas un dictionnaire de lignes de planning). Toute requête qui scanne `schedules` doit soit filtrer
++`week_key != 'full_schedule'`, soit être tolérante à cette différence de structure (c'est le cas
++du calcul d'équité actuel, qui l'ignore silencieusement faute de correspondance de clés — mais ce
++n'est pas garanti pour du code futur qui scannerait cette table).
++
++## `doctor_vacations`
++| colonne | usage |
++|---|---|
++| `doctor_id` | text, initiale du médecin (interne ou externe : `"M"`, `"DAAS"`, etc.) |
++| `start_date`, `end_date` | dates ISO |
++| `id` | clé primaire (utilisée pour la suppression) |
++
++## `planning_notes`
++| colonne | usage |
++|---|---|
++| `content` | texte de la note |
++| `category` | catégorie de la note |
++| `created_by` | UUID (référence `profiles`/`auth.users`) |
++| `created_by_email` | dénormalisé, évite un join pour l'affichage |
++| Écriture réservée aux `role = 'admin'` dans `profiles` (vérifié côté action, pas confirmé en RLS — à vérifier) |
++
++## `profiles`
++| colonne | usage |
++|---|---|
++| `id` | UUID, référence `auth.users.id` |
++| `role` | `"admin"` ou autre — contrôle l'accès à certaines actions (ex: création de notes) |
++| `must_change_password` | booléen, force le changement de mot de passe à la première connexion |
++
++## `doctor_equity_weekly` *(nouveau, ajouté lors de cette session)*
++Voir `supabase/migrations/20260723_create_doctor_equity_weekly.sql`. Snapshot d'équité par
++(médecin, semaine), remplacé à chaque sauvegarde de planning. Vue `doctor_equity_totals` pour
++la somme cumulée par médecin.
++
++## Recommandation
++À l'occasion, ce serait utile de faire un `pg_dump --schema-only` (ou équivalent via le dashboard
++Supabase : Database → Tables → export du schéma) et de remplacer les migrations obsolètes par une
++version qui reflète fidèlement la prod. Je peux vous aider si vous me partagez cet export.
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' equity-weights-baseline/supabase/migrations/20260723_create_doctor_equity_weights.sql planning-cardiomaine/supabase/migrations/20260723_create_doctor_equity_weights.sql
+--- equity-weights-baseline/supabase/migrations/20260723_create_doctor_equity_weights.sql	1970-01-01 00:00:00.000000000 +0000
++++ planning-cardiomaine/supabase/migrations/20260723_create_doctor_equity_weights.sql	2026-07-23 20:36:09.505848103 +0000
+@@ -0,0 +1,31 @@
++-- Table des pondérations d'équité par médecin (temps partiel / ancienneté).
++-- 100 = charge cible normale (plein temps). Voir commentaire détaillé dans
++-- solver.py (classe Medecin, champ poids_equite_pct) pour la sémantique complète.
++--
++-- Clé par initiale (TEXT), cohérent avec doctor_vacations.doctor_id et
++-- doctor_equity_weekly.doctor_id : ce projet identifie les médecins par leur
++-- initiale partout, pas par UUID profiles (aucun lien profiles <-> initiale
++-- n'existe actuellement dans le code).
++
++CREATE TABLE IF NOT EXISTS public.doctor_equity_weights (
++  doctor_id TEXT PRIMARY KEY,
++  poids_equite_pct INTEGER NOT NULL DEFAULT 100 CHECK (poids_equite_pct > 0),
++  note TEXT, -- ex: "mi-temps depuis 09/2026", libre, pour se souvenir du pourquoi
++  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
++);
++
++ALTER TABLE public.doctor_equity_weights ENABLE ROW LEVEL SECURITY;
++
++CREATE POLICY "Authenticated users can read equity weights" ON public.doctor_equity_weights
++  FOR SELECT USING (auth.role() = 'authenticated');
++
++-- Écriture réservée aux admins (même logique que planning_notes) : on passe par
++-- le rôle applicatif vérifié côté server action, pas par une policy RLS complexe
++-- ici pour rester cohérent avec le reste du projet (voir planning-notes-actions.ts).
++CREATE POLICY "Service role can write equity weights" ON public.doctor_equity_weights
++  FOR ALL USING (auth.role() = 'service_role');
++
++-- Aucune ligne par défaut : un médecin absent de cette table est traité comme
++-- pct=100 (plein temps) côté application - voir getEquityWeights() dans
++-- app/actions/guard-api-actions.ts. Ajoutez une ligne uniquement pour les
++-- médecins dont la charge cible doit être ajustée.
