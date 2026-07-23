@@ -1,0 +1,349 @@
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' equity-baseline/app/actions/guard-api-actions.ts planning-cardiomaine/app/actions/guard-api-actions.ts
+--- equity-baseline/app/actions/guard-api-actions.ts	2026-07-23 05:50:56.828422426 +0000
++++ planning-cardiomaine/app/actions/guard-api-actions.ts	2026-07-23 05:49:48.248463484 +0000
+@@ -4,6 +4,7 @@
+ import { DoctorVacation, ScheduleData } from '@/lib/types'
+ import { DAYS } from '@/lib/constants'
+ import { format, parseISO } from 'date-fns'
++import { getCumulativeEquityFromTable } from '@/lib/equity-tracking'
+ 
+ const GUARD_API_URL = 'https://guard-api-cardiomaine.onrender.com'
+ // Doit être identique à la variable GUARD_API_KEY définie côté Render.
+@@ -112,7 +113,35 @@
+  * dans le schéma réel ('Astreintes ATL Nuit', 'Garde Matin/Midi/Nuit'...), ce qui
+  * faisait toujours retourner un historique vide silencieusement.
+  */
++/**
++ * Calcule les compteurs d'équité historiques réels.
++ *
++ * Priorité à la table dédiée `doctor_equity_weekly` (rapide, une simple somme SQL,
++ * voir lib/equity-tracking.ts et supabase/migrations/20260723_create_doctor_equity_weekly.sql).
++ * Si cette table n'existe pas encore (migration pas encore appliquée sur ce projet
++ * Supabase) ou est vide (pas encore de backfill), on se replie automatiquement sur
++ * l'ancien scan complet de l'historique JSON - donc aucune régression tant que la
++ * migration + le backfill n'ont pas été faits.
++ */
+ async function calculateHistoricalEquity(): Promise<Record<string, EquityCounts>> {
++  const fromTable = await getCumulativeEquityFromTable()
++  if (fromTable && Object.keys(fromTable).length > 0) {
++    // Complète avec des zéros les médecins qui n'ont encore aucun snapshot
++    // (ex: nouveau médecin, ou table tout juste créée).
++    INTERNAL_DOCTORS.forEach((doc) => {
++      if (!fromTable[doc]) {
++        fromTable[doc] = { astreinte_count: 0, garde_count: 0, nct_count: 0, weekend_count: 0 }
++      }
++    })
++    return fromTable
++  }
++
++  console.warn(
++    '[guard-api] Table doctor_equity_weekly vide ou indisponible - repli sur le scan complet ' +
++    'de l\'historique. Pensez à appliquer la migration et le script de backfill (voir ' +
++    'scripts/backfill-equity.ts) pour passer sur le calcul rapide.',
++  )
++
+   const supabase = await createClient()
+ 
+   const { data: schedules, error } = await supabase
+@@ -130,7 +159,8 @@
+     return equity
+   }
+ 
+-  // Lignes réelles du planning -> type de comptage (voir lib/actions/solver-api createEmptySchedule)
++  // Lignes réelles du planning -> type de comptage (voir lib/equity-tracking.ts,
++  // dupliqué ici volontairement pour le chemin de repli - ne pas diverger des deux).
+   const ASTREINTE_ROWS = new Set(['Astreintes ATL Matin', 'Astreintes ATL Midi', 'Astreintes ATL Nuit'])
+   const GARDE_ROWS = new Set(['Garde Matin', 'Garde Midi', 'Garde Nuit'])
+   const NCT_ROWS = new Set(['Hors site - NCT'])
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' equity-baseline/app/actions/schedule-actions.ts planning-cardiomaine/app/actions/schedule-actions.ts
+--- equity-baseline/app/actions/schedule-actions.ts	2026-07-23 05:50:56.663741104 +0000
++++ planning-cardiomaine/app/actions/schedule-actions.ts	2026-07-23 05:49:23.129526795 +0000
+@@ -3,6 +3,7 @@
+ import { createClient } from "@/lib/supabase/server"
+ import type { ScheduleData } from "@/lib/types"
+ import { revalidatePath } from "next/cache"
++import { upsertWeeklyEquity } from "@/lib/equity-tracking"
+ 
+ export async function saveScheduleToDb(weekKey: string, scheduleData: ScheduleData, updatedBy: string) {
+   const supabase = await createClient()
+@@ -28,6 +29,10 @@
+     throw new Error(`Failed to save schedule: ${error.message}`)
+   }
+ 
++  // Recalcule le snapshot d'équité de cette semaine (voir lib/equity-tracking.ts).
++  // Ne bloque jamais la sauvegarde du planning en cas d'échec (déjà géré en interne).
++  await upsertWeeklyEquity(weekKey, scheduleData)
++
+   revalidatePath("/")
+   return data
+ }
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' equity-baseline/lib/equity-tracking.ts planning-cardiomaine/lib/equity-tracking.ts
+--- equity-baseline/lib/equity-tracking.ts	1970-01-01 00:00:00.000000000 +0000
++++ planning-cardiomaine/lib/equity-tracking.ts	2026-07-23 05:49:12.367272167 +0000
+@@ -0,0 +1,133 @@
++import { createClient } from '@/lib/supabase/server'
++import type { ScheduleData } from '@/lib/types'
++
++export interface EquityCounts {
++  astreinte_count: number
++  garde_count: number
++  nct_count: number
++  weekend_count: number
++}
++
++// Lignes réelles du planning -> type de comptage.
++// IMPORTANT : garder synchronisé avec app/actions/guard-api-actions.ts
++// (calculateHistoricalEquity, méthode de repli - voir plus bas).
++const ASTREINTE_ROWS = new Set(['Astreintes ATL Matin', 'Astreintes ATL Midi', 'Astreintes ATL Nuit'])
++const GARDE_ROWS = new Set(['Garde Matin', 'Garde Midi', 'Garde Nuit'])
++const NCT_ROWS = new Set(['Hors site - NCT'])
++const WEEKEND_DAYS = new Set(['SAMEDI', 'DIMANCHE'])
++
++/**
++ * Calcule les compteurs d'équité pour UNE semaine donnée, à partir de son schedule_data.
++ * Logique volontairement identique à celle utilisée historiquement dans
++ * calculateHistoricalEquity(), mais scopée à une seule semaine (pas tout l'historique).
++ */
++export function computeWeeklyEquity(scheduleData: ScheduleData): Record<string, EquityCounts> {
++  const equity: Record<string, EquityCounts> = {}
++
++  const bump = (doc: string, key: keyof EquityCounts) => {
++    if (!equity[doc]) {
++      equity[doc] = { astreinte_count: 0, garde_count: 0, nct_count: 0, weekend_count: 0 }
++    }
++    equity[doc][key]++
++  }
++
++  Object.entries(scheduleData || {}).forEach(([rowKey, dayData]) => {
++    const isAstreinte = ASTREINTE_ROWS.has(rowKey)
++    const isGarde = GARDE_ROWS.has(rowKey)
++    const isNct = NCT_ROWS.has(rowKey)
++    if (!isAstreinte && !isGarde && !isNct) return
++
++    Object.entries(dayData || {}).forEach(([day, cell]) => {
++      const doctors = (cell as { value?: string[] })?.value || []
++      doctors.forEach((doc) => {
++        if (isAstreinte) {
++          bump(doc, 'astreinte_count')
++          if (WEEKEND_DAYS.has(day.toUpperCase())) bump(doc, 'weekend_count')
++        }
++        if (isGarde) bump(doc, 'garde_count')
++        if (isNct) bump(doc, 'nct_count')
++      })
++    })
++  })
++
++  return equity
++}
++
++/**
++ * Recalcule le snapshot d'équité d'UNE semaine et le remplace en base
++ * (table doctor_equity_weekly). Idempotent : peut être rappelé autant de fois
++ * que la semaine est regénérée/éditée sans risque de double-comptage, puisqu'on
++ * REMPLACE le snapshot de cette semaine plutôt que d'incrémenter un total.
++ *
++ * Volontairement silencieux en cas d'erreur (log uniquement) : un échec de mise à
++ * jour de l'équité ne doit jamais faire échouer la sauvegarde du planning lui-même.
++ */
++export async function upsertWeeklyEquity(weekKey: string, scheduleData: ScheduleData): Promise<void> {
++  // La ligne pseudo "full_schedule" n'est pas une vraie semaine, on ne la traite jamais.
++  if (weekKey === 'full_schedule') return
++
++  try {
++    const equity = computeWeeklyEquity(scheduleData)
++    const supabase = await createClient()
++
++    const rows = Object.entries(equity).map(([doctor_id, counts]) => ({
++      doctor_id,
++      week_key: weekKey,
++      ...counts,
++      updated_at: new Date().toISOString(),
++    }))
++
++    // Toujours remplacer TOUTES les lignes de cette semaine (y compris les médecins
++    // qui n'ont plus aucune activité cette semaine après édition), pour éviter de
++    // laisser traîner un ancien snapshot obsolète.
++    const { error: deleteError } = await supabase
++      .from('doctor_equity_weekly')
++      .delete()
++      .eq('week_key', weekKey)
++
++    if (deleteError) {
++      console.warn('[equity-tracking] Impossible de nettoyer l\'ancien snapshot:', deleteError)
++    }
++
++    if (rows.length === 0) return
++
++    const { error: insertError } = await supabase.from('doctor_equity_weekly').insert(rows)
++
++    if (insertError) {
++      console.warn('[equity-tracking] Impossible d\'enregistrer le snapshot d\'équité:', insertError)
++    }
++  } catch (err) {
++    console.warn('[equity-tracking] Erreur inattendue lors de la mise à jour de l\'équité:', err)
++  }
++}
++
++/**
++ * Lit l'équité cumulée (toutes semaines confondues) via la vue SQL doctor_equity_totals.
++ * Retourne null si la vue/table n'existe pas encore (migration pas encore appliquée) —
++ * dans ce cas l'appelant doit se replier sur l'ancienne méthode de scan complet.
++ */
++export async function getCumulativeEquityFromTable(): Promise<Record<string, EquityCounts> | null> {
++  try {
++    const supabase = await createClient()
++    const { data, error } = await supabase.from('doctor_equity_totals').select('*')
++
++    if (error) {
++      console.warn('[equity-tracking] Table/vue d\'équité indisponible, repli sur le scan complet:', error.message)
++      return null
++    }
++
++    const equity: Record<string, EquityCounts> = {}
++    ;(data || []).forEach((row: any) => {
++      equity[row.doctor_id] = {
++        astreinte_count: row.points_astreinte || 0,
++        garde_count: row.points_garde || 0,
++        nct_count: row.points_nct || 0,
++        weekend_count: row.points_weekend || 0,
++      }
++    })
++    return equity
++  } catch (err) {
++    console.warn('[equity-tracking] Erreur inattendue, repli sur le scan complet:', err)
++    return null
++  }
++}
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' equity-baseline/scripts/backfill-equity.ts planning-cardiomaine/scripts/backfill-equity.ts
+--- equity-baseline/scripts/backfill-equity.ts	1970-01-01 00:00:00.000000000 +0000
++++ planning-cardiomaine/scripts/backfill-equity.ts	2026-07-23 05:50:04.571273060 +0000
+@@ -0,0 +1,74 @@
++/**
++ * Script de backfill à exécuter UNE SEULE FOIS après avoir appliqué la migration
++ * supabase/migrations/20260723_create_doctor_equity_weekly.sql, pour peupler la
++ * table d'équité depuis l'historique déjà présent dans `schedules` — sans ça,
++ * l'équité de tous les médecins repartirait de zéro au lieu de refléter les
++ * gardes/astreintes déjà faites.
++ *
++ * Usage :
++ *   npx tsx scripts/backfill-equity.ts
++ *
++ * (nécessite les variables d'environnement Supabase habituelles dans .env.local :
++ *  NEXT_PUBLIC_SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY - la clé service est
++ *  nécessaire ici pour contourner les policies RLS d'écriture, contrairement aux
++ *  server actions qui utilisent la session de l'utilisateur connecté)
++ */
++import { createClient } from '@supabase/supabase-js'
++import { computeWeeklyEquity } from '../lib/equity-tracking'
++
++async function main() {
++  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
++  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
++
++  if (!url || !serviceKey) {
++    console.error(
++      'Variables manquantes : NEXT_PUBLIC_SUPABASE_URL et/ou SUPABASE_SERVICE_ROLE_KEY.\n' +
++      'Récupérez la clé service dans Supabase > Project Settings > API (⚠️ ne jamais ' +
++      'l\'exposer côté client, uniquement pour ce script exécuté en local/CI).',
++    )
++    process.exit(1)
++  }
++
++  const supabase = createClient(url, serviceKey)
++
++  const { data: schedules, error } = await supabase
++    .from('schedules')
++    .select('week_key, schedule_data')
++    .neq('week_key', 'full_schedule') // exclure la pseudo-ligne agrégée (voir schedule-actions.ts)
++    .order('week_key', { ascending: true })
++
++  if (error) {
++    console.error('Erreur de lecture des plannings existants:', error)
++    process.exit(1)
++  }
++
++  console.log(`${schedules?.length ?? 0} semaines trouvées dans l'historique. Backfill en cours...`)
++
++  let processed = 0
++  for (const row of schedules || []) {
++    const equity = computeWeeklyEquity(row.schedule_data)
++    const rows = Object.entries(equity).map(([doctor_id, counts]) => ({
++      doctor_id,
++      week_key: row.week_key,
++      ...counts,
++      updated_at: new Date().toISOString(),
++    }))
++
++    if (rows.length === 0) continue
++
++    // On repart propre pour cette semaine avant d'insérer (idempotent si relancé).
++    await supabase.from('doctor_equity_weekly').delete().eq('week_key', row.week_key)
++    const { error: insertError } = await supabase.from('doctor_equity_weekly').insert(rows)
++
++    if (insertError) {
++      console.error(`Erreur d'insertion pour la semaine ${row.week_key}:`, insertError)
++    } else {
++      processed++
++    }
++  }
++
++  console.log(`✅ Backfill terminé : ${processed}/${schedules?.length ?? 0} semaines traitées.`)
++  console.log('Vérifiez avec : SELECT * FROM doctor_equity_totals ORDER BY points_astreinte DESC;')
++}
++
++main()
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' equity-baseline/supabase/migrations/20260723_create_doctor_equity_weekly.sql planning-cardiomaine/supabase/migrations/20260723_create_doctor_equity_weekly.sql
+--- equity-baseline/supabase/migrations/20260723_create_doctor_equity_weekly.sql	1970-01-01 00:00:00.000000000 +0000
++++ planning-cardiomaine/supabase/migrations/20260723_create_doctor_equity_weekly.sql	2026-07-23 05:48:51.563271811 +0000
+@@ -0,0 +1,51 @@
++-- Migration: table dédiée de persistance de l'équité (garde/astreinte/NCT/weekend)
++-- Date: 2026-07-23
++--
++-- Contexte : jusqu'ici, l'équité était recalculée à chaque génération de planning
++-- en reparsant TOUT l'historique JSON de la table `schedules` (voir
++-- calculateHistoricalEquity() dans app/actions/guard-api-actions.ts). Ça fonctionne
++-- mais c'est coûteux (reparse tout l'historique à chaque appel) et fragile (dépend
++-- du nommage exact des clés dans schedule_data).
++--
++-- Design : un "snapshot" par (médecin, semaine), REMPLACÉ (upsert) à chaque
++-- sauvegarde de planning — pas un compteur qu'on incrémente. Ça évite tout risque
++-- de double-comptage si une semaine est régénérée ou éditée plusieurs fois : on
++-- recalcule juste le snapshot de CETTE semaine, on ne touche pas aux autres.
++-- L'équité totale d'un médecin devient une simple SUM() sur ses lignes.
++
++CREATE TABLE IF NOT EXISTS public.doctor_equity_weekly (
++  doctor_id TEXT NOT NULL,
++  week_key TEXT NOT NULL,
++  astreinte_count INTEGER NOT NULL DEFAULT 0,
++  garde_count INTEGER NOT NULL DEFAULT 0,
++  nct_count INTEGER NOT NULL DEFAULT 0,
++  weekend_count INTEGER NOT NULL DEFAULT 0,
++  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
++  PRIMARY KEY (doctor_id, week_key)
++);
++
++-- Lecture rapide de "l'équité totale d'un médecin, toutes semaines confondues"
++CREATE INDEX IF NOT EXISTS doctor_equity_weekly_doctor_idx
++  ON public.doctor_equity_weekly(doctor_id);
++
++ALTER TABLE public.doctor_equity_weekly ENABLE ROW LEVEL SECURITY;
++
++-- Lecture ouverte à tout utilisateur authentifié (nécessaire pour le calcul d'équité
++-- côté server actions) ; écriture réservée au rôle service (server actions uniquement,
++-- jamais depuis le navigateur).
++CREATE POLICY "Authenticated users can read equity" ON public.doctor_equity_weekly
++  FOR SELECT USING (auth.role() = 'authenticated');
++
++CREATE POLICY "Service role can write equity" ON public.doctor_equity_weekly
++  FOR ALL USING (auth.role() = 'service_role');
++
++-- Vue pratique : équité cumulée par médecin (ce que le solveur va réellement lire)
++CREATE OR REPLACE VIEW public.doctor_equity_totals AS
++SELECT
++  doctor_id,
++  SUM(astreinte_count) AS points_astreinte,
++  SUM(garde_count) AS points_garde,
++  SUM(nct_count) AS points_nct,
++  SUM(weekend_count) AS points_weekend
++FROM public.doctor_equity_weekly
++GROUP BY doctor_id;
