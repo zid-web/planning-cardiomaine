@@ -1,5 +1,7 @@
--- Local dev consolidated schema (matches application code, not committed prod migrations).
--- This file is used only for local Supabase development and is intentionally not committed.
+-- Consolidated base schema aligned with the application code.
+-- Replaces the previous inconsistent migrations (schedules was user_id/full_schedule
+-- based, and planning_notes referenced profiles before it existed). This creates the
+-- profiles/schedules/etc. tables with the columns the app actually uses.
 
 -- profiles ------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.profiles (
