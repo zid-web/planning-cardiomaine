@@ -1,16 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { applyChangeRequest, rejectChangeRequest } from '@/app/actions/change-request-actions';
 
 export default function AdminRequestsPage() {
   const supabase = createClient();
+  const router = useRouter();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
 
   const loadRequests = async () => {
-    setLoading(true);
     const { data, error } = await supabase
       .from('change_requests')
       .select('*, profiles(email)')
@@ -22,28 +25,59 @@ export default function AdminRequestsPage() {
     } else {
       setRequests(data || []);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadRequests();
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace('/auth/login');
+        return;
+      }
+      // Garde admin : seuls les administrateurs accèdent à cette page
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profile?.role !== 'admin') {
+        toast.error('Accès réservé aux administrateurs');
+        router.replace('/protected/planning');
+        return;
+      }
+
+      setAuthorized(true);
+      await loadRequests();
+      setLoading(false);
+    };
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleAction = async (id: string, action: 'approved' | 'rejected', comment?: string) => {
-    const { error } = await supabase
-      .from('change_requests')
-      .update({ status: action, admin_comment: comment })
-      .eq('id', id);
-
-    if (error) {
-      toast.error('Erreur lors de la mise à jour');
-    } else {
-      toast.success(`Demande ${action === 'approved' ? 'acceptée' : 'refusée'}`);
+  // Approbation/refus via la Server Action centralisée
+  const handleApprove = async (id: string) => {
+    const result = await applyChangeRequest(id);
+    if (result.success) {
+      toast.success(result.message);
       loadRequests();
+    } else {
+      toast.error(result.error);
+    }
+  };
+
+  const handleReject = async (id: string, comment?: string) => {
+    const result = await rejectChangeRequest(id, comment);
+    if (result.success) {
+      toast.success(result.message);
+      loadRequests();
+    } else {
+      toast.error(result.error);
     }
   };
 
   if (loading) return <div className="p-6">Chargement...</div>;
+  if (!authorized) return null;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -72,13 +106,13 @@ export default function AdminRequestsPage() {
             </div>
             <div className="flex gap-2 ml-4">
               <button
-                onClick={() => handleAction(req.id, 'approved')}
+                onClick={() => handleApprove(req.id)}
                 className="bg-green-500 hover:bg-green-600 text-white px-4 py-1 rounded text-sm transition-colors"
               >
                 ✅ Accepter
               </button>
               <button
-                onClick={() => handleAction(req.id, 'rejected')}
+                onClick={() => handleReject(req.id)}
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-1 rounded text-sm transition-colors"
               >
                 ❌ Refuser
