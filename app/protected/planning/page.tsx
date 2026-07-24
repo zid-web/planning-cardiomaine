@@ -7,10 +7,6 @@ import { Button } from "@/components/ui/button";
 import { VoiceAndUploadPanel } from "@/components/VoiceAndUploadPanel";
 import { DAYS, DOCTORS, DOCTOR_COLORS } from "@/lib/constants";
 import { getWeekNumber, getWeekDates } from "@/lib/schedule-utils";
-import {
-  buildCurrentWeekRequest,
-  convertSolverResponseToScheduleData,
-} from "@/lib/voice-panel-utils";
 import { createClient } from "@/lib/supabase/client";
 
 // Types
@@ -345,37 +341,32 @@ export default function PlanningPage() {
     refreshRequests();
   };
 
-  // Build request pour le solveur
-  const currentWeekRequest = useMemo(() => {
-    const monday = new Date(currentDate);
-    const day = monday.getDay();
-    const diff = monday.getDate() - day + (day === 0 ? -6 : 1);
-    monday.setDate(diff);
-    const weekStartDate = monday.toISOString().split("T")[0];
-    return buildCurrentWeekRequest(weekStartDate, weekInfo.week, vacations, DOCTORS);
-  }, [currentDate, weekInfo.week, vacations]);
-
-  const handleScheduleUpdate = useCallback((newSchedule: any) => {
-    const scheduleData = convertSolverResponseToScheduleData(newSchedule);
-    const updated: ScheduleData = { ...schedule };
-    Object.keys(scheduleData).forEach(row => {
-      if (updated[row]) {
-        updated[row] = { ...updated[row] };
-        Object.keys(scheduleData[row]).forEach(day => {
-          if (updated[row][day]) {
-            updated[row][day] = {
-              ...updated[row][day],
-              value: scheduleData[row][day].value,
-              type: scheduleData[row][day].type || "doctor",
-              status: "validated",
-            };
-          }
-        });
+  // Applique les opérations renvoyées par /api/voice-command
+  const applyVoiceOperations = useCallback(
+    (data: { operations?: Array<{ action: string; doctor?: string; day?: string; row?: string }> }) => {
+      const ops = data?.operations || [];
+      let next = schedule;
+      let changed = false;
+      for (const op of ops) {
+        if ((op.action !== "add" && op.action !== "remove") || !op.day || !op.row || !op.doctor) continue;
+        const cell = next[op.row]?.[op.day];
+        if (!cell) continue;
+        let value = cell.value;
+        if (op.action === "add" && !value.includes(op.doctor)) value = [...value, op.doctor];
+        if (op.action === "remove") value = value.filter((d) => d !== op.doctor);
+        next = {
+          ...next,
+          [op.row]: { ...next[op.row], [op.day]: { ...cell, value, type: value.length ? "doctor" : "empty" } },
+        };
+        changed = true;
       }
-    });
-    setSchedule(updated);
-    void persistSchedule(updated);
-  }, [schedule, persistSchedule]);
+      if (changed) {
+        setSchedule(next);
+        void persistSchedule(next);
+      }
+    },
+    [schedule, persistSchedule],
+  );
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-screen">Chargement...</div>;
@@ -527,13 +518,9 @@ export default function PlanningPage() {
                 </button>
               </div>
               <VoiceAndUploadPanel
-                apiBaseUrl={process.env.NEXT_PUBLIC_GUARD_API_BASE_URL || "https://guard-api-cardiomaine.onrender.com"}
-                apiKey={process.env.NEXT_PUBLIC_GUARD_API_KEY || ""}
-                currentWeekRequest={currentWeekRequest}
-                knownDoctors={DOCTORS}
-                onScheduleUpdated={handleScheduleUpdate}
-                onPdfParsed={(data) => {
-                  console.log("Données PDF extraites:", data);
+                weekStartDate={weekDates[0]}
+                onCommandExecuted={(data) => {
+                  applyVoiceOperations(data);
                 }}
               />
             </div>
