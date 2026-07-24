@@ -114,13 +114,18 @@ export default function PlanningPage() {
   const [vacations, setVacations] = useState<any[]>([]);
   const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null);
   const [voicePanelOpen, setVoicePanelOpen] = useState(false);
-  const [userId, setUserId] = useState<string>("");
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([]);
   const [showRequests, setShowRequests] = useState(false);
-  const [requestForm, setRequestForm] = useState<{ requestedDoctor: string; reason: string }>({
-    requestedDoctor: "",
-    reason: "",
-  });
+  const [requestModal, setRequestModal] = useState<{
+    open: boolean;
+    row: string;
+    day: string;
+    slot?: string;
+    currentDoctor?: string;
+  }>({ open: false, row: "", day: "" });
+  const [requestedDoctor, setRequestedDoctor] = useState("");
+  const [reason, setReason] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const weekInfo = useMemo(() => getWeekNumber(currentDate), [currentDate]);
   const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, "0")}`;
@@ -132,7 +137,6 @@ export default function PlanningPage() {
       try {
         const { data: user } = await supabase.auth.getUser();
         if (!user?.user) return;
-        setUserId(user.user.id);
 
         const { data: profile } = await supabase
           .from("profiles")
@@ -212,10 +216,17 @@ export default function PlanningPage() {
   };
   const goToToday = () => setCurrentDate(new Date());
 
-  // Interactivité
+  // Interactivité : les admins éditent directement, les médecins demandent une modification
   const handleCellClick = (rowKey: string, day: string) => {
     if (rowKey === "Notes du jour" || rowKey === "Congés") return;
-    setSelectedCell({ row: rowKey, day });
+    if (isAdmin) {
+      setSelectedCell({ row: rowKey, day });
+    } else {
+      const currentDoctor = schedule[rowKey]?.[day]?.value.join(", ") || "";
+      setRequestedDoctor("");
+      setReason("");
+      setRequestModal({ open: true, row: rowKey, day, currentDoctor });
+    }
   };
 
   // Mise à jour immuable + optimiste d'une cellule, puis persistance en arrière-plan
@@ -272,29 +283,41 @@ export default function PlanningPage() {
     [changeRequests],
   );
 
-  // Un médecin (non-admin) soumet une demande au lieu de modifier directement
+  // Un médecin (non-admin) soumet une demande via l'API /api/change-request
   const submitChangeRequest = async () => {
-    if (!selectedCell || !requestForm.requestedDoctor) return;
-    const { row, day } = selectedCell;
-    const current = schedule[row][day].value.join(", ");
-    const { error } = await supabase.from("change_requests").insert({
-      requester_id: userId,
-      week_key: weekKey,
-      day_name: day,
-      row_key: row,
-      current_doctor: current || null,
-      requested_doctor: requestForm.requestedDoctor,
-      reason: requestForm.reason || null,
-    });
-    if (error) {
-      console.error("Erreur demande:", error);
-      toast.error("Erreur lors de l'envoi de la demande");
-      return;
+    if (!requestModal.open || !requestedDoctor) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/change-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          week_key: weekKey,
+          day_name: requestModal.day,
+          row_key: requestModal.row,
+          slot: requestModal.slot ?? null,
+          current_doctor: requestModal.currentDoctor || null,
+          requested_doctor: requestedDoctor,
+          reason: reason || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // 409 = déjà en attente, 400 = champs manquants, etc.
+        toast.error(json.error || "Erreur lors de l'envoi de la demande");
+        return;
+      }
+      toast.success("Demande de modification envoyée");
+      setRequestModal({ open: false, row: "", day: "" });
+      setRequestedDoctor("");
+      setReason("");
+      refreshRequests();
+    } catch (e) {
+      console.error("Erreur demande:", e);
+      toast.error("Erreur réseau lors de l'envoi de la demande");
+    } finally {
+      setIsSubmitting(false);
     }
-    toast.success("Demande de modification envoyée");
-    setRequestForm({ requestedDoctor: "", reason: "" });
-    setSelectedCell(null);
-    refreshRequests();
   };
 
   // Un admin approuve : applique le médecin demandé à la cellule puis marque approuvé
@@ -534,9 +557,7 @@ export default function PlanningPage() {
           <div className="w-full max-w-md rounded-t-2xl bg-white p-4 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-slate-900">
-                  {isAdmin ? "Modifier l'affectation" : "Demander une modification"}
-                </h3>
+                <h3 className="font-bold text-slate-900">Modifier l'affectation</h3>
                 <p className="text-xs text-slate-500">{selectedCell.day} - {selectedCell.row}</p>
               </div>
               <button onClick={() => setSelectedCell(null)} className="p-2 hover:bg-gray-100 rounded-full">
@@ -546,35 +567,81 @@ export default function PlanningPage() {
 
             <div className="mb-4 flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-lg border border-slate-100">
               {schedule[selectedCell.row][selectedCell.day].value.length === 0 && (
-                <span className="text-slate-400 text-sm italic self-center">
-                  {isAdmin ? "Aucun médecin sélectionné" : "Aucun médecin actuellement"}
-                </span>
+                <span className="text-slate-400 text-sm italic self-center">Aucun médecin sélectionné</span>
               )}
               {schedule[selectedCell.row][selectedCell.day].value.map((doc, index) => (
                 <div key={index} className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${DOCTOR_COLORS[doc] || 'bg-gray-500'}`}>
                   {doc}
-                  {isAdmin && (
-                    <button onClick={() => removeDoctorFromCell(index)} className="ml-1 hover:bg-black/20 rounded-full p-0.5">
-                      <X className="size-3" />
-                    </button>
-                  )}
+                  <button onClick={() => removeDoctorFromCell(index)} className="ml-1 hover:bg-black/20 rounded-full p-0.5">
+                    <X className="size-3" />
+                  </button>
                 </div>
               ))}
             </div>
 
-            {isAdmin ? (
-              <>
-                <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
+            <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
+              {DOCTORS.map((doc) => {
+                const isSelected = schedule[selectedCell.row][selectedCell.day].value.includes(doc);
+                return (
+                  <button
+                    key={doc}
+                    onClick={() => addDoctorToCell(doc)}
+                    disabled={isSelected}
+                    className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all
+                      ${isSelected ? 'opacity-20 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95'}
+                    `}
+                  >
+                    <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
+                    {doc}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button className="w-full py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modale de demande de modification (médecins non-admin) */}
+      {requestModal.open && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-t-2xl bg-white p-4 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900">Demander une modification</h3>
+                <p className="text-xs text-slate-500">{requestModal.day} - {requestModal.row}</p>
+              </div>
+              <button
+                onClick={() => setRequestModal({ open: false, row: "", day: "" })}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50 p-2 text-sm text-slate-600">
+              Médecin actuel : {requestModal.currentDoctor ? (
+                <span className="font-semibold">{requestModal.currentDoctor}</span>
+              ) : (
+                <span className="italic text-slate-400">aucun</span>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-slate-600">Médecin souhaité</label>
+                <div className="grid grid-cols-4 gap-2 mt-1 max-h-[220px] overflow-y-auto">
                   {DOCTORS.map((doc) => {
-                    const isSelected = schedule[selectedCell.row][selectedCell.day].value.includes(doc);
+                    const active = requestedDoctor === doc;
                     return (
                       <button
                         key={doc}
-                        onClick={() => addDoctorToCell(doc)}
-                        disabled={isSelected}
-                        className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all
-                          ${isSelected ? 'opacity-20 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95'}
-                        `}
+                        onClick={() => setRequestedDoctor(doc)}
+                        className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all border
+                          ${active ? 'bg-teal-600 text-white border-teal-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                       >
                         <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
                         {doc}
@@ -582,56 +649,33 @@ export default function PlanningPage() {
                     );
                   })}
                 </div>
-
-                <button className="w-full py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
-                  Fermer
-                </button>
-              </>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Médecin souhaité</label>
-                  <div className="grid grid-cols-4 gap-2 mt-1 max-h-[220px] overflow-y-auto">
-                    {DOCTORS.map((doc) => {
-                      const active = requestForm.requestedDoctor === doc;
-                      return (
-                        <button
-                          key={doc}
-                          onClick={() => setRequestForm((f) => ({ ...f, requestedDoctor: doc }))}
-                          className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all border
-                            ${active ? 'bg-teal-600 text-white border-teal-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-                        >
-                          <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
-                          {doc}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-600">Motif (optionnel)</label>
-                  <textarea
-                    value={requestForm.reason}
-                    onChange={(e) => setRequestForm((f) => ({ ...f, reason: e.target.value }))}
-                    rows={2}
-                    placeholder="Ex : indisponible ce jour-là"
-                    className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button className="flex-1 py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
-                    Annuler
-                  </button>
-                  <button
-                    disabled={!requestForm.requestedDoctor}
-                    onClick={submitChangeRequest}
-                    className="flex-1 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Envoyer la demande
-                  </button>
-                </div>
               </div>
-            )}
+              <div>
+                <label className="text-xs font-medium text-slate-600">Motif (optionnel)</label>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={2}
+                  placeholder="Ex : indisponible ce jour-là"
+                  className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="flex-1 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+                  onClick={() => setRequestModal({ open: false, row: "", day: "" })}
+                >
+                  Annuler
+                </button>
+                <button
+                  disabled={!requestedDoctor || isSubmitting}
+                  onClick={submitChangeRequest}
+                  className="flex-1 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? "Envoi..." : "Envoyer la demande"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
