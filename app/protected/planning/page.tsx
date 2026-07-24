@@ -223,16 +223,6 @@ export default function PlanningPage() {
     setSelectedCell({ row: rowKey, day });
   };
 
-  // Depuis la modale de consultation, un médecin ouvre le formulaire de demande
-  const openRequestFromCell = () => {
-    if (!selectedCell) return;
-    const currentDoctor = schedule[selectedCell.row]?.[selectedCell.day]?.value.join(", ") || "";
-    setRequestedDoctor("");
-    setReason("");
-    setRequestModal({ open: true, row: selectedCell.row, day: selectedCell.day, currentDoctor });
-    setSelectedCell(null);
-  };
-
   // Mise à jour immuable + optimiste d'une cellule, puis persistance en arrière-plan
   const applyCellUpdate = (row: string, day: string, nextCell: CellData) => {
     const next: ScheduleData = {
@@ -619,15 +609,23 @@ export default function PlanningPage() {
                 Fermer
               </button>
             ) : (
-              <div className="flex gap-2">
-                <button className="flex-1 py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
-                  Fermer
-                </button>
+              <div className="mt-2">
                 <button
-                  onClick={openRequestFromCell}
-                  className="flex-1 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                  onClick={() => {
+                    if (!selectedCell) return;
+                    setRequestedDoctor("");
+                    setReason("");
+                    setRequestModal({
+                      open: true,
+                      row: selectedCell.row,
+                      day: selectedCell.day,
+                      currentDoctor: schedule[selectedCell.row][selectedCell.day].value[0],
+                    });
+                    setSelectedCell(null);
+                  }}
+                  className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                 >
-                  Demander un changement
+                  <span>📩</span> Demander un changement
                 </button>
               </div>
             )}
