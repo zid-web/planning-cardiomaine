@@ -8,6 +8,7 @@ import { VoiceAndUploadPanel } from "@/components/VoiceAndUploadPanel";
 import { DAYS, DOCTORS, DOCTOR_COLORS } from "@/lib/constants";
 import { getWeekNumber, getWeekDates } from "@/lib/schedule-utils";
 import { createClient } from "@/lib/supabase/client";
+import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions";
 
 // Types
 type CellData = {
@@ -272,6 +273,16 @@ export default function PlanningPage() {
     setChangeRequests((data as ChangeRequest[]) || []);
   }, [supabase, weekKey]);
 
+  // Recharge le planning de la semaine depuis la base (après application côté serveur)
+  const reloadSchedule = useCallback(async () => {
+    const { data } = await supabase
+      .from("schedules")
+      .select("schedule_data")
+      .eq("week_key", weekKey)
+      .single();
+    if (data?.schedule_data) setSchedule(data.schedule_data as ScheduleData);
+  }, [supabase, weekKey]);
+
   const pendingRequests = useMemo(
     () => changeRequests.filter((r) => r.status === "pending"),
     [changeRequests],
@@ -315,47 +326,24 @@ export default function PlanningPage() {
     }
   };
 
-  // Un admin approuve : applique le médecin demandé à la cellule puis marque approuvé
+  // Un admin approuve / rejette via la Server Action centralisée
   const approveRequest = async (req: ChangeRequest) => {
-    const cell = schedule[req.row_key]?.[req.day_name];
-    if (cell) {
-      const value = cell.value.includes(req.requested_doctor)
-        ? cell.value
-        : [...cell.value, req.requested_doctor];
-      const next: ScheduleData = {
-        ...schedule,
-        [req.row_key]: {
-          ...schedule[req.row_key],
-          [req.day_name]: { ...cell, value, type: "doctor" },
-        },
-      };
-      setSchedule(next);
-      await persistSchedule(next);
-    }
-    const { error } = await supabase
-      .from("change_requests")
-      .update({ status: "approved", updated_at: new Date().toISOString() })
-      .eq("id", req.id);
-    if (error) {
-      console.error("Erreur approbation:", error);
-      toast.error("Erreur lors de l'approbation");
+    const result = await applyChangeRequest(req.id);
+    if (!result.success) {
+      toast.error(result.error || "Erreur lors de l'approbation");
       return;
     }
-    toast.success(`Demande approuvée : ${req.requested_doctor} → ${req.row_key} (${req.day_name})`);
-    refreshRequests();
+    toast.success(result.message);
+    await Promise.all([reloadSchedule(), refreshRequests()]);
   };
 
   const rejectRequest = async (req: ChangeRequest) => {
-    const { error } = await supabase
-      .from("change_requests")
-      .update({ status: "rejected", updated_at: new Date().toISOString() })
-      .eq("id", req.id);
-    if (error) {
-      console.error("Erreur rejet:", error);
-      toast.error("Erreur lors du rejet");
+    const result = await rejectChangeRequest(req.id);
+    if (!result.success) {
+      toast.error(result.error || "Erreur lors du rejet");
       return;
     }
-    toast.success("Demande rejetée");
+    toast.success(result.message);
     refreshRequests();
   };
 

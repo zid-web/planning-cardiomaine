@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
+import { applyChangeRequest, rejectChangeRequest } from '@/app/actions/change-request-actions';
 
 export default function AdminRequestsPage() {
   const supabase = createClient();
@@ -54,56 +55,24 @@ export default function AdminRequestsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Applique le médecin demandé à la grille du planning (table schedules)
-  const applyToSchedule = async (req: any) => {
-    const { data: existing } = await supabase
-      .from('schedules')
-      .select('schedule_data')
-      .eq('week_key', req.week_key)
-      .maybeSingle();
-
-    const scheduleData: any = existing?.schedule_data || {};
-    const row = scheduleData[req.row_key] || {};
-    const cell = row[req.day_name] || { value: [], type: 'empty', status: 'validated' };
-    const value: string[] = cell.value?.includes(req.requested_doctor)
-      ? cell.value
-      : [...(cell.value || []), req.requested_doctor];
-
-    const nextSchedule = {
-      ...scheduleData,
-      [req.row_key]: {
-        ...row,
-        [req.day_name]: { ...cell, value, type: 'doctor', status: 'validated' },
-      },
-    };
-
-    const { error } = await supabase
-      .from('schedules')
-      .upsert(
-        { week_key: req.week_key, schedule_data: nextSchedule, updated_at: new Date().toISOString() },
-        { onConflict: 'week_key' },
-      );
-    if (error) throw error;
+  // Approbation/refus via la Server Action centralisée
+  const handleApprove = async (id: string) => {
+    const result = await applyChangeRequest(id);
+    if (result.success) {
+      toast.success(result.message);
+      loadRequests();
+    } else {
+      toast.error(result.error);
+    }
   };
 
-  const handleAction = async (req: any, action: 'approved' | 'rejected', comment?: string) => {
-    try {
-      // À l'acceptation, on applique le changement au planning avant de marquer la demande
-      if (action === 'approved') {
-        await applyToSchedule(req);
-      }
-
-      const { error } = await supabase
-        .from('change_requests')
-        .update({ status: action, admin_comment: comment })
-        .eq('id', req.id);
-
-      if (error) throw error;
-
-      toast.success(`Demande ${action === 'approved' ? 'acceptée' : 'refusée'}`);
-      await loadRequests();
-    } catch {
-      toast.error('Erreur lors de la mise à jour');
+  const handleReject = async (id: string, comment?: string) => {
+    const result = await rejectChangeRequest(id, comment);
+    if (result.success) {
+      toast.success(result.message);
+      loadRequests();
+    } else {
+      toast.error(result.error);
     }
   };
 
@@ -137,13 +106,13 @@ export default function AdminRequestsPage() {
             </div>
             <div className="flex gap-2 ml-4">
               <button
-                onClick={() => handleAction(req, 'approved')}
+                onClick={() => handleApprove(req.id)}
                 className="bg-green-500 hover:bg-green-600 text-white px-4 py-1 rounded text-sm transition-colors"
               >
                 ✅ Accepter
               </button>
               <button
-                onClick={() => handleAction(req, 'rejected')}
+                onClick={() => handleReject(req.id)}
                 className="bg-red-500 hover:bg-red-600 text-white px-4 py-1 rounded text-sm transition-colors"
               >
                 ❌ Refuser
