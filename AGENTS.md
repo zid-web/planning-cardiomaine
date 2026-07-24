@@ -9,8 +9,12 @@ required service is the Next.js dev server; the backend is Supabase.
 ### Run / build / lint
 - Dev server: `bun run dev` → http://localhost:3000 (this is the app; use dev, not `build`/`start`).
 - Build: `bun run build` (note: `next.config.js` sets `typescript.ignoreBuildErrors: true`, so TS errors do not fail the build).
-- Lint: `bun run lint` is currently **broken in the repo** — the `lint` script calls `eslint .` but `eslint` is not a dependency and there is no eslint config. Do not treat lint failures here as caused by your changes.
+- Lint: `bun run lint` works (flat config in `eslint.config.mjs`). It is configured to exit 0 with warnings only; several noisy/pre-existing rules (incl. React Compiler rules from `react-hooks` v6) are set to `warn` on purpose.
 - Standard commands are also in `README.md` and `QUICK_REFERENCE.md`.
+
+### Roles & API gotchas
+- `profiles.role` defaults to `'admin'` (init migration), so brand-new users are admins. The planning page treats `role === 'admin'` as admin (direct grid editing + change-request approval panel); any other role is a "doctor" who can only submit change requests. To test the doctor flow, set a user's `role` to something else (e.g. `UPDATE profiles SET role='doctor' WHERE ...`).
+- `middleware.ts` gates `/api/*` too (only `/`, `/auth/login`, `/auth/sign-up`, `/auth/forgot-password` are public). Unauthenticated requests to API routes redirect to login, so testing `/api/voice-command` or `/api/upload-pdf` with plain `curl` won't hit the handler — invoke the handler directly or use an authenticated session.
 
 ### Supabase backend (important auth caveat)
 - Committed `.env` points at a hosted Supabase project. The client (`lib/supabase/client.ts`) hardcodes the same values as a fallback.
