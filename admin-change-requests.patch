@@ -1,0 +1,487 @@
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' admin-baseline/app/actions/change-request-actions.ts planning-cardiomaine/app/actions/change-request-actions.ts
+--- admin-baseline/app/actions/change-request-actions.ts	1970-01-01 00:00:00.000000000 +0000
++++ planning-cardiomaine/app/actions/change-request-actions.ts	2026-07-24 21:04:50.312211195 +0000
+@@ -0,0 +1,160 @@
++"use server"
++
++/**
++ * Système de demandes de changement (spec métier section 8/11) :
++ * - Seuls les admins (profiles.role = 'admin', en pratique M et Z) modifient
++ *   directement le planning.
++ * - Les autres utilisateurs sont en lecture seule mais peuvent soumettre une
++ *   demande de changement (médecin souhaité + justification libre) via
++ *   createChangeRequest().
++ * - Un admin liste les demandes en attente (getPendingChangeRequests) et les
++ *   valide ou rejette (reviewChangeRequest). Valider applique immédiatement
++ *   le changement au planning réel (via saveScheduleToDb).
++ *
++ * Table : change_requests (voir scripts/002_create_change_requests_table.sql
++ * + supabase/migrations/20260723_fix_change_requests_rls_and_justification.sql
++ * pour la correction de sécurité RLS et l'ajout du champ justification).
++ */
++
++import { createClient } from "@/lib/supabase/server"
++import { revalidatePath } from "next/cache"
++import type { CellData, ChangeRequest, ScheduleData } from "@/lib/types"
++import { getScheduleFromDb, saveScheduleToDb } from "@/app/actions/schedule-actions"
++
++async function requireAdmin(): Promise<{ userId: string; initial: string }> {
++  const supabase = await createClient()
++  const {
++    data: { user },
++  } = await supabase.auth.getUser()
++
++  if (!user) throw new Error("Non authentifié")
++
++  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
++
++  if (!profile || profile.role !== "admin") {
++    throw new Error("Action réservée aux administrateurs")
++  }
++
++  return { userId: user.id, initial: user.email?.split("@")[0]?.toUpperCase() || "ADMIN" }
++}
++
++/**
++ * Soumet une demande de changement. Accessible à tout utilisateur connecté
++ * (pas de vérification admin ici - c'est justement le canal prévu pour les
++ * non-admins). N'écrit jamais directement dans `schedules` : reste "pending"
++ * tant qu'un admin n'a pas validé.
++ */
++export async function createChangeRequest(
++  weekKey: string,
++  rowId: string,
++  day: string,
++  requestedDoctor: string,
++  justification: string,
++  requester: string,
++): Promise<void> {
++  const supabase = await createClient()
++
++  const currentSchedule = await getScheduleFromDb(weekKey)
++  const oldValue: CellData | null =
++    (currentSchedule?.schedule_data as ScheduleData | undefined)?.[rowId]?.[day] || null
++
++  const { error } = await supabase.from("change_requests").insert({
++    week_key: weekKey,
++    row_id: rowId,
++    day,
++    requester,
++    old_value: oldValue,
++    new_value: { doctor: requestedDoctor },
++    justification: justification || null,
++    status: "pending",
++  })
++
++  if (error) {
++    console.error("[change-requests] Erreur création:", error)
++    throw new Error("Impossible d'envoyer la demande. Réessayez.")
++  }
++
++  revalidatePath("/")
++}
++
++/**
++ * Liste les demandes en attente. Réservé aux admins (vérifié explicitement,
++ * pas seulement par la RLS - défense en profondeur).
++ */
++export async function getPendingChangeRequests(): Promise<ChangeRequest[]> {
++  await requireAdmin()
++  const supabase = await createClient()
++
++  const { data, error } = await supabase
++    .from("change_requests")
++    .select("*")
++    .eq("status", "pending")
++    .order("created_at", { ascending: true })
++
++  if (error) {
++    console.error("[change-requests] Erreur lecture:", error)
++    return []
++  }
++
++  return (data || []) as ChangeRequest[]
++}
++
++/**
++ * Valide ou rejette une demande. Réservé aux admins.
++ * En cas de validation : applique IMMÉDIATEMENT le changement au planning réel
++ * (ajoute le médecin demandé à la cellule concernée, statut "validated" direct -
++ * pas de second niveau de "pending" puisque c'est déjà un admin qui valide).
++ */
++export async function reviewChangeRequest(
++  requestId: string,
++  action: "validated" | "rejected",
++): Promise<void> {
++  const { initial } = await requireAdmin()
++  const supabase = await createClient()
++
++  const { data: request, error: fetchError } = await supabase
++    .from("change_requests")
++    .select("*")
++    .eq("id", requestId)
++    .single()
++
++  if (fetchError || !request) {
++    throw new Error("Demande introuvable")
++  }
++
++  if (action === "validated") {
++    const scheduleRow = await getScheduleFromDb(request.week_key)
++    const scheduleData = (scheduleRow?.schedule_data as ScheduleData) || {}
++
++    if (!scheduleData[request.row_id]) scheduleData[request.row_id] = {}
++
++    const existing = scheduleData[request.row_id][request.day]
++    const requestedDoctor = request.new_value?.doctor
++    const currentDoctors = existing?.value || []
++
++    if (requestedDoctor && !currentDoctors.includes(requestedDoctor)) {
++      scheduleData[request.row_id][request.day] = {
++        value: [...currentDoctors, requestedDoctor],
++        type: "doctor",
++        status: "validated",
++      }
++      await saveScheduleToDb(request.week_key, scheduleData, initial)
++    }
++  }
++
++  const { error: updateError } = await supabase
++    .from("change_requests")
++    .update({
++      status: action,
++      validated_at: new Date().toISOString(),
++      validated_by: initial,
++    })
++    .eq("id", requestId)
++
++  if (updateError) {
++    console.error("[change-requests] Erreur mise à jour statut:", updateError)
++    throw new Error("Impossible de finaliser la décision")
++  }
++
++  revalidatePath("/")
++}
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' admin-baseline/components/schedule-app.tsx planning-cardiomaine/components/schedule-app.tsx
+--- admin-baseline/components/schedule-app.tsx	2026-07-24 21:07:56.404414099 +0000
++++ planning-cardiomaine/components/schedule-app.tsx	2026-07-24 21:06:55.129502128 +0000
+@@ -25,7 +25,7 @@
+ import { Textarea } from "@/components/ui/textarea"
+ import { LiveClock } from "@/components/live-clock"
+ import { LearnMoreModal } from "@/components/learn-more-modal"
+-import type { FullSchedule, ScheduleData, CellData } from "@/lib/types"
++import type { FullSchedule, ScheduleData, CellData, ChangeRequest } from "@/lib/types"
+ import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
+ import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays, frDateToIso } from "@/lib/schedule-utils"
+ import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
+@@ -35,6 +35,11 @@
+ import { cn } from "@/lib/utils"
+ import { Dialog, DialogContent } from "@/components/ui/dialog"
+ import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
++import {
++  createChangeRequest,
++  getPendingChangeRequests,
++  reviewChangeRequest,
++} from "@/app/actions/change-request-actions"
+ import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
+ import { getAllVacations } from "@/app/actions/vacation-actions"
+ import { VacationsModal } from "@/components/vacations-modal"
+@@ -64,6 +69,12 @@
+   const [activeTab, setActiveTab] = useState<"today" | "week" | "all">("today")
+   const [currentDate, setCurrentDate] = useState(new Date()) // Track current date
+   const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null)
++  const [changeRequestCell, setChangeRequestCell] = useState<{ row: string; day: string } | null>(null)
++  const [changeRequestDoctor, setChangeRequestDoctor] = useState<string>("")
++  const [changeRequestJustification, setChangeRequestJustification] = useState<string>("")
++  const [submittingChangeRequest, setSubmittingChangeRequest] = useState(false)
++  const [pendingRequestsPanelOpen, setPendingRequestsPanelOpen] = useState(false)
++  const [pendingChangeRequests, setPendingChangeRequests] = useState<ChangeRequest[]>([])
+   const [noteModalOpen, setNoteModalOpen] = useState(false)
+   const [currentNote, setCurrentNote] = useState("")
+   const [noteDay, setNoteDay] = useState("")
+@@ -199,6 +210,18 @@
+   const handleCellClick = (rowKey: string, day: string) => {
+     if (activeTab === "all" && !isAdmin) return
+     if (isCellBlocked(rowKey, day)) return
++
++    // Lecture seule pour les non-admins (spec métier section 8/11) : au lieu
++    // d'éditer directement la cellule, on ouvre le formulaire de demande de
++    // changement. La cellule elle-même n'est jamais modifiée tant qu'un admin
++    // n'a pas validé via reviewChangeRequest().
++    if (!isAdmin) {
++      setChangeRequestCell({ row: rowKey, day })
++      setChangeRequestDoctor("")
++      setChangeRequestJustification("")
++      return
++    }
++
+     setSelectedCell({ row: rowKey, day })
+   }
+ 
+@@ -429,6 +452,73 @@
+    * individuellement via validateProposal() avant d'impacter le planning réel
+    * (et donc avant de compter dans l'équité calculée pour le moteur Render).
+    */
++  const handleSubmitChangeRequest = async () => {
++    if (!changeRequestCell || !changeRequestDoctor) {
++      toast.error("Sélectionnez un médecin")
++      return
++    }
++    setSubmittingChangeRequest(true)
++    try {
++      await createChangeRequest(
++        weekKey,
++        changeRequestCell.row,
++        changeRequestCell.day,
++        changeRequestDoctor,
++        changeRequestJustification,
++        currentUser,
++      )
++      toast.success("Demande envoyée aux administrateurs.")
++      setChangeRequestCell(null)
++    } catch (error) {
++      toast.error(error instanceof Error ? error.message : "Erreur lors de l'envoi de la demande")
++    } finally {
++      setSubmittingChangeRequest(false)
++    }
++  }
++
++  const loadPendingChangeRequests = async () => {
++    try {
++      const requests = await getPendingChangeRequests()
++      setPendingChangeRequests(requests)
++      setPendingRequestsPanelOpen(true)
++    } catch (error) {
++      toast.error(error instanceof Error ? error.message : "Impossible de charger les demandes")
++    }
++  }
++
++  const handleReviewRequest = async (request: ChangeRequest, action: "validated" | "rejected") => {
++    try {
++      await reviewChangeRequest(request.id, action)
++      toast.success(action === "validated" ? "Demande validée et appliquée au planning." : "Demande rejetée.")
++      setPendingChangeRequests((prev) => prev.filter((r) => r.id !== request.id))
++
++      // Mise à jour optimiste locale si la demande validée concerne la semaine
++      // actuellement affichée (reviewChangeRequest a déjà persisté en base ;
++      // ceci évite juste d'attendre un rechargement complet pour voir le résultat).
++      if (action === "validated" && request.week_key === weekKey && request.new_value?.doctor) {
++        const currentDoctors = schedule[request.row_id]?.[request.day]?.value || []
++        if (!currentDoctors.includes(request.new_value.doctor)) {
++          setFullSchedule((prev) => ({
++            ...prev,
++            [weekKey]: {
++              ...prev[weekKey],
++              [request.row_id]: {
++                ...prev[weekKey]?.[request.row_id],
++                [request.day]: {
++                  value: [...currentDoctors, request.new_value!.doctor],
++                  type: "doctor",
++                  status: "validated",
++                },
++              },
++            },
++          }))
++        }
++      }
++    } catch (error) {
++      toast.error(error instanceof Error ? error.message : "Erreur lors de la décision")
++    }
++  }
++
+   const handleGenerateOfflineDraftProposals = async () => {
+     // Generate for current year through end of 2026
+     const startDate = new Date()
+@@ -549,6 +639,9 @@
+                 <LiveClock />
+                 {isAdmin && (
+                   <div className="flex gap-2 flex-wrap">
++                    <Button variant="outline" size="sm" onClick={loadPendingChangeRequests}>
++                      📩 Demandes en attente
++                    </Button>
+                     <GuardGenerationButton
+                       weekKey={`${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`}
+                       vacations={vacations}
+@@ -1248,6 +1341,124 @@
+         onClose={() => setVacationsModalOpen(false)}
+         onVacationsUpdated={loadVacations}
+       />
++      {/* Modale "Demander un changement" (non-admins - spec section 8/11).
++          Ne modifie jamais directement le planning : crée une ligne dans
++          change_requests, en attente de validation par un admin. */}
++      {changeRequestCell && (
++        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
++          <div className="w-full max-w-md rounded-t-2xl bg-white p-4 shadow-2xl animate-in slide-in-from-bottom">
++            <div className="mb-4 flex items-center justify-between">
++              <div>
++                <h3 className="font-bold text-slate-900">Demander un changement</h3>
++                <p className="text-xs text-slate-500">
++                  {changeRequestCell.day} - {changeRequestCell.row}
++                </p>
++              </div>
++              <Button variant="ghost" size="icon" onClick={() => setChangeRequestCell(null)}>
++                <X className="size-5" />
++              </Button>
++            </div>
++
++            <p className="text-xs text-slate-500 mb-3">
++              Vous êtes en lecture seule sur cette case. Votre demande sera envoyée aux
++              administrateurs pour validation.
++            </p>
++
++            <div className="grid grid-cols-4 gap-2 mb-4 max-h-[240px] overflow-y-auto">
++              {DOCTORS.map((doc) => (
++                <button
++                  key={doc}
++                  onClick={() => setChangeRequestDoctor(doc)}
++                  className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all border ${
++                    changeRequestDoctor === doc
++                      ? "border-blue-500 ring-2 ring-blue-200 bg-blue-50"
++                      : "border-slate-200 bg-white hover:bg-slate-50"
++                  }`}
++                >
++                  <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
++                  {doc}
++                </button>
++              ))}
++            </div>
++
++            <textarea
++              className="w-full rounded-lg border border-slate-200 p-2 text-sm mb-4"
++              rows={3}
++              placeholder="Justification (optionnel)"
++              value={changeRequestJustification}
++              onChange={(e) => setChangeRequestJustification(e.target.value)}
++            />
++
++            <div className="flex gap-2">
++              <Button
++                className="flex-1 bg-blue-600 hover:bg-blue-700"
++                onClick={handleSubmitChangeRequest}
++                disabled={submittingChangeRequest || !changeRequestDoctor}
++              >
++                {submittingChangeRequest ? "Envoi..." : "Envoyer la demande"}
++              </Button>
++              <Button variant="outline" className="flex-1 bg-transparent" onClick={() => setChangeRequestCell(null)}>
++                Annuler
++              </Button>
++            </div>
++          </div>
++        </div>
++      )}
++
++      {/* Panneau admin : demandes en attente (spec section 8/11) */}
++      {pendingRequestsPanelOpen && (
++        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
++          <div className="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl animate-in slide-in-from-bottom">
++            <div className="mb-4 flex items-center justify-between">
++              <h3 className="font-bold text-slate-900">Demandes de changement en attente</h3>
++              <Button variant="ghost" size="icon" onClick={() => setPendingRequestsPanelOpen(false)}>
++                <X className="size-5" />
++              </Button>
++            </div>
++
++            {pendingChangeRequests.length === 0 ? (
++              <p className="text-sm text-slate-400 italic">Aucune demande en attente.</p>
++            ) : (
++              <div className="space-y-3">
++                {pendingChangeRequests.map((request) => (
++                  <div key={request.id} className="border border-slate-200 rounded-lg p-3">
++                    <p className="text-sm font-semibold text-slate-900">
++                      {request.week_key} · {request.day} · {request.row_id}
++                    </p>
++                    <p className="text-sm text-slate-600 mt-1">
++                      Demandé par <span className="font-medium">{request.requester}</span> — ajouter{" "}
++                      <span className="font-bold">{request.new_value?.doctor}</span>
++                    </p>
++                    {request.justification && (
++                      <p className="text-xs text-slate-500 mt-1 italic">"{request.justification}"</p>
++                    )}
++                    <div className="flex gap-2 mt-2">
++                      <Button
++                        size="sm"
++                        className="flex-1 bg-green-600 hover:bg-green-700"
++                        onClick={() => handleReviewRequest(request, "validated")}
++                      >
++                        <CheckCircle2 className="mr-1 size-4" />
++                        Valider
++                      </Button>
++                      <Button
++                        size="sm"
++                        variant="outline"
++                        className="flex-1"
++                        onClick={() => handleReviewRequest(request, "rejected")}
++                      >
++                        <X className="mr-1 size-4" />
++                        Rejeter
++                      </Button>
++                    </div>
++                  </div>
++                ))}
++              </div>
++            )}
++          </div>
++        </div>
++      )}
++
+     </div>
+   )
+ }
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' admin-baseline/lib/types.ts planning-cardiomaine/lib/types.ts
+--- admin-baseline/lib/types.ts	2026-07-24 21:07:55.782172934 +0000
++++ planning-cardiomaine/lib/types.ts	2026-07-24 21:04:31.728372276 +0000
+@@ -19,6 +19,21 @@
+   [weekKey: string]: ScheduleData
+ }
+ 
++export type ChangeRequest = {
++  id: string
++  week_key: string
++  row_id: string
++  day: string
++  requester: string
++  old_value: CellData | null
++  new_value: { doctor: string } | null
++  justification: string | null
++  status: "pending" | "validated" | "rejected"
++  created_at: string
++  validated_at: string | null
++  validated_by: string | null
++}
++
+ export type GuardProposal = {
+   date: string
+   day: string
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' admin-baseline/supabase/migrations/20260723_fix_change_requests_rls_and_justification.sql planning-cardiomaine/supabase/migrations/20260723_fix_change_requests_rls_and_justification.sql
+--- admin-baseline/supabase/migrations/20260723_fix_change_requests_rls_and_justification.sql	1970-01-01 00:00:00.000000000 +0000
++++ planning-cardiomaine/supabase/migrations/20260723_fix_change_requests_rls_and_justification.sql	2026-07-24 21:04:24.272211743 +0000
+@@ -0,0 +1,29 @@
++-- Corrections sur change_requests (table déjà créée par scripts/002_create_change_requests_table.sql
++-- mais jamais utilisée dans le code jusqu'ici - voir app/actions/change-request-actions.ts) :
++--
++-- 1. Ajout de `justification` (texte libre demandé par la spec métier, section 8/11).
++-- 2. Correction d'une faille RLS : la policy "Anyone can update change requests" utilisait
++--    USING (true) alors que son commentaire disait "Only admins can update" — n'importe quel
++--    utilisateur connecté pouvait valider/rejeter une demande. Corrigé pour vérifier
++--    réellement profiles.role = 'admin' (même pattern que planning_notes).
++
++ALTER TABLE public.change_requests ADD COLUMN IF NOT EXISTS justification TEXT;
++
++DROP POLICY IF EXISTS "Anyone can update change requests" ON public.change_requests;
++
++CREATE POLICY "Only admins can update change requests" ON public.change_requests
++  FOR UPDATE
++  USING (
++    EXISTS (
++      SELECT 1 FROM public.profiles
++      WHERE profiles.id = auth.uid()
++      AND profiles.role = 'admin'
++    )
++  )
++  WITH CHECK (
++    EXISTS (
++      SELECT 1 FROM public.profiles
++      WHERE profiles.id = auth.uid()
++      AND profiles.role = 'admin'
++    )
++  );
