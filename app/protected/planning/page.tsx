@@ -155,11 +155,14 @@ export default function PlanningPage() {
     try {
       const { error } = await supabase
         .from("schedules")
-        .upsert({
-          week_key: weekKey,
-          schedule_data: newSchedule,
-          updated_at: new Date().toISOString(),
-        });
+        .upsert(
+          {
+            week_key: weekKey,
+            schedule_data: newSchedule,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "week_key" },
+        );
 
       if (error) throw error;
       setSchedule(newSchedule);
