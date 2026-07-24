@@ -1,0 +1,93 @@
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' cleanup-baseline/components/schedule-app.tsx planning-cardiomaine/components/schedule-app.tsx
+--- cleanup-baseline/components/schedule-app.tsx	2026-07-24 21:35:31.131593331 +0000
++++ planning-cardiomaine/components/schedule-app.tsx	2026-07-24 21:34:34.274256887 +0000
+@@ -248,20 +248,14 @@
+ 
+     const newValues = [...currentValues, doctor]
+ 
+-    const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+-
++    // Ancien mécanisme "pending cell" retiré (23/07/2026) : ce chemin n'est plus
++    // atteignable que par un admin (voir handleCellClick, qui redirige les
++    // non-admins vers le formulaire de demande de changement). Un admin qui
++    // édite directement valide donc toujours immédiatement.
+     newSchedule[selectedCell.row][selectedCell.day] = {
+       value: newValues,
+       type: newValues.length > 0 ? "doctor" : "empty",
+-      status: newStatus,
+-      request:
+-        newStatus === "pending"
+-          ? {
+-              requester: currentUser,
+-              status: "pending",
+-              timestamp: Date.now(),
+-            }
+-          : undefined,
++      status: "validated",
+     }
+ 
+     // Garde logic
+@@ -296,33 +290,10 @@
+ 
+     const newValues = currentValues.filter((_, index) => index !== indexToRemove)
+ 
+-    const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+-
+     newSchedule[selectedCell.row][selectedCell.day] = {
+       value: newValues,
+       type: newValues.length > 0 ? "doctor" : "empty",
+-      status: newStatus,
+-      request:
+-        newStatus === "pending"
+-          ? {
+-              requester: currentUser,
+-              status: "pending",
+-              timestamp: Date.now(),
+-            }
+-          : undefined,
+-    }
+-
+-    updateSchedule(newSchedule)
+-    setSelectedCell(null)
+-  }
+-
+-  const validateCell = () => {
+-    if (!selectedCell || (currentUser !== "M" && currentUser !== "Z")) return
+-
+-    const newSchedule = { ...schedule }
+-    newSchedule[selectedCell.row][selectedCell.day].status = "validated"
+-    if (newSchedule[selectedCell.row][selectedCell.day].request) {
+-      newSchedule[selectedCell.row][selectedCell.day].request = undefined
++      status: "validated",
+     }
+ 
+     updateSchedule(newSchedule)
+@@ -1176,28 +1147,6 @@
+             </div>
+ 
+             <div className="flex gap-2">
+-              {(currentUser === "M" || currentUser === "Z") && (
+-                <Button
+-                  className={`flex-1 ${
+-                    schedule[selectedCell.row][selectedCell.day].status === "pending"
+-                      ? "bg-green-600 hover:bg-green-700 animate-pulse"
+-                      : "bg-blue-600 hover:bg-blue-700"
+-                  }`}
+-                  onClick={validateCell}
+-                >
+-                  {schedule[selectedCell.row][selectedCell.day].status === "pending" ? (
+-                    <>
+-                      <CheckCircle2 className="mr-2 size-4" />
+-                      Valider la demande
+-                    </>
+-                  ) : (
+-                    <>
+-                      <Check className="mr-2 size-4" />
+-                      OK
+-                    </>
+-                  )}
+-                </Button>
+-              )}
+               <Button variant="outline" className="flex-1 bg-transparent" onClick={() => setSelectedCell(null)}>
+                 Fermer
+               </Button>
