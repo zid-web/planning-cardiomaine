@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, Fragment } from "react";
-import { ChevronLeft, ChevronRight, X, Mic } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, Mic, Bell, Check } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { VoiceAndUploadPanel } from "@/components/VoiceAndUploadPanel";
 import { DAYS, DOCTORS, DOCTOR_COLORS } from "@/lib/constants";
@@ -23,6 +24,22 @@ type ScheduleData = {
   [rowKey: string]: {
     [day: string]: CellData;
   };
+};
+
+type ChangeRequest = {
+  id: string;
+  requester_id: string | null;
+  week_key: string;
+  day_name: string;
+  row_key: string;
+  slot: string | null;
+  current_doctor: string | null;
+  requested_doctor: string;
+  reason: string | null;
+  status: "pending" | "approved" | "rejected";
+  admin_comment: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 // Lignes complètes du planning
@@ -101,6 +118,13 @@ export default function PlanningPage() {
   const [vacations, setVacations] = useState<any[]>([]);
   const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null);
   const [voicePanelOpen, setVoicePanelOpen] = useState(false);
+  const [userId, setUserId] = useState<string>("");
+  const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([]);
+  const [showRequests, setShowRequests] = useState(false);
+  const [requestForm, setRequestForm] = useState<{ requestedDoctor: string; reason: string }>({
+    requestedDoctor: "",
+    reason: "",
+  });
 
   const weekInfo = useMemo(() => getWeekNumber(currentDate), [currentDate]);
   const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, "0")}`;
@@ -112,6 +136,7 @@ export default function PlanningPage() {
       try {
         const { data: user } = await supabase.auth.getUser();
         if (!user?.user) return;
+        setUserId(user.user.id);
 
         const { data: profile } = await supabase
           .from("profiles")
@@ -123,6 +148,14 @@ export default function PlanningPage() {
           setIsAdmin(profile.role === "admin");
           setDoctorCode(profile.doctor_code || "");
         }
+
+        // Demandes de modification (RLS: admin -> toutes ; médecin -> les siennes)
+        const { data: crData } = await supabase
+          .from("change_requests")
+          .select("*")
+          .eq("week_key", weekKey)
+          .order("created_at", { ascending: false });
+        setChangeRequests((crData as ChangeRequest[]) || []);
 
         const { data: scheduleData } = await supabase
           .from("schedules")
@@ -228,6 +261,90 @@ export default function PlanningPage() {
     });
   };
 
+  // --- Demandes de modification (change_requests) ---
+  const refreshRequests = useCallback(async () => {
+    const { data } = await supabase
+      .from("change_requests")
+      .select("*")
+      .eq("week_key", weekKey)
+      .order("created_at", { ascending: false });
+    setChangeRequests((data as ChangeRequest[]) || []);
+  }, [supabase, weekKey]);
+
+  const pendingRequests = useMemo(
+    () => changeRequests.filter((r) => r.status === "pending"),
+    [changeRequests],
+  );
+
+  // Un médecin (non-admin) soumet une demande au lieu de modifier directement
+  const submitChangeRequest = async () => {
+    if (!selectedCell || !requestForm.requestedDoctor) return;
+    const { row, day } = selectedCell;
+    const current = schedule[row][day].value.join(", ");
+    const { error } = await supabase.from("change_requests").insert({
+      requester_id: userId,
+      week_key: weekKey,
+      day_name: day,
+      row_key: row,
+      current_doctor: current || null,
+      requested_doctor: requestForm.requestedDoctor,
+      reason: requestForm.reason || null,
+    });
+    if (error) {
+      console.error("Erreur demande:", error);
+      toast.error("Erreur lors de l'envoi de la demande");
+      return;
+    }
+    toast.success("Demande de modification envoyée");
+    setRequestForm({ requestedDoctor: "", reason: "" });
+    setSelectedCell(null);
+    refreshRequests();
+  };
+
+  // Un admin approuve : applique le médecin demandé à la cellule puis marque approuvé
+  const approveRequest = async (req: ChangeRequest) => {
+    const cell = schedule[req.row_key]?.[req.day_name];
+    if (cell) {
+      const value = cell.value.includes(req.requested_doctor)
+        ? cell.value
+        : [...cell.value, req.requested_doctor];
+      const next: ScheduleData = {
+        ...schedule,
+        [req.row_key]: {
+          ...schedule[req.row_key],
+          [req.day_name]: { ...cell, value, type: "doctor" },
+        },
+      };
+      setSchedule(next);
+      await persistSchedule(next);
+    }
+    const { error } = await supabase
+      .from("change_requests")
+      .update({ status: "approved", updated_at: new Date().toISOString() })
+      .eq("id", req.id);
+    if (error) {
+      console.error("Erreur approbation:", error);
+      toast.error("Erreur lors de l'approbation");
+      return;
+    }
+    toast.success(`Demande approuvée : ${req.requested_doctor} → ${req.row_key} (${req.day_name})`);
+    refreshRequests();
+  };
+
+  const rejectRequest = async (req: ChangeRequest) => {
+    const { error } = await supabase
+      .from("change_requests")
+      .update({ status: "rejected", updated_at: new Date().toISOString() })
+      .eq("id", req.id);
+    if (error) {
+      console.error("Erreur rejet:", error);
+      toast.error("Erreur lors du rejet");
+      return;
+    }
+    toast.success("Demande rejetée");
+    refreshRequests();
+  };
+
   // Build request pour le solveur
   const currentWeekRequest = useMemo(() => {
     const monday = new Date(currentDate);
@@ -284,7 +401,21 @@ export default function PlanningPage() {
               Aujourd'hui
             </Button>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="relative text-xs h-8 md:h-10"
+              onClick={() => setShowRequests(true)}
+            >
+              <Bell className="h-4 w-4 md:mr-1" />
+              <span className="hidden md:inline">Demandes</span>
+              {(isAdmin ? pendingRequests.length : changeRequests.length) > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {isAdmin ? pendingRequests.length : changeRequests.length}
+                </span>
+              )}
+            </Button>
             <span className="text-[10px] md:text-sm text-gray-500 hidden sm:inline">
               {weekDates[0]} → {weekDates[6]}
             </span>
@@ -416,7 +547,9 @@ export default function PlanningPage() {
           <div className="w-full max-w-md rounded-t-2xl bg-white p-4 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-slate-900">Modifier l'affectation</h3>
+                <h3 className="font-bold text-slate-900">
+                  {isAdmin ? "Modifier l'affectation" : "Demander une modification"}
+                </h3>
                 <p className="text-xs text-slate-500">{selectedCell.day} - {selectedCell.row}</p>
               </div>
               <button onClick={() => setSelectedCell(null)} className="p-2 hover:bg-gray-100 rounded-full">
@@ -426,40 +559,173 @@ export default function PlanningPage() {
 
             <div className="mb-4 flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-lg border border-slate-100">
               {schedule[selectedCell.row][selectedCell.day].value.length === 0 && (
-                <span className="text-slate-400 text-sm italic self-center">Aucun médecin sélectionné</span>
+                <span className="text-slate-400 text-sm italic self-center">
+                  {isAdmin ? "Aucun médecin sélectionné" : "Aucun médecin actuellement"}
+                </span>
               )}
               {schedule[selectedCell.row][selectedCell.day].value.map((doc, index) => (
                 <div key={index} className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${DOCTOR_COLORS[doc] || 'bg-gray-500'}`}>
                   {doc}
-                  <button onClick={() => removeDoctorFromCell(index)} className="ml-1 hover:bg-black/20 rounded-full p-0.5">
-                    <X className="size-3" />
-                  </button>
+                  {isAdmin && (
+                    <button onClick={() => removeDoctorFromCell(index)} className="ml-1 hover:bg-black/20 rounded-full p-0.5">
+                      <X className="size-3" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
-              {DOCTORS.map((doc) => {
-                const isSelected = schedule[selectedCell.row][selectedCell.day].value.includes(doc);
-                return (
-                  <button
-                    key={doc}
-                    onClick={() => addDoctorToCell(doc)}
-                    disabled={isSelected}
-                    className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all
-                      ${isSelected ? 'opacity-20 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95'}
-                    `}
-                  >
-                    <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
-                    {doc}
+            {isAdmin ? (
+              <>
+                <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
+                  {DOCTORS.map((doc) => {
+                    const isSelected = schedule[selectedCell.row][selectedCell.day].value.includes(doc);
+                    return (
+                      <button
+                        key={doc}
+                        onClick={() => addDoctorToCell(doc)}
+                        disabled={isSelected}
+                        className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all
+                          ${isSelected ? 'opacity-20 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95'}
+                        `}
+                      >
+                        <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
+                        {doc}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button className="w-full py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
+                  Fermer
+                </button>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Médecin souhaité</label>
+                  <div className="grid grid-cols-4 gap-2 mt-1 max-h-[220px] overflow-y-auto">
+                    {DOCTORS.map((doc) => {
+                      const active = requestForm.requestedDoctor === doc;
+                      return (
+                        <button
+                          key={doc}
+                          onClick={() => setRequestForm((f) => ({ ...f, requestedDoctor: doc }))}
+                          className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all border
+                            ${active ? 'bg-teal-600 text-white border-teal-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                        >
+                          <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
+                          {doc}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600">Motif (optionnel)</label>
+                  <textarea
+                    value={requestForm.reason}
+                    onChange={(e) => setRequestForm((f) => ({ ...f, reason: e.target.value }))}
+                    rows={2}
+                    placeholder="Ex : indisponible ce jour-là"
+                    className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button className="flex-1 py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
+                    Annuler
                   </button>
-                );
-              })}
+                  <button
+                    disabled={!requestForm.requestedDoctor}
+                    onClick={submitChangeRequest}
+                    className="flex-1 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Envoyer la demande
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Panneau des demandes de modification */}
+      {showRequests && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setShowRequests(false)}
+        >
+          <div
+            className="w-full max-w-lg max-h-[80vh] overflow-auto rounded-2xl bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900">Demandes de modification</h3>
+                <p className="text-xs text-slate-500">
+                  {isAdmin ? "Vue administrateur" : "Mes demandes"} · Semaine {weekInfo.week} • {weekInfo.year}
+                </p>
+              </div>
+              <button onClick={() => setShowRequests(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                <X className="size-5" />
+              </button>
             </div>
 
-            <button className="w-full py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
-              Fermer
-            </button>
+            {changeRequests.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">Aucune demande pour cette semaine.</p>
+            ) : (
+              <ul className="space-y-2">
+                {changeRequests.map((req) => (
+                  <li key={req.id} className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-sm">
+                        <div className="font-medium text-slate-800">{req.row_key} — {req.day_name}</div>
+                        <div className="mt-0.5 text-xs text-slate-500">
+                          {req.current_doctor ? (
+                            <>Actuel : <span className="font-semibold">{req.current_doctor}</span> → </>
+                          ) : (
+                            <>Demandé : </>
+                          )}
+                          <span className="font-semibold text-teal-700">{req.requested_doctor}</span>
+                        </div>
+                        {req.reason && <div className="mt-1 text-xs italic text-slate-400">« {req.reason} »</div>}
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          req.status === "pending"
+                            ? "bg-amber-100 text-amber-700"
+                            : req.status === "approved"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {req.status === "pending"
+                          ? "En attente"
+                          : req.status === "approved"
+                          ? "Approuvée"
+                          : "Rejetée"}
+                      </span>
+                    </div>
+                    {isAdmin && req.status === "pending" && (
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          onClick={() => approveRequest(req)}
+                          className="flex flex-1 items-center justify-center gap-1 rounded-md bg-green-600 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                        >
+                          <Check className="size-3" /> Approuver
+                        </button>
+                        <button
+                          onClick={() => rejectRequest(req)}
+                          className="flex-1 rounded-md bg-red-100 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200"
+                        >
+                          Rejeter
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       )}
