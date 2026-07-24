@@ -284,8 +284,12 @@ export default function PlanningPage() {
   );
 
   // Un médecin (non-admin) soumet une demande via l'API /api/change-request
-  const submitChangeRequest = async () => {
-    if (!requestModal.open || !requestedDoctor) return;
+  const submitRequest = async () => {
+    if (!requestedDoctor.trim()) {
+      toast.error("Veuillez indiquer le médecin souhaité");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/change-request", {
@@ -295,26 +299,23 @@ export default function PlanningPage() {
           week_key: weekKey,
           day_name: requestModal.day,
           row_key: requestModal.row,
-          slot: requestModal.slot ?? null,
-          current_doctor: requestModal.currentDoctor || null,
-          requested_doctor: requestedDoctor,
-          reason: reason || null,
+          slot: requestModal.slot,
+          current_doctor: requestModal.currentDoctor || "",
+          requested_doctor: requestedDoctor.trim().toUpperCase(),
+          reason: reason.trim(),
         }),
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        // 409 = déjà en attente, 400 = champs manquants, etc.
-        toast.error(json.error || "Erreur lors de l'envoi de la demande");
-        return;
-      }
-      toast.success("Demande de modification envoyée");
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur");
+
+      toast.success("✅ Demande envoyée !");
       setRequestModal({ open: false, row: "", day: "" });
       setRequestedDoctor("");
       setReason("");
       refreshRequests();
-    } catch (e) {
-      console.error("Erreur demande:", e);
-      toast.error("Erreur réseau lors de l'envoi de la demande");
+    } catch (err: any) {
+      toast.error(err.message || "Erreur lors de l'envoi");
     } finally {
       setIsSubmitting(false);
     }
@@ -669,7 +670,7 @@ export default function PlanningPage() {
                 </button>
                 <button
                   disabled={!requestedDoctor || isSubmitting}
-                  onClick={submitChangeRequest}
+                  onClick={submitRequest}
                   className="flex-1 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? "Envoi..." : "Envoyer la demande"}
