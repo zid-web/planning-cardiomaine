@@ -219,14 +219,8 @@ export default function PlanningPage() {
   // Interactivité : les admins éditent directement, les médecins demandent une modification
   const handleCellClick = (rowKey: string, day: string) => {
     if (rowKey === "Notes du jour" || rowKey === "Congés") return;
-    if (isAdmin) {
-      setSelectedCell({ row: rowKey, day });
-    } else {
-      const currentDoctor = schedule[rowKey]?.[day]?.value.join(", ") || "";
-      setRequestedDoctor("");
-      setReason("");
-      setRequestModal({ open: true, row: rowKey, day, currentDoctor });
-    }
+    // Tout le monde ouvre la même modale : admin = édition, médecin = lecture + demande
+    setSelectedCell({ row: rowKey, day });
   };
 
   // Mise à jour immuable + optimiste d'une cellule, puis persistance en arrière-plan
@@ -558,7 +552,9 @@ export default function PlanningPage() {
           <div className="w-full max-w-md rounded-t-2xl bg-white p-4 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-slate-900">Modifier l'affectation</h3>
+                <h3 className="font-bold text-slate-900">
+                  {isAdmin ? "Modifier l'affectation" : "Consulter l'affectation"}
+                </h3>
                 <p className="text-xs text-slate-500">{selectedCell.day} - {selectedCell.row}</p>
               </div>
               <button onClick={() => setSelectedCell(null)} className="p-2 hover:bg-gray-100 rounded-full">
@@ -568,40 +564,71 @@ export default function PlanningPage() {
 
             <div className="mb-4 flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-lg border border-slate-100">
               {schedule[selectedCell.row][selectedCell.day].value.length === 0 && (
-                <span className="text-slate-400 text-sm italic self-center">Aucun médecin sélectionné</span>
+                <span className="text-slate-400 text-sm italic self-center">Aucun médecin</span>
               )}
               {schedule[selectedCell.row][selectedCell.day].value.map((doc, index) => (
                 <div key={index} className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${DOCTOR_COLORS[doc] || 'bg-gray-500'}`}>
                   {doc}
-                  <button onClick={() => removeDoctorFromCell(index)} className="ml-1 hover:bg-black/20 rounded-full p-0.5">
-                    <X className="size-3" />
-                  </button>
+                  {isAdmin && (
+                    <button onClick={() => removeDoctorFromCell(index)} className="ml-1 hover:bg-black/20 rounded-full p-0.5">
+                      <X className="size-3" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
-              {DOCTORS.map((doc) => {
-                const isSelected = schedule[selectedCell.row][selectedCell.day].value.includes(doc);
-                return (
-                  <button
-                    key={doc}
-                    onClick={() => addDoctorToCell(doc)}
-                    disabled={isSelected}
-                    className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all
-                      ${isSelected ? 'opacity-20 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95'}
-                    `}
-                  >
-                    <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
-                    {doc}
-                  </button>
-                );
-              })}
-            </div>
+            {!isAdmin ? (
+              <div className="text-center py-4 text-gray-500 text-sm">
+                🔒 Vous êtes en mode lecture.<br />
+                Utilisez le bouton ci-dessous pour demander un changement.
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
+                {DOCTORS.map((doc) => {
+                  const isSelected = schedule[selectedCell.row][selectedCell.day].value.includes(doc);
+                  return (
+                    <button
+                      key={doc}
+                      onClick={() => addDoctorToCell(doc)}
+                      disabled={isSelected}
+                      className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all
+                        ${isSelected ? 'opacity-20 cursor-not-allowed bg-slate-100 text-slate-400' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95'}
+                      `}
+                    >
+                      <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
+                      {doc}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
-            <button className="w-full py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
-              Fermer
-            </button>
+            {isAdmin ? (
+              <button className="w-full py-2 bg-gray-200 rounded-lg hover:bg-gray-300" onClick={() => setSelectedCell(null)}>
+                Fermer
+              </button>
+            ) : (
+              <div className="mt-2">
+                <button
+                  onClick={() => {
+                    if (!selectedCell) return;
+                    setRequestedDoctor("");
+                    setReason("");
+                    setRequestModal({
+                      open: true,
+                      row: selectedCell.row,
+                      day: selectedCell.day,
+                      currentDoctor: schedule[selectedCell.row][selectedCell.day].value[0],
+                    });
+                    setSelectedCell(null);
+                  }}
+                  className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <span>📩</span> Demander un changement
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
