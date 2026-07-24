@@ -633,76 +633,49 @@ export default function PlanningPage() {
         </div>
       )}
 
-      {/* Modale de demande de modification (médecins non-admin) */}
+      {/* Modale de demande de changement */}
       {requestModal.open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-t-2xl bg-white p-4 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-slate-900">Demander une modification</h3>
-                <p className="text-xs text-slate-500">{requestModal.day} - {requestModal.row}</p>
-              </div>
-              <button
-                onClick={() => setRequestModal({ open: false, row: "", day: "" })}
-                className="p-2 hover:bg-gray-100 rounded-full"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-
-            <div className="mb-4 rounded-lg border border-slate-100 bg-slate-50 p-2 text-sm text-slate-600">
-              Médecin actuel : {requestModal.currentDoctor ? (
-                <span className="font-semibold">{requestModal.currentDoctor}</span>
-              ) : (
-                <span className="italic text-slate-400">aucun</span>
-              )}
-            </div>
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-xl max-w-md w-full shadow-2xl">
+            <h3 className="text-lg font-bold mb-2">📩 Demander un changement</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {requestModal.day} – {requestModal.row}
+              {requestModal.currentDoctor && ` (actuellement: ${requestModal.currentDoctor})`}
+            </p>
             <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600">Médecin souhaité</label>
-                <div className="grid grid-cols-4 gap-2 mt-1 max-h-[220px] overflow-y-auto">
-                  {DOCTORS.map((doc) => {
-                    const active = requestedDoctor === doc;
-                    return (
-                      <button
-                        key={doc}
-                        onClick={() => setRequestedDoctor(doc)}
-                        className={`flex h-10 items-center justify-center rounded-lg font-bold transition-all border
-                          ${active ? 'bg-teal-600 text-white border-teal-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-                      >
-                        <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
-                        {doc}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600">Motif (optionnel)</label>
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={2}
-                  placeholder="Ex : indisponible ce jour-là"
-                  className="mt-1 w-full rounded-lg border border-slate-200 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  className="flex-1 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
-                  onClick={() => setRequestModal({ open: false, row: "", day: "" })}
-                >
-                  Annuler
-                </button>
-                <button
-                  disabled={!requestedDoctor || isSubmitting}
-                  onClick={submitRequest}
-                  className="flex-1 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isSubmitting ? "Envoi..." : "Envoyer la demande"}
-                </button>
-              </div>
+              <input
+                type="text"
+                placeholder="Médecin souhaité (ex: P)"
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                value={requestedDoctor}
+                onChange={(e) => setRequestedDoctor(e.target.value)}
+              />
+              <textarea
+                placeholder="Raison de la demande (optionnel)"
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                rows={3}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={submitRequest}
+                disabled={isSubmitting}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {isSubmitting ? 'Envoi...' : 'Envoyer'}
+              </button>
+              <button
+                onClick={() => {
+                  setRequestModal({ open: false, row: '', day: '' });
+                  setRequestedDoctor('');
+                  setReason('');
+                }}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg font-medium transition-colors"
+              >
+                Annuler
+              </button>
             </div>
           </div>
         </div>
