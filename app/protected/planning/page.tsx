@@ -150,8 +150,8 @@ export default function PlanningPage() {
     loadData();
   }, [weekKey, supabase]);
 
-  // Sauvegarder
-  const saveSchedule = useCallback(async (newSchedule: ScheduleData) => {
+  // Persister en base (sans toucher à l'état local, qui est mis à jour de façon optimiste)
+  const persistSchedule = useCallback(async (newSchedule: ScheduleData) => {
     try {
       const { error } = await supabase
         .from("schedules")
@@ -165,7 +165,6 @@ export default function PlanningPage() {
         );
 
       if (error) throw error;
-      setSchedule(newSchedule);
     } catch (error) {
       console.error("Erreur de sauvegarde:", error);
     }
@@ -190,26 +189,43 @@ export default function PlanningPage() {
     setSelectedCell({ row: rowKey, day });
   };
 
+  // Mise à jour immuable + optimiste d'une cellule, puis persistance en arrière-plan
+  const applyCellUpdate = (row: string, day: string, nextCell: CellData) => {
+    const next: ScheduleData = {
+      ...schedule,
+      [row]: { ...schedule[row], [day]: nextCell },
+    };
+    setSchedule(next); // rendu immédiat, plus de re-render tardif
+    void persistSchedule(next);
+  };
+
   const addDoctorToCell = (doctor: string) => {
     if (!selectedCell) return;
-    const newSchedule = { ...schedule };
-    const cell = newSchedule[selectedCell.row][selectedCell.day];
-    if (!cell.value.includes(doctor)) {
-      cell.value.push(doctor);
-      cell.type = "doctor";
-      saveSchedule(newSchedule);
+    const { row, day } = selectedCell;
+    const cell = schedule[row][day];
+    if (cell.value.includes(doctor)) {
+      setSelectedCell(null);
+      return;
     }
+    applyCellUpdate(row, day, {
+      ...cell,
+      value: [...cell.value, doctor],
+      type: "doctor",
+    });
     setSelectedCell(null);
   };
 
   const removeDoctorFromCell = (index: number) => {
     if (!selectedCell) return;
-    const newSchedule = { ...schedule };
-    const cell = newSchedule[selectedCell.row][selectedCell.day];
-    cell.value.splice(index, 1);
-    if (cell.value.length === 0) cell.type = "empty";
-    saveSchedule(newSchedule);
-    setSelectedCell(null);
+    const { row, day } = selectedCell;
+    const cell = schedule[row][day];
+    const value = cell.value.filter((_, i) => i !== index);
+    // On garde la modale ouverte pour permettre plusieurs retraits d'affilée
+    applyCellUpdate(row, day, {
+      ...cell,
+      value,
+      type: value.length === 0 ? "empty" : cell.type,
+    });
   };
 
   // Build request pour le solveur
@@ -224,20 +240,25 @@ export default function PlanningPage() {
 
   const handleScheduleUpdate = useCallback((newSchedule: any) => {
     const scheduleData = convertSolverResponseToScheduleData(newSchedule);
-    const updated = { ...schedule };
+    const updated: ScheduleData = { ...schedule };
     Object.keys(scheduleData).forEach(row => {
       if (updated[row]) {
+        updated[row] = { ...updated[row] };
         Object.keys(scheduleData[row]).forEach(day => {
           if (updated[row][day]) {
-            updated[row][day].value = scheduleData[row][day].value;
-            updated[row][day].type = scheduleData[row][day].type || "doctor";
-            updated[row][day].status = "validated";
+            updated[row][day] = {
+              ...updated[row][day],
+              value: scheduleData[row][day].value,
+              type: scheduleData[row][day].type || "doctor",
+              status: "validated",
+            };
           }
         });
       }
     });
-    saveSchedule(updated);
-  }, [schedule, saveSchedule]);
+    setSchedule(updated);
+    void persistSchedule(updated);
+  }, [schedule, persistSchedule]);
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-screen">Chargement...</div>;
