@@ -265,8 +265,8 @@ export default function AdminRequestsPage() {
           schema: 'public',
           table: 'change_requests',
         },
-        async (payload) => {
-          const row = payload.new as ChangeRequestRow;
+        async (payload: { new: ChangeRequestRow }) => {
+          const row = payload.new;
           if (!row?.id) return;
 
           setNewRequestsCount((c) => c + 1);
@@ -326,7 +326,7 @@ export default function AdminRequestsPage() {
           await loadRequestersRef.current();
         },
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') setRealtimeStatus('live');
         else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           setRealtimeStatus('error');

@@ -349,7 +349,7 @@ export function generateWeeklyGuards(
       if (available.length > 0) {
         const selected = selectByEquity(available, equity, 'weekendCount')
 
-        ['SAMEDI', 'DIMANCHE'].forEach((dayName) => {
+        ;(['SAMEDI', 'DIMANCHE'] as const).forEach((dayName: string) => {
           const dayObj = days.find((d) => format(d, 'EEEE', { locale: fr }).toUpperCase() === dayName)
           if (dayObj) {
             const dateStr = format(dayObj, 'yyyy-MM-dd')
