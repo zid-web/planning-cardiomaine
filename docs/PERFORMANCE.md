@@ -12,8 +12,9 @@ Conclusion : le cold start Render est le goulot principal pour solveur / voice /
 
 ## Optimisations livrées
 
-1. **Cron keep-alive** — `GET /api/ping-solver` toutes les 5 min (`vercel.json`). Route publique (hors auth `proxy.ts`). Optionnel : `CRON_SECRET` + header `Authorization: Bearer …`.
-   - **Vercel** : `*/5 * * * *` nécessite un plan qui autorise les crons fréquents (souvent **Pro**). Sur Hobby (1 cron / jour max), utiliser un cron externe (cron-job.org, etc.) qui appelle `https://<app>/api/ping-solver` toutes les 5 min.
+1. **Cron keep-alive** — `GET /api/ping-solver` (route publique dans `proxy.ts`). Optionnel : `CRON_SECRET` + header `Authorization: Bearer …`.
+   - **`vercel.json`** utilise un cron **quotidien** (`0 4 * * *`) pour rester compatible **Hobby** (un cron / jour). Un schedule `*/5 * * * *` fait échouer le déploiement sur Hobby.
+   - **Recommandé** : cron externe toutes les 5 min (cron-job.org, etc.) vers `https://<domaine-public>/api/ping-solver` pour éviter les cold starts Render.
 2. **Cache solveur** — TTL 5 min en mémoire (`lib/solver-cache.ts`) pour même `weekStartDate` + `weekendMode`.
 3. **SWR** — chargement `full-schedule` sur `/protected/planning` (`dedupingInterval` 10s, revalidate on focus).
 4. **Lazy load** — `VoiceAndUploadPanel`, `VacationsModal`, `GuardGenerationButton` via `React.lazy`.
