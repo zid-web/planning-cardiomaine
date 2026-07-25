@@ -1,95 +1,94 @@
-import { NextRequest, NextResponse } from 'next/server'
-// Import du module interne pour éviter le code de debug de l'index de pdf-parse
-// (qui tente de lire un fichier de test au chargement).
-import pdfParse from 'pdf-parse/lib/pdf-parse.js'
-import { DAYS, DOCTORS } from '@/lib/constants'
+import { NextRequest, NextResponse } from 'next/server';
 
-// pdf-parse a besoin du runtime Node (pas Edge).
-export const runtime = 'nodejs'
+// GUARD_API_BASE_URL is the preferred name; GUARD_API_URL is already used elsewhere in the repo.
+const RENDER_API_URL = (
+  process.env.GUARD_API_BASE_URL ||
+  process.env.GUARD_API_URL ||
+  'https://guard-api-cardiomaine.onrender.com'
+).replace(/\/$/, '');
+const API_KEY = process.env.GUARD_API_KEY || '';
 
-const MAX_SIZE = 10 * 1024 * 1024 // 10MB
+function formatUpstreamError(data: unknown): string {
+  if (!data || typeof data !== 'object') return 'Erreur du backend';
+  const d = data as { detail?: unknown; error?: unknown; message?: unknown };
+  const detail = d.detail ?? d.error ?? d.message;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'msg' in item) {
+          return String((item as { msg: unknown }).msg);
+        }
+        return JSON.stringify(item);
+      })
+      .join('; ');
+  }
+  if (detail != null) return JSON.stringify(detail);
+  return 'Erreur du backend';
+}
 
-/**
- * Handler pour l'upload de fichiers PDF
- * POST /api/upload-pdf
- *
- * Extrait le texte du PDF et détecte les codes médecins et jours présents,
- * afin d'aider à pré-remplir le planning.
- */
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File | null
+    const formData = await req.formData();
+    const file = formData.get('file');
+    const week_start_date = formData.get('week_start_date') || '2026-07-13';
 
-    if (!file) {
-      return NextResponse.json({ error: 'Aucun fichier fourni' }, { status: 400 })
-    }
-
-    if (file.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'Le fichier doit être un PDF' }, { status: 400 })
-    }
-
-    if (file.size > MAX_SIZE) {
+    if (!file || !(file instanceof Blob)) {
       return NextResponse.json(
-        { error: 'Le fichier est trop volumineux (max 10MB)' },
-        { status: 400 },
-      )
+        { error: 'Fichier PDF requis' },
+        { status: 400 }
+      );
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer())
-
-    let parsed: { text: string; numpages: number }
-    try {
-      parsed = await pdfParse(buffer)
-    } catch (parseError) {
-      console.error('[v0] PDF parse error:', parseError)
+    // Vérifier le type MIME (certains navigateurs envoient application/octet-stream)
+    const fileName = (file as File).name || '';
+    const isPdf =
+      file.type === 'application/pdf' ||
+      fileName.toLowerCase().endsWith('.pdf') ||
+      file.type === 'application/octet-stream';
+    if (!isPdf) {
       return NextResponse.json(
-        { error: 'Impossible de lire le contenu du PDF (fichier corrompu ou protégé)' },
-        { status: 422 },
-      )
+        { error: 'Le fichier doit être un PDF' },
+        { status: 400 }
+      );
     }
 
-    const text = parsed.text || ''
-    const upper = text.toUpperCase()
+    const uploadFormData = new FormData();
+    uploadFormData.append('file', file, fileName || 'planning.pdf');
+    uploadFormData.append('week_start_date', week_start_date as string);
 
-    // Détection des codes médecins présents (mots entiers)
-    const detectedDoctors = DOCTORS.filter((code) =>
-      new RegExp(`\\b${code.toUpperCase()}\\b`).test(upper),
-    )
-    // Détection des jours présents
-    const detectedDays = DAYS.filter((day) => upper.includes(day))
+    const url = new URL(`${RENDER_API_URL}/upload-planning-pdf`);
+    if (API_KEY) url.searchParams.set('x_api_key', API_KEY);
 
-    console.log('[v0] PDF upload processed:', {
-      name: file.name,
-      size: file.size,
-      numPages: parsed.numpages,
-      textLength: text.length,
-      detectedDoctors,
-      detectedDays,
-    })
-
-    return NextResponse.json(
-      {
-        message: 'Fichier PDF traité avec succès',
-        fileName: file.name,
-        fileSize: file.size,
-        numPages: parsed.numpages,
-        textLength: text.length,
-        textPreview: text.slice(0, 500),
-        detectedDoctors,
-        detectedDays,
-        timestamp: new Date().toISOString(),
-        status: 'processed',
-        // L'écriture en base est laissée au client après validation.
-        updated: false,
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        ...(API_KEY && { 'x-api-key': API_KEY, 'X-API-Key': API_KEY }),
       },
-      { status: 200 },
-    )
+      body: uploadFormData,
+    });
+
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch {
+      data = { detail: await response.text() };
+    }
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: formatUpstreamError(data) },
+        { status: response.status }
+      );
+    }
+
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('[v0] PDF upload error:', error)
+    console.error('[upload-pdf] Error:', error);
     return NextResponse.json(
-      { error: 'Erreur lors du traitement du fichier PDF' },
-      { status: 500 },
-    )
+      { error: 'Erreur serveur' },
+      { status: 500 }
+    );
   }
 }

@@ -9,6 +9,14 @@ import { DAYS, DOCTORS, DOCTOR_COLORS } from "@/lib/constants";
 import { getWeekNumber, getWeekDates } from "@/lib/schedule-utils";
 import { createClient } from "@/lib/supabase/client";
 import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions";
+import {
+  applyMappedExistingSchedule,
+  applyParsedCommandToSchedule,
+  applyPdfExtractionToSchedule,
+  buildCurrentWeekRequestPayload,
+  getIsoWeekStartDate,
+  mergeAssignmentsIntoSchedule,
+} from "@/lib/guard-api-mapping";
 
 // Types
 type CellData = {
@@ -347,12 +355,71 @@ export default function PlanningPage() {
     refreshRequests();
   };
 
-  // Applique les opérations renvoyées par /api/voice-command
-  const applyVoiceOperations = useCallback(
-    (data: { operations?: Array<{ action: string; doctor?: string; day?: string; row?: string }> }) => {
-      const ops = data?.operations || [];
+  const isoWeekStart = useMemo(() => getIsoWeekStartDate(currentDate), [currentDate]);
+
+  const vacationPayload = useMemo(
+    () =>
+      (vacations || []).map((v: { doctor_id?: string; start_date: string; end_date: string }) => ({
+        doctor_id: v.doctor_id || "",
+        start_date: v.start_date,
+        end_date: v.end_date,
+      })),
+    [vacations],
+  );
+
+  const currentWeekRequest = useMemo(
+    () =>
+      buildCurrentWeekRequestPayload({
+        weekStartDate: isoWeekStart,
+        weekNumber: weekInfo.week,
+        vacations: vacationPayload,
+        schedule,
+      }),
+    [isoWeekStart, weekInfo.week, vacationPayload, schedule],
+  );
+
+  // Applique la réponse Render (/api/voice-command ou /api/upload-pdf) sur le planning
+  const applyVoiceOrUploadResult = useCallback(
+    (data: {
+      parsed_command?: {
+        date: string;
+        slot: string;
+        activity: string;
+        doctor_out?: string | null;
+        doctor_in: string;
+      };
+      updated_schedule?: { assignments?: Array<any>; warnings?: string[] };
+      raw_extraction?: { rows?: Array<any> };
+      mapped_existing_schedule?: Record<string, string[]>;
+      operations?: Array<{ action: string; doctor?: string; day?: string; row?: string }>;
+      warnings?: string[];
+    }) => {
       let next = schedule;
       let changed = false;
+
+      // 1) Commande vocale : mise à jour chirurgicale via parsed_command
+      if (data?.parsed_command?.doctor_in) {
+        const before = JSON.stringify(next);
+        next = applyParsedCommandToSchedule(next, data.parsed_command);
+        if (JSON.stringify(next) !== before) changed = true;
+      }
+
+      // 2) Upload PDF : rows extraites (matched_row_key)
+      if (data?.raw_extraction?.rows?.length) {
+        const before = JSON.stringify(next);
+        next = applyPdfExtractionToSchedule(next, data.raw_extraction.rows);
+        if (JSON.stringify(next) !== before) changed = true;
+      }
+
+      // 3) mapped_existing_schedule (clés `row|DAY`)
+      if (data?.mapped_existing_schedule && !data?.parsed_command) {
+        const before = JSON.stringify(next);
+        next = applyMappedExistingSchedule(next, data.mapped_existing_schedule);
+        if (JSON.stringify(next) !== before) changed = true;
+      }
+
+      // 4) Fallback legacy local ops
+      const ops = data?.operations || [];
       for (const op of ops) {
         if ((op.action !== "add" && op.action !== "remove") || !op.day || !op.row || !op.doctor) continue;
         const cell = next[op.row]?.[op.day];
@@ -366,6 +433,30 @@ export default function PlanningPage() {
         };
         changed = true;
       }
+
+      // 5) Fallback assignments : uniquement s'il n'y a pas de parsed_command
+      //    (sinon on écraserait le planning avec un recalcul solveur complet)
+      if (
+        !changed &&
+        !data?.parsed_command &&
+        data?.updated_schedule?.assignments?.length
+      ) {
+        const before = JSON.stringify(next);
+        next = mergeAssignmentsIntoSchedule(next, data.updated_schedule.assignments);
+        if (JSON.stringify(next) !== before) changed = true;
+      }
+
+      if (data?.parsed_command && !changed) {
+        toast.error(
+          "Commande interprétée mais cellule introuvable dans le planning (jour/activité).",
+        );
+      }
+
+      const warnings = data?.warnings || data?.updated_schedule?.warnings || [];
+      if (warnings.length) {
+        toast.warning(warnings.slice(0, 3).join("\n"));
+      }
+
       if (changed) {
         setSchedule(next);
         void persistSchedule(next);
@@ -524,9 +615,13 @@ export default function PlanningPage() {
                 </button>
               </div>
               <VoiceAndUploadPanel
-                weekStartDate={weekDates[0]}
+                weekStartDate={isoWeekStart}
+                weekNumber={weekInfo.week}
+                knownDoctors={DOCTORS}
+                currentWeekRequest={currentWeekRequest}
+                vacations={vacationPayload}
                 onCommandExecuted={(data) => {
-                  applyVoiceOperations(data);
+                  applyVoiceOrUploadResult(data);
                 }}
               />
             </div>
