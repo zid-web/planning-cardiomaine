@@ -1,41 +1,73 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { type NextRequest, NextResponse } from "next/server"
+import { createServerClient } from "@supabase/ssr"
 
 /**
- * Proxy (anciennement middleware) pour la protection des routes
- * Voir : https://nextjs.org/docs/messages/middleware-to-proxy
+ * Proxy (Next.js 16 — remplace middleware.ts).
+ * Auth Supabase SSR + garde must_change_password.
+ * @see https://nextjs.org/docs/messages/middleware-to-proxy
  */
-export function proxy(request: NextRequest) {
-  // Exemple : rediriger vers /auth/login si non authentifié
-  // Adaptez selon votre logique d'authentification
+export async function proxy(request: NextRequest) {
+  const response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
 
-  const { pathname } = request.nextUrl;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Exclure les routes publiques
-  const publicRoutes = ['/', '/auth/login', '/auth/sign-up', '/auth/forgot-password'];
+  if (!supabaseUrl || !supabaseAnonKey) {
+    // Misconfigured env: do not hard-block the whole app
+    return response
+  }
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options),
+        )
+      },
+    },
+  })
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const { pathname } = request.nextUrl
+
+  const publicRoutes = ["/", "/auth/login", "/auth/sign-up", "/auth/forgot-password"]
   if (publicRoutes.includes(pathname)) {
-    return NextResponse.next();
+    return response
   }
 
-  // Vérifier la session (via cookie ou header)
-  const session = request.cookies.get('sb-access-token') || request.cookies.get('supabase-auth-token');
-  if (!session) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/auth/login';
-    return NextResponse.redirect(url);
+  if (!user) {
+    return NextResponse.redirect(new URL("/auth/login", request.url))
   }
 
-  // Si tout est ok, continuer
-  return NextResponse.next();
+  if (pathname === "/auth/setup-account") {
+    return response
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("must_change_password")
+    .eq("id", user.id)
+    .single()
+
+  if (profile?.must_change_password) {
+    return NextResponse.redirect(new URL("/auth/setup-account", request.url))
+  }
+
+  return response
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match tous les chemins sauf :
-     * - les dossiers statiques (_next, public, favicon, etc.)
-     * - les pages publiques d'auth
-     */
-    '/((?!_next/static|_next/image|favicon.ico|auth/login|auth/sign-up|auth/forgot-password|icon-|manifest.json).*)',
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
-};
+}
