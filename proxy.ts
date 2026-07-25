@@ -3,7 +3,9 @@ import { createServerClient } from "@supabase/ssr"
 
 /**
  * Proxy (Next.js 16 — remplace middleware.ts).
- * Auth Supabase SSR + garde must_change_password.
+ * Une seule définition de `proxy` + `config` (évite les doublons de build).
+ * Auth via Supabase SSR `getUser()` — ne pas revenir à un check cookie
+ * `sb-access-token` (cassé avec les cookies chunkés modernes).
  * @see https://nextjs.org/docs/messages/middleware-to-proxy
  */
 export async function proxy(request: NextRequest) {
@@ -40,7 +42,17 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  const publicRoutes = ["/", "/auth/login", "/auth/sign-up", "/auth/forgot-password"]
+  const publicRoutes = [
+    "/",
+    "/auth/login",
+    "/auth/sign-up",
+    "/auth/forgot-password",
+    "/auth/callback",
+    "/auth/error",
+    "/auth/sign-up-success",
+    "/auth/reset-password-confirm",
+  ]
+
   // Vercel Cron keep-alive (optionally protected by CRON_SECRET in the route)
   if (publicRoutes.includes(pathname) || pathname === "/api/ping-solver") {
     return response
