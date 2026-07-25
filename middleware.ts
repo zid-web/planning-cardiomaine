@@ -82,3 +82,15 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  // Logique d'authentification (vérification de session, redirection, etc.)
+  // Exemple : rediriger vers /auth/login si non authentifié
+  // ...
+}
+
+export const config = {
+  matcher: ['/protected/:path*'], // ou d'autres chemins
+};
