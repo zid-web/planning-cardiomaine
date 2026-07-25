@@ -1,7 +1,9 @@
 "use server";
 
+import { parseISO, subDays } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
-import { DoctorVacation } from "@/lib/types";
+import { DoctorVacation, ScheduleData } from "@/lib/types";
+import { getWeekNumber } from "@/lib/schedule-utils";
 
 // Configuration
 const GUARD_API_URL = process.env.GUARD_API_URL || "https://guard-api-cardiomaine.onrender.com";
@@ -111,6 +113,40 @@ async function calculateEquityPoints(): Promise<EquityPoints> {
 }
 
 /**
+ * Retrouve le médecin ayant fait la garde OU l'astreinte de nuit dimanche dernier
+ * (semaine précédant immédiatement weekStartISO), pour appliquer la règle
+ * "garde de nuit dimanche -> 1/2 journée off lundi".
+ * CH (structure externe) est exclu.
+ */
+async function getLastSundayGuardDoctor(weekStartISO: string): Promise<string | null> {
+  const supabase = await createClient();
+
+  const previousMonday = subDays(parseISO(weekStartISO), 7);
+  const wn = getWeekNumber(previousMonday);
+  const previousWeekKey = `${wn.year}-W${String(wn.week).padStart(2, "0")}`;
+
+  const { data: row, error } = await supabase
+    .from("schedules")
+    .select("schedule_data")
+    .eq("week_key", previousWeekKey)
+    .single();
+
+  if (error || !row) return null;
+
+  const scheduleData = row.schedule_data as ScheduleData;
+  const nightRows = ["Astreintes ATL Nuit", "Garde Nuit"];
+
+  for (const rowKey of nightRows) {
+    const cell = scheduleData?.[rowKey]?.["DIMANCHE"];
+    const doctors = (cell as { value?: string[] } | undefined)?.value || [];
+    const realDoctor = doctors.find((d) => d !== "CH");
+    if (realDoctor) return realDoctor;
+  }
+
+  return null;
+}
+
+/**
  * Génère le planning via l'API Render
  */
 export async function generateGuardsViaAPI(
@@ -133,8 +169,11 @@ export async function generateGuardsViaAPI(
     // 2. Récupère le dernier médecin NCT (depuis la base ou une variable)
     const lastNctDoctor = await getLastNctDoctor();
 
-    // 3. Récupère les congés
-    const congres = await getCongres();
+    // 3. Récupère les congés + médecin de garde dimanche précédent
+    const [congres, previousSundayGuardDoctor] = await Promise.all([
+      getCongres(),
+      getLastSundayGuardDoctor(weekStartDate),
+    ]);
 
     // 4. Construit le payload pour Render
     const payload = {
@@ -142,6 +181,7 @@ export async function generateGuardsViaAPI(
       week_type: weekType,
       weekend_mode: weekendMode,
       last_nct_doctor: lastNctDoctor || doctors[0]?.id || "M",
+      previous_sunday_guard_doctor: previousSundayGuardDoctor,
       vacations: vacations.map((v) => ({
         doctor_id: v.doctor_id,
         start_date: v.start_date,
@@ -193,6 +233,9 @@ export async function generateGuardsViaAPI(
     return {
       success: true,
       data: scheduleData,
+      // Alias attendu par GuardGenerationButton / ScheduleApp
+      schedule: scheduleData,
+      warnings: Array.isArray(data?.warnings) ? data.warnings : [],
       raw: data,
     };
   } catch (error) {
