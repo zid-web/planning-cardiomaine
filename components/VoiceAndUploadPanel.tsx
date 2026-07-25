@@ -17,6 +17,10 @@ import {
   parseCsvToMapped,
   parseExcelToMapped,
 } from '@/lib/planning-import'
+import {
+  looksLikeNctScheduleText,
+  parseNctAssignmentsFromText,
+} from '@/lib/nct-command'
 
 interface VoiceAndUploadPanelProps {
   onCommandExecuted?: (result: any) => void
@@ -155,14 +159,44 @@ export function VoiceAndUploadPanel({
       return
     }
 
+    const trimmed = text.trim()
+    setIsLoading(true)
+
+    // Liste multi-dates NCT : application locale (évite matin/NCT + une seule semaine Render)
+    if (looksLikeNctScheduleText(trimmed)) {
+      const nctAssignments = parseNctAssignmentsFromText(trimmed).filter((a) =>
+        knownDoctors.map((d) => d.toUpperCase()).includes(a.doctor.toUpperCase()),
+      )
+      if (nctAssignments.length === 0) {
+        const errorMsg = "Aucune date NCT valide trouvée (format attendu : 2026-09-10 → M)"
+        setStatus({ type: "error", message: errorMsg })
+        toast.error(errorMsg)
+        setIsLoading(false)
+        return
+      }
+
+      setStatus({ type: "loading", message: `Application de ${nctAssignments.length} NCT…` })
+      try {
+        const successMessage = `${nctAssignments.length} dates NCT appliquées au planning`
+        setStatus({ type: "success", message: successMessage })
+        toast.success(successMessage)
+        setTranscript("")
+        setEditedTranscript("")
+        onCommandExecuted?.({ nct_assignments: nctAssignments, message: successMessage })
+        setTimeout(() => setStatus({ type: "idle", message: "" }), 3000)
+      } finally {
+        setIsLoading(false)
+      }
+      return
+    }
+
     const payload = {
-      text: text.trim(),
+      text: trimmed,
       reference_date: toIsoDateLocal(new Date()),
       known_doctors: knownDoctors,
       current_week_request: resolveWeekRequest(),
     }
 
-    setIsLoading(true)
     setStatus({ type: "loading", message: "Interprétation de la consigne..." })
 
     try {
@@ -181,6 +215,14 @@ export function VoiceAndUploadPanel({
         const detail = data.error || data.detail || data.message
         const msg = typeof detail === 'string' ? detail : JSON.stringify(detail)
         throw new Error(msg || 'Erreur lors du traitement de la commande')
+      }
+
+      // Si le backend renvoie matin/NCT, le front applique quand même via resolveRowKey
+      if (data?.parsed_command?.activity) {
+        data.parsed_command.activity = String(data.parsed_command.activity).toUpperCase()
+        if (data.parsed_command.activity === "NCT") {
+          data.parsed_command.slot = "nuit"
+        }
       }
 
       const successMessage = `Succès: ${data.message || 'Commande exécutée'}`
