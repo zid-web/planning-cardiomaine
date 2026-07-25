@@ -13,6 +13,8 @@ required service is the Next.js dev server; the backend is Supabase.
 - Standard commands are also in `README.md` and `QUICK_REFERENCE.md`.
 - Roadmap options G1–G7: see `docs/PLAN-OPTIONS-G1-G7.md`. Prefer implementing through `ScheduleApp` + `schedule-actions.ts`; do not rebuild planning in `page.tsx`.
 - **G1–G3 shipped pattern:** PDF via `GET /api/export-planning-pdf?week_key=…` (admin); all week writes go through `saveScheduleToDb` (increments `version`, writes `schedule_history`, syncs `full_schedule` blob). Realtime: `schedules` is in `supabase_realtime` — `ScheduleApp` subscribes for admins and ignores own `updated_by` + the `full_schedule` blob key. After `supabase db reset`, recreate local test users (admin/doctor).
+- **G4:** CSV/XLSX import in `VoiceAndUploadPanel` (local parse via `lib/planning-import.ts` → `mapped_existing_schedule`). Sample: `fixtures/sample-planning-import.csv`.
+- **G5:** `/protected/admin/users` uses Server Actions + `SUPABASE_SERVICE_ROLE_KEY` (`lib/supabase/admin.ts`). Set that env var on Vercel; never expose it to the client.
 
 ### Roles & API gotchas
 - `/protected/planning` is a thin loader that renders **`ScheduleApp`** (`components/schedule-app.tsx`). Do not reintroduce a full planning implementation in `app/protected/planning/page.tsx`. Change requests, voice/PDF panel, solver persistence, and grid editing live in `ScheduleApp`. Guard generation sends `previous_sunday_guard_doctor` via `getLastSundayGuardDoctor` in `app/actions/guard-api-actions.ts`.

@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Mic,
   UserCircle,
+  UserCog,
   Wifi,
   WifiOff,
   X,
@@ -923,6 +924,16 @@ export function ScheduleApp({
                           {pendingRequests.length}
                         </span>
                       )}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push("/protected/admin/users")}
+                      title="Gestion des comptes"
+                    >
+                      <UserCog className="h-4 w-4 mr-2" />
+                      Comptes
                     </Button>
 
                     <Button
