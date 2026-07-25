@@ -434,11 +434,22 @@ export default function PlanningPage() {
         changed = true;
       }
 
-      // 5) Si rien n'a bougé mais assignments présents : fusion ciblée
-      if (!changed && data?.updated_schedule?.assignments?.length) {
+      // 5) Fallback assignments : uniquement s'il n'y a pas de parsed_command
+      //    (sinon on écraserait le planning avec un recalcul solveur complet)
+      if (
+        !changed &&
+        !data?.parsed_command &&
+        data?.updated_schedule?.assignments?.length
+      ) {
         const before = JSON.stringify(next);
         next = mergeAssignmentsIntoSchedule(next, data.updated_schedule.assignments);
         if (JSON.stringify(next) !== before) changed = true;
+      }
+
+      if (data?.parsed_command && !changed) {
+        toast.error(
+          "Commande interprétée mais cellule introuvable dans le planning (jour/activité).",
+        );
       }
 
       const warnings = data?.warnings || data?.updated_schedule?.warnings || [];
