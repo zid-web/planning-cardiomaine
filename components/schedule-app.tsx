@@ -1735,7 +1735,7 @@ export function ScheduleApp({
       {/* Bouton demandes (tous rôles) + panneau vocal/PDF (admin) */}
       <button
         onClick={() => setShowRequests(true)}
-        className="fixed bottom-20 right-20 z-40 bg-white border shadow-lg rounded-full p-3 text-slate-700"
+        className="fixed bottom-24 right-20 z-40 bg-white border shadow-lg rounded-full p-3 text-slate-700 md:bottom-20"
         aria-label="Demandes"
       >
         <Bell className="w-5 h-5" />
@@ -1749,7 +1749,7 @@ export function ScheduleApp({
         <>
           <button
             onClick={() => setVoicePanelOpen((v) => !v)}
-            className="fixed bottom-20 right-4 z-40 bg-teal-600 hover:bg-teal-700 text-white rounded-full p-3 shadow-lg"
+            className="fixed bottom-24 right-4 z-40 bg-teal-600 hover:bg-teal-700 text-white rounded-full p-3 shadow-lg md:bottom-20"
             aria-label="Panneau vocal"
           >
             <Mic className="w-6 h-6" />
