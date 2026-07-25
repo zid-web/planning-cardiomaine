@@ -1,0 +1,101 @@
+diff -ruN '--exclude=node_modules' '--exclude=.git' '--exclude=.next' '--exclude=package-lock.json' '--exclude=tsconfig.tsbuildinfo' immutability-baseline/components/schedule-app.tsx planning-cardiomaine/components/schedule-app.tsx
+--- immutability-baseline/components/schedule-app.tsx	2026-07-25 08:38:55.025523744 +0000
++++ planning-cardiomaine/components/schedule-app.tsx	2026-07-25 08:38:12.689562132 +0000
+@@ -266,10 +266,19 @@
+     // atteignable que par un admin (voir handleCellClick, qui redirige les
+     // non-admins vers le formulaire de demande de changement). Un admin qui
+     // édite directement valide donc toujours immédiatement.
+-    newSchedule[selectedCell.row][selectedCell.day] = {
+-      value: newValues,
+-      type: newValues.length > 0 ? "doctor" : "empty",
+-      status: "validated",
++    //
++    // Correction (23/07/2026) : { ...schedule } ne copie que le 1er niveau -
++    // newSchedule[row] restait la MÊME référence que schedule[row]. Écrire
++    // newSchedule[row][day] = {...} mutait donc l'ancien état partagé en place
++    // (source probable du bug "la modale affiche l'ancienne cellule"). On copie
++    // maintenant aussi le niveau ligne avant d'assigner.
++    newSchedule[selectedCell.row] = {
++      ...newSchedule[selectedCell.row],
++      [selectedCell.day]: {
++        value: newValues,
++        type: newValues.length > 0 ? "doctor" : "empty",
++        status: "validated",
++      },
+     }
+ 
+     // Garde logic
+@@ -287,12 +296,16 @@
+ 
+         // Only add to OFF if not already there (keep OFF logic unique for now unless requested otherwise)
+         if (!currentOffDoctors.includes(doctor)) {
+-          newSchedule["1/2 journée off Matin"][nextDay].value = [...currentOffDoctors, doctor]
++          newSchedule["1/2 journée off Matin"] = {
++            ...newSchedule["1/2 journée off Matin"],
++            [nextDay]: { ...newSchedule["1/2 journée off Matin"][nextDay], value: [...currentOffDoctors, doctor] },
++          }
+         }
+       }
+     }
+ 
+     updateSchedule(newSchedule)
++    setSelectedCell(null)
+   }
+ 
+   const removeDoctorFromCell = (indexToRemove: number) => {
+@@ -304,10 +317,15 @@
+ 
+     const newValues = currentValues.filter((_, index) => index !== indexToRemove)
+ 
+-    newSchedule[selectedCell.row][selectedCell.day] = {
+-      value: newValues,
+-      type: newValues.length > 0 ? "doctor" : "empty",
+-      status: "validated",
++    // Voir le commentaire équivalent dans addDoctorToCell : copie immutable du
++    // niveau ligne avant d'assigner, pour ne pas muter l'ancien état partagé.
++    newSchedule[selectedCell.row] = {
++      ...newSchedule[selectedCell.row],
++      [selectedCell.day]: {
++        value: newValues,
++        type: newValues.length > 0 ? "doctor" : "empty",
++        status: "validated",
++      },
+     }
+ 
+     updateSchedule(newSchedule)
+@@ -324,10 +342,13 @@
+ 
+   const saveNote = () => {
+     const newSchedule = { ...schedule }
+-    newSchedule["Notes du jour"][noteDay] = {
+-      value: [currentNote],
+-      type: "empty",
+-      status: "validated",
++    newSchedule["Notes du jour"] = {
++      ...newSchedule["Notes du jour"],
++      [noteDay]: {
++        value: [currentNote],
++        type: "empty",
++        status: "validated",
++      },
+     }
+ 
+     updateSchedule(newSchedule)
+@@ -552,10 +573,13 @@
+     if (newSchedule[proposal.type] && newSchedule[proposal.type][day]) {
+       const currentValues = newSchedule[proposal.type][day].value
+       if (!currentValues.includes(proposal.user)) {
+-        newSchedule[proposal.type][day] = {
+-          value: [...currentValues, proposal.user],
+-          type: "doctor",
+-          status: "validated",
++        newSchedule[proposal.type] = {
++          ...newSchedule[proposal.type],
++          [day]: {
++            value: [...currentValues, proposal.user],
++            type: "doctor",
++            status: "validated",
++          },
+         }
+ 
+         // Update the fullSchedule state and save to DB
