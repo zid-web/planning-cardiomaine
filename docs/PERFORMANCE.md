@@ -14,7 +14,11 @@ Conclusion : le cold start Render est le goulot principal pour solveur / voice /
 
 1. **Cron keep-alive** — `GET /api/ping-solver` (route publique dans `proxy.ts`). Optionnel : `CRON_SECRET` + header `Authorization: Bearer …`.
    - **`vercel.json`** utilise un cron **quotidien** (`0 4 * * *`) pour rester compatible **Hobby** (un cron / jour). Un schedule `*/5 * * * *` fait échouer le déploiement sur Hobby.
-   - **Recommandé** : cron externe toutes les 5 min (cron-job.org, etc.) vers `https://<domaine-public>/api/ping-solver` pour éviter les cold starts Render.
+   - **URL keep-alive Production (stable)** :  
+     `https://v0-recreate-attached-ui-zids-projects-22b662f4.vercel.app/api/ping-solver`  
+     → doit renvoyer `{"success":true,…}` **sans** login.  
+   - **Ne pas** utiliser les URLs de déploiement hashées du type `v0-recreate-attached-p2ci9kbnq-…` : ce sont d’**anciens** déploiements immuables (souvent encore protégés / sans la route publique).  
+   - **Recommandé** : cron externe toutes les 5–10 min (cron-job.org) vers l’URL stable ci-dessus.
 2. **Cache solveur** — TTL 5 min en mémoire (`lib/solver-cache.ts`) pour même `weekStartDate` + `weekendMode`.
 3. **SWR** — chargement `full-schedule` sur `/protected/planning` (`dedupingInterval` 10s, revalidate on focus).
 4. **Lazy load** — `VoiceAndUploadPanel`, `VacationsModal`, `GuardGenerationButton` via `React.lazy`.
