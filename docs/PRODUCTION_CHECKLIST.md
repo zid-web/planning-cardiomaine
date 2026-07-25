@@ -45,7 +45,7 @@ Vérifier Publication `supabase_realtime` : tables `schedules` + `change_request
 7. Médecin : demande de changement → admin approuve
 8. `/protected/admin/users` : liste visible (service role)
 9. Bouton **Feedback** (bas-droite) → envoi → visible dans `/protected/admin/feedback`
-10. Cron : `GET /api/ping-solver` répond `{ success: true }` (logs Vercel)
+10. Cron : `GET https://v0-recreate-attached-ui-zids-projects-22b662f4.vercel.app/api/ping-solver` → `{ "success": true }` (pas les URLs `*-p2ci9kbnq-*` obsolètes)
 
 ## Logs
 

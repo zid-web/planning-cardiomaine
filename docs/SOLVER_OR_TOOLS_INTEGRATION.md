@@ -265,7 +265,8 @@ Quand des warnings sont présents, ils s'affichent dans une boîte d'alerte jaun
 ## Production Status
 
 ✅ **Déployé et actif**
-- URL: https://v0-recreate-attached-p2ci9kbnq-zids-projects-22b662f4.vercel.app
+- URL (Production stable): https://v0-recreate-attached-ui-zids-projects-22b662f4.vercel.app  
+- Keep-alive: https://v0-recreate-attached-ui-zids-projects-22b662f4.vercel.app/api/ping-solver
 - Tous les logs en place pour debug
 - Gestion robuste des timeouts (65s)
 - Warnings affichés de manière professionnelle
