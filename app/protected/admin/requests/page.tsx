@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowDownUp, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
+import { ArrowDownUp, Bell, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { applyChangeRequest, rejectChangeRequest } from '@/app/actions/change-request-actions';
@@ -103,7 +103,8 @@ function StatusBadge({ status }: { status: RequestStatus }) {
 }
 
 export default function AdminRequestsPage() {
-  const supabase = createClient();
+  // Stable browser client (avoids resubscribing Realtime on every render)
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
   const [authorized, setAuthorized] = useState(false);
@@ -112,6 +113,14 @@ export default function AdminRequestsPage() {
   const [requests, setRequests] = useState<ChangeRequestRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [requesters, setRequesters] = useState<RequesterOption[]>([]);
+  const [newRequestsCount, setNewRequestsCount] = useState(0);
+  const [highlightedIds, setHighlightedIds] = useState<Set<string>>(() => new Set());
+  const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'live' | 'error'>(
+    'connecting',
+  );
+
+  const loadRequestsRef = useRef<() => Promise<void>>(async () => {});
+  const loadRequestersRef = useRef<() => Promise<void>>(async () => {});
 
   // Filters
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -220,6 +229,121 @@ export default function AdminRequestsPage() {
     void loadRequests();
   }, [authorized, loadRequests]);
 
+  // Keep stable refs for the realtime callback (avoids resubscribing on every filter change)
+  useEffect(() => {
+    loadRequestsRef.current = loadRequests;
+    loadRequestersRef.current = loadRequesters;
+  }, [loadRequests, loadRequesters]);
+
+  const openDetail = useCallback(
+    async (req: ChangeRequestRow) => {
+      setSelected(req);
+      setAdminComment(req.admin_comment || '');
+      const { data } = await supabase
+        .from('change_requests')
+        .select('*, profiles(email)')
+        .eq('week_key', req.week_key)
+        .eq('day_name', req.day_name)
+        .eq('row_key', req.row_key)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      setRelated(((data as ChangeRequestRow[]) || []).filter((r) => r.id !== req.id));
+    },
+    [supabase],
+  );
+
+  // Live notifications: INSERT on change_requests
+  useEffect(() => {
+    if (!authorized) return;
+
+    const channel = supabase
+      .channel('admin-change-requests')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'change_requests',
+        },
+        async (payload) => {
+          const row = payload.new as ChangeRequestRow;
+          if (!row?.id) return;
+
+          setNewRequestsCount((c) => c + 1);
+          setHighlightedIds((prev) => {
+            const next = new Set(prev);
+            next.add(row.id);
+            return next;
+          });
+          // Auto-clear highlight after 60s
+          window.setTimeout(() => {
+            setHighlightedIds((prev) => {
+              if (!prev.has(row.id)) return prev;
+              const next = new Set(prev);
+              next.delete(row.id);
+              return next;
+            });
+          }, 60_000);
+
+          let email = 'un utilisateur';
+          if (row.requester_id) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('email')
+              .eq('id', row.requester_id)
+              .maybeSingle();
+            if (profile?.email) email = profile.email;
+          }
+
+          toast.info(`Nouvelle demande de ${email}`, {
+            description: `${row.day_name} – ${row.row_key} → ${row.requested_doctor}`,
+            action: {
+              label: 'Voir',
+              onClick: () => {
+                setNewRequestsCount(0);
+                void (async () => {
+                  const { data } = await supabase
+                    .from('change_requests')
+                    .select('*, profiles(email)')
+                    .eq('id', row.id)
+                    .maybeSingle();
+                  if (data) {
+                    await openDetail(data as ChangeRequestRow);
+                    window.setTimeout(() => {
+                      document
+                        .getElementById(`request-${row.id}`)
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 100);
+                  }
+                })();
+              },
+            },
+            duration: 5000,
+          });
+
+          // Refresh list (respects current filters/page) + requester dropdown
+          await loadRequestsRef.current();
+          await loadRequestersRef.current();
+        },
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setRealtimeStatus('live');
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setRealtimeStatus('error');
+          console.error('[admin/requests] realtime status:', status);
+        }
+      });
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [authorized, supabase, openDetail]);
+
+  const resetNewRequestsCount = () => {
+    setNewRequestsCount(0);
+    setHighlightedIds(new Set());
+  };
+
   const setStatusAndReset = (value: StatusFilter) => {
     setPage(1);
     setStatus(value);
@@ -243,20 +367,6 @@ export default function AdminRequestsPage() {
   const toggleSortAndReset = () => {
     setPage(1);
     setSortAsc((v) => !v);
-  };
-
-  const openDetail = async (req: ChangeRequestRow) => {
-    setSelected(req);
-    setAdminComment(req.admin_comment || '');
-    const { data } = await supabase
-      .from('change_requests')
-      .select('*, profiles(email)')
-      .eq('week_key', req.week_key)
-      .eq('day_name', req.day_name)
-      .eq('row_key', req.row_key)
-      .order('created_at', { ascending: false })
-      .limit(10);
-    setRelated(((data as ChangeRequestRow[]) || []).filter((r) => r.id !== req.id));
   };
 
   const handleApprove = async (id: string) => {
@@ -330,11 +440,40 @@ export default function AdminRequestsPage() {
             <h1 className="text-2xl font-bold text-slate-900">Demandes de changement</h1>
             <p className="text-sm text-slate-500">
               Historique complet, filtres cumulables et pagination ({PAGE_SIZE}/page).
+              {realtimeStatus === 'live' && (
+                <span className="ml-2 inline-flex items-center gap-1 text-emerald-600">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                  Temps réel
+                </span>
+              )}
+              {realtimeStatus === 'error' && (
+                <span className="ml-2 text-amber-600">Temps réel indisponible</span>
+              )}
             </p>
           </div>
-          <Button variant="outline" onClick={() => router.push('/protected/planning')}>
-            Retour au planning
-          </Button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={resetNewRequestsCount}
+              className="relative rounded-full p-2 text-slate-600 transition-colors hover:bg-white hover:text-slate-900"
+              title={
+                newRequestsCount > 0
+                  ? `${newRequestsCount} nouvelle(s) demande(s)`
+                  : 'Aucune nouvelle demande'
+              }
+              aria-label="Notifications des nouvelles demandes"
+            >
+              <Bell className="h-5 w-5" />
+              {newRequestsCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-xs font-bold text-white animate-pulse">
+                  {newRequestsCount > 99 ? '99+' : newRequestsCount}
+                </span>
+              )}
+            </button>
+            <Button variant="outline" onClick={() => router.push('/protected/planning')}>
+              Retour au planning
+            </Button>
+          </div>
         </div>
 
         <Card className="shadow-sm">
@@ -466,7 +605,12 @@ export default function AdminRequestsPage() {
                   requests.map((req) => (
                     <TableRow
                       key={req.id}
-                      className="cursor-pointer"
+                      id={`request-${req.id}`}
+                      className={`cursor-pointer transition-colors duration-500 ${
+                        highlightedIds.has(req.id)
+                          ? 'bg-blue-50/80 hover:bg-blue-50'
+                          : ''
+                      }`}
                       onClick={() => void openDetail(req)}
                     >
                       <TableCell className="whitespace-nowrap text-xs md:text-sm">
