@@ -377,8 +377,5 @@ export function generateTestWeek3Example() {
   const vacations: DoctorVacation[] = []
   const result = generateWeeklyGuards('2026-W03', vacations, [])
 
-  console.log('[v0] Generated guards for week 3 (2026-01-19 to 2026-01-25)')
-  console.log('[v0] Result:', JSON.stringify(result, null, 2))
-
   return result
 }

@@ -11,7 +11,7 @@ export async function saveScheduleToSupabase(fullSchedule: Record<string, unknow
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      console.error("[v0] Auth error:", authError)
+      console.error("[app] Auth error:", authError)
       return { error: "Not authenticated" }
     }
 
@@ -23,7 +23,7 @@ export async function saveScheduleToSupabase(fullSchedule: Record<string, unknow
       .single()
 
     if (fetchError && fetchError.code !== "PGRST116") {
-      console.error("[v0] Fetch error:", fetchError)
+      console.error("[app] Fetch error:", fetchError)
       return { error: "Failed to fetch existing schedule" }
     }
 
@@ -38,7 +38,7 @@ export async function saveScheduleToSupabase(fullSchedule: Record<string, unknow
         .eq("user_id", user.id)
 
       if (updateError) {
-        console.error("[v0] Update error:", updateError)
+        console.error("[app] Update error:", updateError)
         return { error: "Failed to update schedule" }
       }
 
@@ -50,14 +50,14 @@ export async function saveScheduleToSupabase(fullSchedule: Record<string, unknow
       })
 
       if (insertError) {
-        console.error("[v0] Insert error:", insertError)
+        console.error("[app] Insert error:", insertError)
         return { error: "Failed to create schedule" }
       }
 
       return { success: true, action: "created" }
     }
   } catch (error) {
-    console.error("[v0] Save error:", error)
+    console.error("[app] Save error:", error)
     return { error: "An unexpected error occurred" }
   }
 }
@@ -72,7 +72,7 @@ export async function loadScheduleFromSupabase() {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      console.error("[v0] Auth error:", authError)
+      console.error("[app] Auth error:", authError)
       return { error: "Not authenticated" }
     }
 
@@ -83,7 +83,7 @@ export async function loadScheduleFromSupabase() {
       .single()
 
     if (error && error.code !== "PGRST116") {
-      console.error("[v0] Load error:", error)
+      console.error("[app] Load error:", error)
       return { error: "Failed to load schedule" }
     }
 
@@ -93,7 +93,7 @@ export async function loadScheduleFromSupabase() {
 
     return { success: true, schedule: null }
   } catch (error) {
-    console.error("[v0] Load error:", error)
+    console.error("[app] Load error:", error)
     return { error: "An unexpected error occurred" }
   }
 }

@@ -49,8 +49,6 @@ export async function generateWeekWithSolver(
   weekendMode: 'CH' | 'ROTATION' = 'ROTATION'
 ): Promise<SolverResponse> {
   try {
-    console.log('[solver-api] Generating week for:', weekStartDate, 'Weekend mode:', weekendMode)
-
     // 1. Récupérer tous les médecins (depuis les constantes)
     const medecins = Object.keys(DOCTOR_METADATA).map((id) => ({
       id,
@@ -87,8 +85,6 @@ export async function generateWeekWithSolver(
       last_nct_doctor: lastNctDoctor,
     }
 
-    console.log('[solver-api] Payload:', JSON.stringify(payload, null, 2))
-
     // 6. Appeler l'API Render
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 65000)
@@ -112,7 +108,6 @@ export async function generateWeekWithSolver(
     }
 
     const result = await response.json()
-    console.log('[solver-api] API response:', result)
 
     // 7. Transformer les assignations en ScheduleData
     const schedule: ScheduleData = createEmptySchedule()
@@ -164,7 +159,6 @@ export async function generateWeekWithSolver(
       }
     })
 
-    console.log('[solver-api] Schedule generated successfully')
     return { schedule, warnings: result.warnings || [] }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'

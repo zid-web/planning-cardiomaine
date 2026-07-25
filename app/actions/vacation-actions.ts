@@ -16,13 +16,13 @@ export async function getAllVacations(): Promise<DoctorVacation[]> {
       .order('start_date', { ascending: true })
 
     if (error) {
-      console.error('[v0] Error fetching vacations:', error)
+      console.error('[app] Error fetching vacations:', error)
       return []
     }
 
     return data || []
   } catch (error) {
-    console.error('[v0] Error in getAllVacations:', error)
+    console.error('[app] Error in getAllVacations:', error)
     return []
   }
 }
@@ -41,13 +41,13 @@ export async function getDoctorVacationsList(doctorId: string): Promise<DoctorVa
       .order('start_date', { ascending: true })
 
     if (error) {
-      console.error('[v0] Error fetching doctor vacations:', error)
+      console.error('[app] Error fetching doctor vacations:', error)
       return []
     }
 
     return data || []
   } catch (error) {
-    console.error('[v0] Error in getDoctorVacationsList:', error)
+    console.error('[app] Error in getDoctorVacationsList:', error)
     return []
   }
 }
@@ -74,14 +74,14 @@ export async function addVacation(
       .single()
 
     if (error) {
-      console.error('[v0] Error adding vacation:', error)
+      console.error('[app] Error adding vacation:', error)
       return { success: false, error: error.message }
     }
 
     return { success: true, data }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('[v0] Error in addVacation:', error)
+    console.error('[app] Error in addVacation:', error)
     return { success: false, error: errorMessage }
   }
 }
@@ -96,14 +96,14 @@ export async function deleteVacation(vacationId: string): Promise<{ success: boo
     const { error } = await supabase.from('doctor_vacations').delete().eq('id', vacationId)
 
     if (error) {
-      console.error('[v0] Error deleting vacation:', error)
+      console.error('[app] Error deleting vacation:', error)
       return { success: false, error: error.message }
     }
 
     return { success: true }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('[v0] Error in deleteVacation:', error)
+    console.error('[app] Error in deleteVacation:', error)
     return { success: false, error: errorMessage }
   }
 }
@@ -130,14 +130,14 @@ export async function updateVacation(
       .single()
 
     if (error) {
-      console.error('[v0] Error updating vacation:', error)
+      console.error('[app] Error updating vacation:', error)
       return { success: false, error: error.message }
     }
 
     return { success: true, data }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('[v0] Error in updateVacation:', error)
+    console.error('[app] Error in updateVacation:', error)
     return { success: false, error: errorMessage }
   }
 }

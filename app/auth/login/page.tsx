@@ -28,15 +28,9 @@ export default function Page() {
     setError(null)
 
     try {
-      // Validate inputs
       if (!email || !password) {
         throw new Error('Email and password are required')
       }
-
-      console.log('[v0] ===== LOGIN ATTEMPT START =====')
-      console.log('[v0] Email:', email)
-      console.log('[v0] NEXT_PUBLIC_SUPABASE_URL env var:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
-      console.log('[v0] NEXT_PUBLIC_SUPABASE_ANON_KEY env var:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 
       let supabase
       try {
@@ -44,31 +38,18 @@ export default function Page() {
         if (!supabase) {
           throw new Error('Supabase client is not available')
         }
-        console.log('[v0] Supabase client created successfully')
       } catch (clientError) {
-        console.error('[v0] Failed to create Supabase client:', clientError)
+        console.error('[auth/login] Failed to create Supabase client:', clientError)
         throw new Error('Authentication service is not properly configured. Please contact support.')
       }
 
-      console.log('[v0] Calling signInWithPassword...')
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      console.log('[v0] Auth response received:')
-      console.log('[v0] - Data:', data ? 'User object received' : 'No data')
-      console.log('[v0] - Error:', error ? error.message : 'No error')
-      console.log('[v0] - Full error object:', error)
-
       if (error) {
-        console.error('[v0] ===== AUTH ERROR =====')
-        console.error('[v0] Error message:', error.message)
-        console.error('[v0] Error status:', error.status)
-        console.error('[v0] Error name:', error.name)
-        console.error('[v0] Full error:', JSON.stringify(error, null, 2))
-        
-        // Provide user-friendly error messages
+        console.error('[auth/login] Auth error:', error.message, error.status)
         if (error.status === 400) {
           throw new Error('Invalid email or password. Please try again.')
         } else if (error.status === 422) {
@@ -81,17 +62,14 @@ export default function Page() {
       }
 
       if (!data.user) {
-        console.error('[v0] No user data in response')
+        console.error('[auth/login] No user data in response')
         throw new Error('Login failed: No user data returned')
       }
 
-      console.log('[v0] ===== LOGIN SUCCESSFUL =====')
-      console.log('[v0] User ID:', data.user.id)
-      console.log('[v0] User email:', data.user.email)
       router.push('/protected/planning')
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred'
-      console.error('[v0] Login failed:', errorMessage)
+      console.error('[auth/login] Login failed:', errorMessage)
       setError(errorMessage)
     } finally {
       setIsLoading(false)
@@ -124,13 +102,13 @@ export default function Page() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center">
                       <Label htmlFor="password">Password</Label>
                       <Link
                         href="/auth/forgot-password"
-                        className="text-xs text-blue-600 hover:underline"
+                        className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
                       >
-                        Forgot password?
+                        Forgot your password?
                       </Link>
                     </div>
                     <Input
@@ -139,11 +117,7 @@ export default function Page() {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Use temporary password: 1234"
                     />
-                    <p className="text-xs text-gray-500">
-                      First-time login: Use password &quot;1234&quot; to access your account, then you&apos;ll be asked to create a personal password.
-                    </p>
                   </div>
                   {error && <p className="text-sm text-red-500">{error}</p>}
                   <Button type="submit" className="w-full" disabled={isLoading}>
@@ -152,10 +126,7 @@ export default function Page() {
                 </div>
                 <div className="mt-4 text-center text-sm">
                   Don&apos;t have an account?{' '}
-                  <Link
-                    href="/auth/sign-up"
-                    className="underline underline-offset-4"
-                  >
+                  <Link href="/auth/sign-up" className="underline underline-offset-4">
                     Sign up
                   </Link>
                 </div>

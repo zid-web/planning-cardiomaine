@@ -11,7 +11,7 @@ export async function createClient() {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!url || !key) {
-    console.error('[v0] Missing Supabase environment variables in server context', {
+    console.error('[app] Missing Supabase environment variables in server context', {
       hasUrl: !!url,
       hasKey: !!key,
     })
