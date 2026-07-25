@@ -271,7 +271,6 @@ export function ScheduleApp({
   }
 
   const handleCellClick = (rowKey: string, day: string) => {
-    if (activeTab === "all" && !isAdmin) return
     if (isCellBlocked(rowKey, day)) return
     // Admin et médecin ouvrent la même modale (édition vs lecture + demande)
     setSelectedCell({ row: rowKey, day })
