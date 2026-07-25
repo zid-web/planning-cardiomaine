@@ -49,7 +49,6 @@ import {
 import type { ScheduleSaveSource } from "@/lib/schedule-diff"
 import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
 import { getAllVacations } from "@/app/actions/vacation-actions"
-import { generateWeekWithSolver } from "@/app/actions/solver-api-actions"
 import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
@@ -127,7 +126,6 @@ export function ScheduleApp({
   const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
-  const [isGenerating, setIsGenerating] = useState(false)
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([])
   const [showRequests, setShowRequests] = useState(false)
@@ -191,7 +189,7 @@ export function ScheduleApp({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "schedules" },
-        (payload) => {
+        (payload: { new: unknown }) => {
           const row = payload.new as {
             week_key?: string
             schedule_data?: ScheduleData
@@ -964,38 +962,12 @@ export function ScheduleApp({
                       Feedback
                     </Button>
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        setIsGenerating(true)
-                        try {
-                          const result = await generateWeekWithSolver(isoWeekStart, "ROTATION")
-                          if (result.error) {
-                            toast.error(`Erreur: ${result.error}`)
-                          } else if (result.schedule) {
-                            await handleGenerationComplete(result.schedule, result.warnings || [])
-                          }
-                        } catch (error) {
-                          toast.error("Erreur lors de la génération")
-                        } finally {
-                          setIsGenerating(false)
-                        }
-                      }}
-                      disabled={isGenerating}
-                    >
-                      {isGenerating ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
-                          Génération...
-                        </>
-                      ) : (
-                        <>
-                          <Calendar className="h-4 w-4 mr-2" />
-                          Générer avec Solveur
-                        </>
-                      )}
-                    </Button>
+                    {/* Bouton doublon "Générer avec Solveur" retiré à nouveau (23/07/2026) :
+                        appelait generateWeekWithSolver (app/actions/solver-api-actions.ts),
+                        qui envoie une équité codée en dur à 0 pour tous les médecins - déjà
+                        supprimé une première fois, réapparu suite à une fusion Git. Le bouton
+                        GuardGenerationButton ci-dessus reste l'unique point d'entrée valide
+                        vers le moteur d'optimisation Render (vraie équité historique). */}
 
                     {showProposals && (
                       <Button variant="outline" size="sm" onClick={() => setShowProposals(!showProposals)}>
