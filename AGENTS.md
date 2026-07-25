@@ -13,6 +13,7 @@ required service is the Next.js dev server; the backend is Supabase.
 - Standard commands are also in `README.md` and `QUICK_REFERENCE.md`.
 - Roadmap options G1–G7: see `docs/PLAN-OPTIONS-G1-G7.md`. Prefer implementing through `ScheduleApp` + `schedule-actions.ts`; do not rebuild planning in `page.tsx`.
 - Production go-live checklist (Vercel env vars, migrations, smoke tests): `docs/PRODUCTION_CHECKLIST.md`. Prefer `console.error`/`warn` only — avoid reintroducing `[v0]` debug `console.log`s.
+- Performance / monitoring: `docs/PERFORMANCE.md` (Render keep-alive cron `/api/ping-solver`, SWR on planning, solver cache, Speed Insights). User testing: `docs/USER_TESTING_PLAN.md` + in-app Feedback → `app_feedback` / `/protected/admin/feedback`.
 - **G1–G3 shipped pattern:** PDF via `GET /api/export-planning-pdf?week_key=…` (admin); all week writes go through `saveScheduleToDb` (increments `version`, writes `schedule_history`, syncs `full_schedule` blob). Realtime: `schedules` is in `supabase_realtime` — `ScheduleApp` subscribes for admins and ignores own `updated_by` + the `full_schedule` blob key. After `supabase db reset`, recreate local test users (admin/doctor).
 - **G4:** CSV/XLSX import in `VoiceAndUploadPanel` (local parse via `lib/planning-import.ts` → `mapped_existing_schedule`). Sample: `fixtures/sample-planning-import.csv`.
 - **G5:** `/protected/admin/users` uses Server Actions + `SUPABASE_SERVICE_ROLE_KEY` (`lib/supabase/admin.ts`). Set that env var on Vercel; never expose it to the client.

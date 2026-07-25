@@ -1,40 +1,61 @@
 "use client"
 
 /**
- * IMPORTANT (23/07/2026) : cette page rendait auparavant sa PROPRE
- * implémentation complète du planning (édition de cellules, sauvegarde,
- * panneau vocal...), en parallèle et en doublon de components/schedule-app.tsx
- * (ScheduleApp) qui, lui, n'était rendu par AUCUNE route - donc jamais visible
- * en production.
- *
- * Cette page délègue maintenant entièrement l'affichage à <ScheduleApp />,
- * qui est le composant réellement complet et maintenu. Elle ne s'occupe plus
- * que du chargement initial des données et de l'authentification.
- *
- * Les fonctionnalités Cursor (change_requests, voice/PDF via proxies Render)
- * sont branchées dans ScheduleApp.
+ * Thin loader for ScheduleApp: auth + SWR-backed schedule fetch.
  */
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import useSWR from "swr"
 import { createClient } from "@/lib/supabase/client"
 import { ScheduleApp } from "@/components/schedule-app"
 import { loadFullScheduleFromDb } from "@/app/actions/schedule-actions"
 import { signOut } from "@/app/actions/auth-actions"
+import { FeedbackButton } from "@/components/FeedbackButton"
 import type { FullSchedule } from "@/lib/types"
+
+async function fetchFullSchedule(): Promise<FullSchedule> {
+  const started = performance.now()
+  const loaded = await loadFullScheduleFromDb()
+  if (typeof window !== "undefined") {
+    console.info(
+      JSON.stringify({
+        level: "info",
+        scope: "planning",
+        event: "load_full_schedule",
+        ms: Math.round(performance.now() - started),
+      }),
+    )
+  }
+  return (loaded as FullSchedule) || {}
+}
 
 export default function PlanningPage() {
   const supabase = createClient()
   const router = useRouter()
 
-  const [isLoading, setIsLoading] = useState(true)
+  const [authReady, setAuthReady] = useState(false)
   const [currentUser, setCurrentUser] = useState("")
   const [doctorCode, setDoctorCode] = useState("")
   const [isAdmin, setIsAdmin] = useState(false)
-  const [fullSchedule, setFullSchedule] = useState<FullSchedule>({})
+
+  const {
+    data: fullSchedule,
+    isLoading: scheduleLoading,
+    mutate,
+  } = useSWR(authReady ? "full-schedule" : null, fetchFullSchedule, {
+    revalidateOnFocus: true,
+    dedupingInterval: 10_000,
+  })
+
+  const [localSchedule, setLocalSchedule] = useState<FullSchedule>({})
 
   useEffect(() => {
-    const loadData = async () => {
+    if (fullSchedule) setLocalSchedule(fullSchedule)
+  }, [fullSchedule])
+
+  useEffect(() => {
+    const loadAuth = async () => {
       try {
         const { data: userData } = await supabase.auth.getUser()
         if (!userData?.user) {
@@ -57,16 +78,12 @@ export default function PlanningPage() {
               "",
           )
         }
-
-        const loaded = await loadFullScheduleFromDb()
-        setFullSchedule((loaded as FullSchedule) || {})
+        setAuthReady(true)
       } catch (error) {
-        console.error("[planning] Erreur de chargement:", error)
-      } finally {
-        setIsLoading(false)
+        console.error("[planning] Erreur de chargement auth:", error)
       }
     }
-    void loadData()
+    void loadAuth()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -79,7 +96,7 @@ export default function PlanningPage() {
     router.push("/profile")
   }
 
-  if (isLoading) {
+  if (!authReady || scheduleLoading) {
     return (
       <div className="flex h-screen items-center justify-center text-slate-500">
         Chargement du planning...
@@ -88,14 +105,24 @@ export default function PlanningPage() {
   }
 
   return (
-    <ScheduleApp
-      currentUser={currentUser}
-      doctorCode={doctorCode}
-      isAdmin={isAdmin}
-      fullSchedule={fullSchedule}
-      setFullSchedule={setFullSchedule}
-      onLogout={handleLogout}
-      onChangePassword={handleChangePassword}
-    />
+    <>
+      <ScheduleApp
+        currentUser={currentUser}
+        doctorCode={doctorCode}
+        isAdmin={isAdmin}
+        fullSchedule={localSchedule}
+        setFullSchedule={(updater) => {
+          setLocalSchedule((prev) => {
+            const next = typeof updater === "function" ? updater(prev) : updater
+            // Keep SWR cache in sync without forcing an immediate refetch
+            void mutate(next, { revalidate: false })
+            return next
+          })
+        }}
+        onLogout={handleLogout}
+        onChangePassword={handleChangePassword}
+      />
+      <FeedbackButton />
+    </>
   )
 }

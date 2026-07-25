@@ -48,6 +48,16 @@ export async function generateWeekWithSolver(
   weekStartDate: string,
   weekendMode: 'CH' | 'ROTATION' = 'ROTATION'
 ): Promise<SolverResponse> {
+  const { getSolverCache, setSolverCache, solverCacheKey } = await import('@/lib/solver-cache')
+  const { perfLog, perfWarn } = await import('@/lib/perf-log')
+  const cacheKey = solverCacheKey(weekStartDate, weekendMode)
+  const cached = getSolverCache<SolverResponse>(cacheKey)
+  if (cached?.schedule) {
+    perfLog('solver-api', 'cache_hit', { weekStartDate, weekendMode })
+    return cached
+  }
+
+  const started = Date.now()
   try {
     // 1. Récupérer tous les médecins (depuis les constantes)
     const medecins = Object.keys(DOCTOR_METADATA).map((id) => ({
@@ -86,12 +96,16 @@ export async function generateWeekWithSolver(
     }
 
     // 6. Appeler l'API Render
+    const base =
+      process.env.GUARD_API_BASE_URL ||
+      process.env.GUARD_API_URL ||
+      'https://guard-api-cardiomaine.onrender.com'
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 65000)
 
     let response: Response
     try {
-      response = await fetch('https://guard-api-cardiomaine.onrender.com/generate-week', {
+      response = await fetch(`${base.replace(/\/$/, '')}/generate-week`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -108,6 +122,12 @@ export async function generateWeekWithSolver(
     }
 
     const result = await response.json()
+    perfLog('solver-api', 'generate_week', {
+      weekStartDate,
+      weekendMode,
+      ms: Date.now() - started,
+      assignments: Array.isArray(result?.assignments) ? result.assignments.length : 0,
+    })
 
     // 7. Transformer les assignations en ScheduleData
     const schedule: ScheduleData = createEmptySchedule()
@@ -159,10 +179,18 @@ export async function generateWeekWithSolver(
       }
     })
 
-    return { schedule, warnings: result.warnings || [] }
+    const responsePayload = { schedule, warnings: result.warnings || [] as string[] }
+    setSolverCache(cacheKey, responsePayload)
+    return responsePayload
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
     console.error('[solver-api] Error:', error)
+    perfWarn('solver-api', 'generate_week_failed', {
+      weekStartDate,
+      weekendMode,
+      ms: Date.now() - started,
+      error: errorMessage,
+    })
 
     // Gérer l'erreur de timeout
     if (error instanceof Error && error.name === 'AbortError') {
