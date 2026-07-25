@@ -95,7 +95,7 @@ export function VoiceAndUploadPanel({
       }
 
       recognitionRef.current.onerror = (event: any) => {
-        console.error('[v0] Speech recognition error:', event.error)
+        console.error('[app] Speech recognition error:', event.error)
         // Ne pas afficher l'erreur "not-allowed" au démarrage
         if (event.error !== 'not-allowed') {
           setStatus({
@@ -162,8 +162,6 @@ export function VoiceAndUploadPanel({
       current_week_request: resolveWeekRequest(),
     }
 
-    console.log("[v0] Voice Command - Envoi:", payload)
-
     setIsLoading(true)
     setStatus({ type: "loading", message: "Interprétation de la consigne..." })
 
@@ -179,13 +177,6 @@ export function VoiceAndUploadPanel({
 
       const data = await response.json()
 
-      console.log("[v0] Voice Command - Backend Response:", {
-        status: response.status,
-        statusText: response.statusText,
-        data: data,
-        timestamp: new Date().toISOString()
-      })
-
       if (!response.ok) {
         const detail = data.error || data.detail || data.message
         const msg = typeof detail === 'string' ? detail : JSON.stringify(detail)
@@ -200,8 +191,6 @@ export function VoiceAndUploadPanel({
 
       toast.success(successMessage)
 
-      console.log("[v0] Voice Command - Succès!")
-
       setTranscript("")
       setEditedTranscript("")
 
@@ -212,16 +201,12 @@ export function VoiceAndUploadPanel({
       setTimeout(() => {
         setStatus({ type: "idle", message: "" })
       }, 3000)
-    } catch (error: any) {
-      const errorMessage = error.message || "Erreur lors du traitement de la commande"
-      
-      console.error('[v0] Voice Command - Erreur détaillée:', {
-        error: error.toString(),
-        message: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      })
-      
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur lors du traitement de la commande"
+
+      console.error("[voice] Command failed:", errorMessage)
+
       setStatus({
         type: "error",
         message: errorMessage

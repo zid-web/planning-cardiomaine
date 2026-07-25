@@ -158,7 +158,7 @@ export function ScheduleApp({
       const data = await getAllVacations()
       setVacations(data)
     } catch (error) {
-      console.error("[v0] Error loading vacations:", error)
+      console.error("[app] Error loading vacations:", error)
     }
   }
 
@@ -287,7 +287,7 @@ export function ScheduleApp({
       await saveScheduleToDb(weekKey, newSchedule, currentUser || "unknown", { source })
       toast.success("Planning enregistré")
     } catch (error) {
-      console.error("[v0] Failed to save to Supabase:", error)
+      console.error("[app] Failed to save to Supabase:", error)
       toast.error("Échec de l'enregistrement du planning")
     }
   }
@@ -758,7 +758,7 @@ export function ScheduleApp({
       setShowProposals(true)
       toast.success(`${proposals.length} propositions de gardes de nuit générées (vacations incluses)`)
     } catch (error) {
-      console.error("[v0] Error generating guards:", error)
+      console.error("[app] Error generating guards:", error)
       toast.error("Erreur lors de la génération des gardes")
     }
   }

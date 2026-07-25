@@ -45,9 +45,7 @@ export default function Page() {
         throw new Error('Supabase is not configured. Please contact support.')
       }
 
-      console.log('[v0] Sign up attempt with email:', email)
-
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -58,15 +56,14 @@ export default function Page() {
       })
 
       if (error) {
-        console.error('[v0] Supabase auth error:', error.message, error.status)
+        console.error('[auth/sign-up] Supabase auth error:', error.message, error.status)
         throw error
       }
 
-      console.log('[v0] Sign up successful for user:', data.user?.id)
       router.push('/auth/sign-up-success')
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred'
-      console.error('[v0] Sign up failed:', errorMessage)
+      console.error('[auth/sign-up] Sign up failed:', errorMessage)
       setError(errorMessage)
     } finally {
       setIsLoading(false)

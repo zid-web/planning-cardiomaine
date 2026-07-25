@@ -50,7 +50,7 @@ export function VacationsModal({
       setVacations(data)
     } catch (err) {
       setError('Erreur lors du chargement des vacances')
-      console.error('[v0] Error loading vacations:', err)
+      console.error('[app] Error loading vacations:', err)
     } finally {
       setIsLoading(false)
     }
@@ -144,7 +144,7 @@ export function VacationsModal({
       }
     } catch (err) {
       setError('Erreur lors de l\'ajout de la vacation')
-      console.error('[v0] Error adding vacation:', err)
+      console.error('[app] Error adding vacation:', err)
     } finally {
       setIsLoading(false)
     }
@@ -166,7 +166,7 @@ export function VacationsModal({
       }
     } catch (err) {
       setError('Erreur lors de la suppression')
-      console.error('[v0] Error deleting vacation:', err)
+      console.error('[app] Error deleting vacation:', err)
     } finally {
       setIsLoading(false)
     }

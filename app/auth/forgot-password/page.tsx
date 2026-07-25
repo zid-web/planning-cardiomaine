@@ -30,20 +30,17 @@ export default function ForgotPasswordPage() {
         throw new Error('Email is required')
       }
 
-      console.log('[v0] Requesting password reset for email:', email)
-
       const result = await resetPassword(email)
 
       if (result.error) {
-        console.error('[v0] Password reset error:', result.error)
+        console.error('[auth/forgot-password] Password reset error:', result.error)
         throw new Error(result.error)
       }
 
-      console.log('[v0] Password reset email sent successfully')
       setSuccess(true)
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred'
-      console.error('[v0] Password reset failed:', errorMessage)
+      console.error('[auth/forgot-password] Password reset failed:', errorMessage)
       setError(errorMessage)
     } finally {
       setIsLoading(false)

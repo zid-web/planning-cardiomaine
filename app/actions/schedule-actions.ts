@@ -56,7 +56,7 @@ export async function saveScheduleToDb(
     .single()
 
   if (error) {
-    console.error("[v0] Error saving schedule to Supabase:", error)
+    console.error("[app] Error saving schedule to Supabase:", error)
     throw new Error(`Failed to save schedule: ${error.message}`)
   }
 
@@ -91,7 +91,7 @@ export async function saveScheduleToDb(
         const full = ((await loadFullScheduleFromDb()) as Record<string, unknown>) || {}
         await saveFullScheduleToDb({ ...full, [weekKey]: scheduleData })
       } catch (blobErr) {
-        console.error("[v0] full_schedule sync failed:", blobErr)
+        console.error("[app] full_schedule sync failed:", blobErr)
       }
     }
   }
@@ -107,7 +107,7 @@ export async function getScheduleFromDb(weekKey: string) {
   const { data, error } = await supabase.from("schedules").select("*").eq("week_key", weekKey).single()
 
   if (error && error.code !== "PGRST116") {
-    console.error("[v0] Error fetching schedule from Supabase:", error)
+    console.error("[app] Error fetching schedule from Supabase:", error)
     return null
   }
 
@@ -120,7 +120,7 @@ export async function getAllSchedulesFromDb() {
   const { data, error } = await supabase.from("schedules").select("*").order("week_key", { ascending: true })
 
   if (error) {
-    console.error("[v0] Error fetching all schedules from Supabase:", error)
+    console.error("[app] Error fetching all schedules from Supabase:", error)
     return []
   }
 
@@ -148,7 +148,7 @@ export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>
     .single()
 
   if (error) {
-    console.error("[v0] Error saving full schedule to Supabase:", error)
+    console.error("[app] Error saving full schedule to Supabase:", error)
     throw new Error(`Failed to save full schedule: ${error.message}`)
   }
 
@@ -168,7 +168,7 @@ export async function loadFullScheduleFromDb() {
     .select("week_key, schedule_data")
 
   if (error) {
-    console.error("[v0] Load error:", error)
+    console.error("[app] Load error:", error)
     return null
   }
 

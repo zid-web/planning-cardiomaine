@@ -52,7 +52,7 @@ export function PlanningNotes() {
       }
 
       recognitionRef.current.onerror = (event: any) => {
-        console.error('[v0] Speech recognition error:', event.error)
+        console.error('[app] Speech recognition error:', event.error)
         setError(`Erreur de reconnaissance vocale: ${event.error}`)
       }
     }
@@ -74,7 +74,7 @@ export function PlanningNotes() {
       }
     } catch (err) {
       setError('Erreur lors du chargement des notes')
-      console.error('[v0] Error loading notes:', err)
+      console.error('[app] Error loading notes:', err)
     } finally {
       setIsLoading(false)
     }
@@ -115,7 +115,7 @@ export function PlanningNotes() {
       }
     } catch (err) {
       setError('Erreur lors de l\'ajout de la note')
-      console.error('[v0] Error adding note:', err)
+      console.error('[app] Error adding note:', err)
     } finally {
       setIsLoading(false)
     }
@@ -147,7 +147,7 @@ export function PlanningNotes() {
       }
     } catch (err) {
       setError('Erreur lors de la mise à jour')
-      console.error('[v0] Error updating note:', err)
+      console.error('[app] Error updating note:', err)
     } finally {
       setIsLoading(false)
     }
@@ -169,7 +169,7 @@ export function PlanningNotes() {
       }
     } catch (err) {
       setError('Erreur lors de la suppression')
-      console.error('[v0] Error deleting note:', err)
+      console.error('[app] Error deleting note:', err)
     } finally {
       setIsLoading(false)
     }

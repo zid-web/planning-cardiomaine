@@ -42,13 +42,13 @@ export async function getPlanningNotes(): Promise<{ data: PlanningNote[] | null;
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('[v0] Error fetching planning notes:', error)
+      console.error('[app] Error fetching planning notes:', error)
       return { data: null, error: error.message }
     }
 
     return { data: data as PlanningNote[], error: null }
   } catch (err) {
-    console.error('[v0] Error in getPlanningNotes:', err)
+    console.error('[app] Error in getPlanningNotes:', err)
     return { data: null, error: 'Erreur lors de la récupération des notes' }
   }
 }
@@ -95,14 +95,14 @@ export async function createPlanningNote(
       .single()
 
     if (error) {
-      console.error('[v0] Error creating planning note:', error)
+      console.error('[app] Error creating planning note:', error)
       return { data: null, error: error.message }
     }
 
     revalidatePath('/protected/planning-notes')
     return { data: data as PlanningNote, error: null }
   } catch (err) {
-    console.error('[v0] Error in createPlanningNote:', err)
+    console.error('[app] Error in createPlanningNote:', err)
     return { data: null, error: 'Erreur lors de la création de la note' }
   }
 }
@@ -150,14 +150,14 @@ export async function updatePlanningNote(
       .single()
 
     if (error) {
-      console.error('[v0] Error updating planning note:', error)
+      console.error('[app] Error updating planning note:', error)
       return { data: null, error: error.message }
     }
 
     revalidatePath('/protected/planning-notes')
     return { data: data as PlanningNote, error: null }
   } catch (err) {
-    console.error('[v0] Error in updatePlanningNote:', err)
+    console.error('[app] Error in updatePlanningNote:', err)
     return { data: null, error: 'Erreur lors de la mise à jour de la note' }
   }
 }
@@ -188,14 +188,14 @@ export async function deletePlanningNote(noteId: string): Promise<{ success: boo
     const { error } = await supabase.from('planning_notes').delete().eq('id', noteId)
 
     if (error) {
-      console.error('[v0] Error deleting planning note:', error)
+      console.error('[app] Error deleting planning note:', error)
       return { success: false, error: error.message }
     }
 
     revalidatePath('/protected/planning-notes')
     return { success: true, error: null }
   } catch (err) {
-    console.error('[v0] Error in deletePlanningNote:', err)
+    console.error('[app] Error in deletePlanningNote:', err)
     return { success: false, error: 'Erreur lors de la suppression de la note' }
   }
 }

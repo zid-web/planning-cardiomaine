@@ -41,16 +41,13 @@ export default function ResetPasswordConfirmPage() {
         throw new Error('Password must be at least 6 characters long')
       }
 
-      console.log('[v0] Updating password')
-
       const result = await updatePassword(password)
 
       if (result.error) {
-        console.error('[v0] Password update error:', result.error)
+        console.error('[auth/reset-password] Password update error:', result.error)
         throw new Error(result.error)
       }
 
-      console.log('[v0] Password updated successfully')
       setSuccess(true)
       
       // Redirect to login after 2 seconds
@@ -59,7 +56,7 @@ export default function ResetPasswordConfirmPage() {
       }, 2000)
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred'
-      console.error('[v0] Password update failed:', errorMessage)
+      console.error('[auth/reset-password] Password update failed:', errorMessage)
       setError(errorMessage)
     } finally {
       setIsLoading(false)

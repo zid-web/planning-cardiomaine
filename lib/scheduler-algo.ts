@@ -23,7 +23,6 @@ export function calculateWorkloadStats(schedule: ScheduleData): Record<string, n
 
 // Fallback: Minimal Coverage Heuristic
 export function generateFallbackSchedule(weekKey: string): ScheduleData {
-  console.log("[v0] Running Fallback Generation...")
   // This would generate a basic valid schedule
   // For now, we rely on the existing generator but we could add safety rules here
   return {} as ScheduleData // Placeholder

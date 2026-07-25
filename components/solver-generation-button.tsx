@@ -32,8 +32,6 @@ export function SolverGenerationButton({
       weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1) // Lundi
       const weekStartStr = weekStart.toISOString().split('T')[0]
 
-      console.log('[v0] Calling solver API for week starting:', weekStartStr)
-
       const result = await generateWeekWithSolver(weekStartStr, weekendMode)
 
       if (result.error) {
@@ -58,7 +56,7 @@ export function SolverGenerationButton({
       onGenerationComplete(result.schedule, result.warnings)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
-      console.error('[v0] Solver error:', error)
+      console.error('[solver] Generation error:', error)
       toast.error(`Erreur: ${errorMessage}`, { id: toastId })
     } finally {
       setIsLoading(false)

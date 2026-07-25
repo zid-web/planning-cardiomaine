@@ -25,7 +25,7 @@ export async function validateDoctorAssignment(
       .order('start_date', { ascending: true })
 
     if (error) {
-      console.error('[v0] Error fetching vacations:', error)
+      console.error('[app] Error fetching vacations:', error)
       return { allowed: false, reason: 'Erreur lors de la vérification des vacances' }
     }
 
@@ -34,7 +34,7 @@ export async function validateDoctorAssignment(
 
     return result
   } catch (error) {
-    console.error('[v0] Error in validateDoctorAssignment:', error)
+    console.error('[app] Error in validateDoctorAssignment:', error)
     return { allowed: false, reason: 'Erreur lors de la validation' }
   }
 }
@@ -52,13 +52,13 @@ export async function getAllVacationsForPlanning(): Promise<DoctorVacation[]> {
       .order('start_date', { ascending: true })
 
     if (error) {
-      console.error('[v0] Error fetching vacations:', error)
+      console.error('[app] Error fetching vacations:', error)
       return []
     }
 
     return (data || []) as DoctorVacation[]
   } catch (error) {
-    console.error('[v0] Error in getAllVacationsForPlanning:', error)
+    console.error('[app] Error in getAllVacationsForPlanning:', error)
     return []
   }
 }

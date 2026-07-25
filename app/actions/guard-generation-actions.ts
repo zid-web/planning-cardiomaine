@@ -32,7 +32,7 @@ export async function generateGuardsWithVacations(
     return { proposals }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('[v0] Error generating guards:', error)
+    console.error('[app] Error generating guards:', error)
     return { proposals: [], error: errorMessage }
   }
 }

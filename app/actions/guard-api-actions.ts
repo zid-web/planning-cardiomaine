@@ -204,7 +204,6 @@ export async function generateGuardsViaAPI(
       })),
     };
 
-    console.log("🚀 Envoi à Render :", JSON.stringify(payload, null, 2));
 
     // 5. Appel à l'API Render
     const response = await fetch(`${GUARD_API_URL}/generate-week`, {

@@ -12,27 +12,23 @@ export default function ProtectedPage() {
     const initializeApp = async () => {
       try {
         if (!supabase) {
-          console.error('[v0] Supabase client not available')
+          console.error('[protected] Supabase client not available')
           return
         }
 
-        // Get current user
         const { data: { user: authUser } } = await supabase.auth.getUser()
         if (!authUser) {
-          console.log('[v0] No authenticated user, redirecting to login')
           router.push('/auth/login')
           return
         }
-        
-        // Redirect to planning page
-        console.log('[v0] User authenticated, redirecting to planning')
+
         router.push('/protected/planning')
       } catch (error) {
-        console.error('[v0] Error initializing protected page:', error)
+        console.error('[protected] Error initializing protected page:', error)
       }
     }
 
-    initializeApp()
+    void initializeApp()
   }, [router, supabase])
 
   return null
