@@ -14,6 +14,7 @@ required service is the Next.js dev server; the backend is Supabase.
 
 ### Roles & API gotchas
 - `profiles.role` defaults to `'admin'` (init migration), so brand-new users are admins. The planning page treats `role === 'admin'` as admin (direct grid editing + change-request approval panel); any other role is a "doctor" who can only submit change requests. To test the doctor flow, set a user's `role` to something else (e.g. `UPDATE profiles SET role='doctor' WHERE ...`).
+- Admin change-requests UI lives at **`/protected/admin/requests`** (`app/protected/admin/requests/page.tsx`). Approve/reject is centralized in `app/actions/change-request-actions.ts` (`applyChangeRequest` / `rejectChangeRequest`). The old path `/protected/change-requests` (PR #25) is a thin `redirect()` only — do not reintroduce a full page there.
 - `middleware.ts` gates `/api/*` too (only `/`, `/auth/login`, `/auth/sign-up`, `/auth/forgot-password` are public). Unauthenticated requests to API routes redirect to login, so testing `/api/voice-command` or `/api/upload-pdf` with plain `curl` won't hit the handler — invoke the handler directly or use an authenticated session.
 
 ### Supabase backend (important auth caveat)
