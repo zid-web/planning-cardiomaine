@@ -19,7 +19,7 @@ Activer le cron `*/5 * * * *` → `/api/ping-solver` (Vercel **Pro**), **ou** un
 
 > **Statut (2026-07-25)** : variables Production vérifiées manuellement dans le dashboard Vercel.  
 > Migration `20250725000004_…` + keep-alive cron : confirmés côté équipe.  
-> **Attention** : le déploiement Vercel Production du merge PR #37 a signalé un échec GitHub (`Deployment failed`) — aucun déploiement Production listé pour le SHA `ed3bfa8`. Relancer un deploy Production puis vérifier `GET /api/ping-solver`.
+> **Attention** : les URLs `*.vercel.app` du projet v0 sont souvent derrière **Deployment Protection (SSO)**. Un cron externe / probe sans cookie reçoit un 302 vers `vercel.com/sso-api` — le keep-alive Render ne fonctionne alors pas. Utiliser un domaine public, ou un bypass token Vercel, et vérifier que le deploy Production pointe bien sur `main` HEAD (pas seulement un ancien alias).
 
 ## Migrations Supabase (hébergé)
 
