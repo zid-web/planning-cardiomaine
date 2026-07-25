@@ -73,6 +73,7 @@ import {
   mergeAssignmentsIntoSchedule,
 } from "@/lib/guard-api-mapping"
 import { toast } from "sonner"
+import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
 
 type ChangeRequest = {
   id: string
@@ -145,6 +146,7 @@ export function ScheduleApp({
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "live" | "error">("connecting")
   /** In Global view the admin toolbar starts collapsed to free vertical space for the grid */
   const [toolbarExpanded, setToolbarExpanded] = useState(false)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
 
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
@@ -316,8 +318,19 @@ export function ScheduleApp({
     }
   }
 
-  const exportWeekPdf = () => {
-    window.location.href = `/api/export-planning-pdf?week_key=${encodeURIComponent(weekKey)}`
+  const exportWeekPdf = async () => {
+    if (isExportingPdf) return
+    setIsExportingPdf(true)
+    try {
+      // Génération navigateur : évite le 413 Vercel (cookies auth trop volumineux sur GET API).
+      await downloadPlanningPdf(weekKey, schedule)
+      toast.success("PDF exporté")
+    } catch (err) {
+      console.error("[exportWeekPdf]", err)
+      toast.error("Échec de l'export PDF")
+    } finally {
+      setIsExportingPdf(false)
+    }
   }
 
   const currentDayIndex = (currentDate.getDay() + 6) % 7 // 0 = Monday
@@ -975,11 +988,12 @@ export function ScheduleApp({
                           variant="outline"
                           size="sm"
                           className="h-7 px-2 text-[11px]"
-                          onClick={exportWeekPdf}
+                          onClick={() => void exportWeekPdf()}
+                          disabled={isExportingPdf}
                           title="Exporter la semaine en PDF"
                         >
                           <FileDown className="mr-1 h-3.5 w-3.5" />
-                          <span className="hidden md:inline">PDF</span>
+                          <span className="hidden md:inline">{isExportingPdf ? "…" : "PDF"}</span>
                         </Button>
 
                         <Button
