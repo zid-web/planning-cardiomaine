@@ -1,7 +1,9 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useCallback, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
+  Bell,
   Calendar,
   Check,
   ChevronLeft,
@@ -10,6 +12,7 @@ import {
   Home,
   List,
   MessageSquare,
+  Mic,
   UserCircle,
   X,
   Info,
@@ -38,12 +41,44 @@ import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-a
 import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
 import { getAllVacations } from "@/app/actions/vacation-actions"
 import { generateWeekWithSolver } from "@/app/actions/solver-api-actions"
+import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions"
 import { VacationsModal } from "@/components/vacations-modal"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
 import { GuardGenerationButton } from "@/components/guard-generation-button"
+import { VoiceAndUploadPanel } from "@/components/VoiceAndUploadPanel"
 import { DoctorVacation } from "@/lib/types"
+import { createClient } from "@/lib/supabase/client"
+import {
+  applyMappedExistingSchedule,
+  applyParsedCommandToSchedule,
+  applyPdfExtractionToSchedule,
+  buildCurrentWeekRequestPayload,
+  getIsoWeekStartDate,
+  mergeAssignmentsIntoSchedule,
+} from "@/lib/guard-api-mapping"
 import { toast } from "sonner"
+
+type ChangeRequest = {
+  id: string
+  requester_id: string | null
+  week_key: string
+  day_name: string
+  row_key: string
+  slot: string | null
+  current_doctor: string | null
+  requested_doctor: string
+  reason: string | null
+  status: "pending" | "approved" | "rejected"
+  admin_comment: string | null
+  created_at: string
+  updated_at: string
+}
+
+function formatWeekKey(date: Date) {
+  const { year, week } = getWeekNumber(date)
+  return `${year}-W${String(week).padStart(2, "0")}`
+}
 
 export function ScheduleApp({
   currentUser,
@@ -77,33 +112,32 @@ export function ScheduleApp({
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false)
+  const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([])
+  const [showRequests, setShowRequests] = useState(false)
+  const [requestModal, setRequestModal] = useState<{
+    open: boolean
+    row: string
+    day: string
+    slot?: string
+    currentDoctor?: string
+  }>({ open: false, row: "", day: "" })
+  const [requestedDoctor, setRequestedDoctor] = useState("")
+  const [reason, setReason] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const supabase = useMemo(() => createClient(), [])
+  const router = useRouter()
+
+  const currentWeekInfo = useMemo(() => getWeekNumber(currentDate), [currentDate])
+  const weekKey = useMemo(() => formatWeekKey(currentDate), [currentDate])
+  const weekDates = useMemo(() => getWeekDates(currentDate), [currentDate])
+  const isoWeekStart = useMemo(() => getIsoWeekStartDate(currentDate), [currentDate])
 
   // Load vacations on mount
-  React.useEffect(() => {
-    loadVacations()
+  useEffect(() => {
+    void loadVacations()
   }, [])
-
-  // Gère le résultat de la génération via API
-  const handleGenerationComplete = (schedule: ScheduleData, warnings: string[]) => {
-    const currentWeekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
-    
-    // Merger la génération avec l'existant
-    setFullSchedule((prev) => ({
-      ...prev,
-      [currentWeekKey]: {
-        ...schedule,
-        // Préserver les Congés et Notes existants
-        Congés: prev[currentWeekKey]?.Congés || schedule.Congés,
-        'Notes du jour': prev[currentWeekKey]?.['Notes du jour'] || schedule['Notes du jour'],
-      },
-    }))
-
-    // Afficher les warnings
-    setGeneratedScheduleWarnings(warnings)
-
-    // Toast de confirmation
-    toast.success(`Planning généré avec ${Object.values(schedule).flat().length} assignations`)
-  }
 
   const loadVacations = async () => {
     try {
@@ -114,9 +148,47 @@ export function ScheduleApp({
     }
   }
 
-  const currentWeekInfo = useMemo(() => getWeekNumber(currentDate), [currentDate])
-  const weekKey = `${currentWeekInfo.year}-W${currentWeekInfo.week}`
-  const weekDates = useMemo(() => getWeekDates(currentDate), [currentDate])
+  const refreshRequests = useCallback(async () => {
+    const { data } = await supabase
+      .from("change_requests")
+      .select("*")
+      .eq("week_key", weekKey)
+      .order("created_at", { ascending: false })
+    setChangeRequests((data as ChangeRequest[]) || [])
+  }, [supabase, weekKey])
+
+  useEffect(() => {
+    void refreshRequests()
+  }, [refreshRequests])
+
+  // Gère le résultat de la génération via API — persiste en base (patch Claude)
+  const handleGenerationComplete = async (schedule: ScheduleData, warnings: string[]) => {
+    const currentWeekKey = formatWeekKey(currentDate)
+
+    const mergedWeekSchedule: ScheduleData = {
+      ...schedule,
+      Congés: fullSchedule[currentWeekKey]?.Congés || schedule.Congés,
+      "Notes du jour":
+        fullSchedule[currentWeekKey]?.["Notes du jour"] || schedule["Notes du jour"],
+    }
+
+    const updatedFullSchedule = { ...fullSchedule, [currentWeekKey]: mergedWeekSchedule }
+    setFullSchedule(updatedFullSchedule)
+
+    try {
+      await saveScheduleToDb(currentWeekKey, mergedWeekSchedule, currentUser || "unknown")
+      await saveFullScheduleToDb(updatedFullSchedule)
+    } catch (error) {
+      toast.error("Le planning a été généré mais la sauvegarde a échoué. Réessayez.")
+      console.error("[schedule-app] Échec de sauvegarde après génération:", error)
+      return
+    }
+
+    setGeneratedScheduleWarnings(warnings)
+    toast.success(
+      `Planning généré et sauvegardé avec ${Object.values(schedule).flat().length} assignations`,
+    )
+  }
 
   // Ensure schedule exists for this week
   const schedule = useMemo(() => {
@@ -199,20 +271,24 @@ export function ScheduleApp({
   }
 
   const handleCellClick = (rowKey: string, day: string) => {
-    if (activeTab === "all" && !isAdmin) return
     if (isCellBlocked(rowKey, day)) return
+    // Admin et médecin ouvrent la même modale (édition vs lecture + demande)
     setSelectedCell({ row: rowKey, day })
   }
 
   const addDoctorToCell = (doctor: string) => {
+    if (!isAdmin) return
     if (!selectedCell || !schedule) return
 
     // Vérifier si le médecin est indisponible (en vacances)
-    const dateStr = weekDates[selectedCell.day]?.toISOString().split('T')[0]
-    if (dateStr) {
+    const dayIndex = DAYS.indexOf(selectedCell.day)
+    if (dayIndex >= 0 && isoWeekStart) {
+      const dayDate = new Date(`${isoWeekStart}T12:00:00`)
+      dayDate.setDate(dayDate.getDate() + dayIndex)
+      const dateStr = dayDate.toISOString().split("T")[0]
       const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations)
       if (!validation.allowed) {
-        toast.error(validation.reason || 'Assignation impossible')
+        toast.error(validation.reason || "Assignation impossible")
         return
       }
     }
@@ -263,7 +339,7 @@ export function ScheduleApp({
   }
 
   const removeDoctorFromCell = (indexToRemove: number) => {
-    if (!selectedCell) return
+    if (!isAdmin || !selectedCell) return
 
     const newSchedule = { ...schedule }
     const currentCell = newSchedule[selectedCell.row][selectedCell.day]
@@ -303,6 +379,169 @@ export function ScheduleApp({
     updateSchedule(newSchedule)
     setSelectedCell(null)
   }
+
+  const pendingRequests = useMemo(
+    () => changeRequests.filter((r) => r.status === "pending"),
+    [changeRequests],
+  )
+
+  const vacationPayload = useMemo(
+    () =>
+      (vacations || []).map((v) => ({
+        doctor_id: v.doctor_id || "",
+        start_date: v.start_date,
+        end_date: v.end_date,
+      })),
+    [vacations],
+  )
+
+  const currentWeekRequest = useMemo(
+    () =>
+      buildCurrentWeekRequestPayload({
+        weekStartDate: isoWeekStart,
+        weekNumber: currentWeekInfo.week,
+        vacations: vacationPayload,
+        schedule,
+      }),
+    [isoWeekStart, currentWeekInfo.week, vacationPayload, schedule],
+  )
+
+  const submitRequest = async () => {
+    if (!requestedDoctor.trim()) {
+      toast.error("Veuillez indiquer le médecin souhaité")
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const res = await fetch("/api/change-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          week_key: weekKey,
+          day_name: requestModal.day,
+          row_key: requestModal.row,
+          slot: requestModal.slot,
+          current_doctor: requestModal.currentDoctor || "",
+          requested_doctor: requestedDoctor.trim().toUpperCase(),
+          reason: reason.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erreur")
+      toast.success("Demande envoyée !")
+      setRequestModal({ open: false, row: "", day: "" })
+      setRequestedDoctor("")
+      setReason("")
+      await refreshRequests()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'envoi")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const approveRequest = async (req: ChangeRequest) => {
+    const result = await applyChangeRequest(req.id)
+    if (!result.success) {
+      toast.error(result.error || "Erreur lors de l'approbation")
+      return
+    }
+    toast.success(result.message)
+    // Recharger la semaine depuis schedules (applyChangeRequest met à jour la grille)
+    const { data } = await supabase
+      .from("schedules")
+      .select("schedule_data")
+      .eq("week_key", weekKey)
+      .single()
+    if (data?.schedule_data) {
+      const updated = {
+        ...fullSchedule,
+        [weekKey]: data.schedule_data as ScheduleData,
+      }
+      setFullSchedule(updated)
+      void saveFullScheduleToDb(updated)
+    }
+    await refreshRequests()
+  }
+
+  const rejectRequest = async (req: ChangeRequest) => {
+    const result = await rejectChangeRequest(req.id)
+    if (!result.success) {
+      toast.error(result.error || "Erreur lors du rejet")
+      return
+    }
+    toast.success(result.message)
+    await refreshRequests()
+  }
+
+  const applyVoiceOrUploadResult = useCallback(
+    (data: {
+      parsed_command?: {
+        date: string
+        slot: string
+        activity: string
+        doctor_out?: string | null
+        doctor_in: string
+      }
+      updated_schedule?: { assignments?: Array<any>; warnings?: string[] }
+      raw_extraction?: { rows?: Array<any> }
+      mapped_existing_schedule?: Record<string, string[]>
+      operations?: Array<{ action: string; doctor?: string; day?: string; row?: string }>
+      warnings?: string[]
+    }) => {
+      let next = schedule
+      let changed = false
+
+      if (data?.parsed_command?.doctor_in) {
+        const before = JSON.stringify(next)
+        next = applyParsedCommandToSchedule(next, data.parsed_command)
+        if (JSON.stringify(next) !== before) changed = true
+      }
+
+      if (data?.raw_extraction?.rows?.length) {
+        const before = JSON.stringify(next)
+        next = applyPdfExtractionToSchedule(next, data.raw_extraction.rows)
+        if (JSON.stringify(next) !== before) changed = true
+      }
+
+      if (data?.mapped_existing_schedule && !data?.parsed_command) {
+        const before = JSON.stringify(next)
+        next = applyMappedExistingSchedule(next, data.mapped_existing_schedule)
+        if (JSON.stringify(next) !== before) changed = true
+      }
+
+      for (const op of data?.operations || []) {
+        if ((op.action !== "add" && op.action !== "remove") || !op.day || !op.row || !op.doctor) continue
+        const cell = next[op.row]?.[op.day]
+        if (!cell) continue
+        let value = cell.value
+        if (op.action === "add" && !value.includes(op.doctor)) value = [...value, op.doctor]
+        if (op.action === "remove") value = value.filter((d) => d !== op.doctor)
+        next = {
+          ...next,
+          [op.row]: {
+            ...next[op.row],
+            [op.day]: { ...cell, value, type: value.length ? "doctor" : "empty" },
+          },
+        }
+        changed = true
+      }
+
+      if (!changed && !data?.parsed_command && data?.updated_schedule?.assignments?.length) {
+        const before = JSON.stringify(next)
+        next = mergeAssignmentsIntoSchedule(next, data.updated_schedule.assignments)
+        if (JSON.stringify(next) !== before) changed = true
+      }
+
+      const warnings = data?.warnings || data?.updated_schedule?.warnings || []
+      if (warnings.length) toast.warning(warnings.slice(0, 3).join("\n"))
+
+      if (changed) void updateSchedule(next)
+    },
+    // updateSchedule closes over schedule/fullSchedule; intentional for apply-after-response
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [schedule],
+  )
 
   const handleNoteClick = (day: string) => {
     if (activeTab === "all" && !isAdmin) return
@@ -545,10 +784,27 @@ export function ScheduleApp({
                     />
 
                     <GuardGenerationButton
-                      weekKey={`${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`}
+                      weekKey={isoWeekStart}
                       vacations={vacations}
-                      onGenerationComplete={handleGenerationComplete}
+                      onGenerationComplete={(sched, warnings) => {
+                        void handleGenerationComplete(sched, warnings)
+                      }}
                     />
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push("/protected/admin/requests")}
+                      title="Tableau de bord des demandes"
+                    >
+                      <Bell className="h-4 w-4 mr-2" />
+                      Demandes
+                      {pendingRequests.length > 0 && (
+                        <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
+                          {pendingRequests.length}
+                        </span>
+                      )}
+                    </Button>
 
                     <Button
                       variant="outline"
@@ -556,21 +812,14 @@ export function ScheduleApp({
                       onClick={async () => {
                         setIsGenerating(true)
                         try {
-                          const weekKey = `${currentDate.getFullYear()}-W${String(getWeekNumber(currentDate)).padStart(2, '0')}`
-                          const monday = new Date(currentDate)
-                          const day = monday.getDay()
-                          const diff = monday.getDate() - day + (day === 0 ? -6 : 1)
-                          monday.setDate(diff)
-                          const weekStartDate = monday.toISOString().split('T')[0]
-                          
-                          const result = await generateWeekWithSolver(weekStartDate, 'ROTATION')
+                          const result = await generateWeekWithSolver(isoWeekStart, "ROTATION")
                           if (result.error) {
                             toast.error(`Erreur: ${result.error}`)
                           } else if (result.schedule) {
-                            handleGenerationComplete(result.schedule, result.warnings || [])
+                            await handleGenerationComplete(result.schedule, result.warnings || [])
                           }
                         } catch (error) {
-                          toast.error('Erreur lors de la génération')
+                          toast.error("Erreur lors de la génération")
                         } finally {
                           setIsGenerating(false)
                         }
@@ -1030,7 +1279,9 @@ export function ScheduleApp({
           <div className="w-full max-w-md rounded-t-2xl bg-white p-4 shadow-2xl animate-in slide-in-from-bottom">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-slate-900">Modifier l'affectation</h3>
+                <h3 className="font-bold text-slate-900">
+                  {isAdmin ? "Modifier l'affectation" : "Consulter l'affectation"}
+                </h3>
                 <p className="text-xs text-slate-500">
                   {selectedCell.day} - {selectedCell.row}
                 </p>
@@ -1050,43 +1301,50 @@ export function ScheduleApp({
                   className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${DOCTOR_COLORS[doc] || "bg-gray-500"}`}
                 >
                   {doc}
-                  <button
-                    onClick={() => removeDoctorFromCell(index)}
-                    className="ml-1 hover:bg-black/20 rounded-full p-0.5"
-                  >
-                    <X className="size-3" />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => removeDoctorFromCell(index)}
+                      className="ml-1 hover:bg-black/20 rounded-full p-0.5"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
-              {DOCTORS.map((doc) => {
-                const isSelected =
-                  schedule && selectedCell && schedule[selectedCell.row][selectedCell.day].value.includes(doc)
-                const isAllowed = true
+            {isAdmin ? (
+              <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
+                {DOCTORS.map((doc) => {
+                  const isSelected =
+                    schedule && selectedCell && schedule[selectedCell.row][selectedCell.day].value.includes(doc)
 
-                return (
-                  <button
-                    key={doc}
-                    onClick={() => addDoctorToCell(doc)}
-                    disabled={!isAllowed}
-                    className={`
+                  return (
+                    <button
+                      key={doc}
+                      onClick={() => addDoctorToCell(doc)}
+                      disabled={isSelected}
+                      className={`
                       flex h-10 items-center justify-center rounded-lg font-bold transition-all
-                      ${!isAllowed ? "opacity-20 cursor-not-allowed bg-slate-100 text-slate-400" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"}
+                      ${isSelected ? "opacity-20 cursor-not-allowed bg-slate-100 text-slate-400" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"}
                     `}
-                  >
-                    <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
-                    {doc}
-                  </button>
-                )
-              })}
-            </div>
+                    >
+                      <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
+                      {doc}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="mb-4 text-center text-sm text-slate-500 py-2">
+                Mode lecture. Utilisez le bouton ci-dessous pour demander un changement.
+              </div>
+            )}
 
-            <div className="flex gap-2">
-              {(currentUser === "M" || currentUser === "Z") && (
+            <div className="flex flex-col gap-2">
+              {isAdmin && (currentUser === "M" || currentUser === "Z") && (
                 <Button
-                  className={`flex-1 ${
+                  className={`w-full ${
                     schedule[selectedCell.row][selectedCell.day].status === "pending"
                       ? "bg-green-600 hover:bg-green-700 animate-pulse"
                       : "bg-blue-600 hover:bg-blue-700"
@@ -1106,12 +1364,201 @@ export function ScheduleApp({
                   )}
                 </Button>
               )}
-              <Button variant="outline" className="flex-1 bg-transparent" onClick={() => setSelectedCell(null)}>
+              {!isAdmin && (
+                <button
+                  onClick={() => {
+                    setRequestedDoctor("")
+                    setReason("")
+                    setRequestModal({
+                      open: true,
+                      row: selectedCell.row,
+                      day: selectedCell.day,
+                      currentDoctor: schedule[selectedCell.row][selectedCell.day].value[0],
+                    })
+                    setSelectedCell(null)
+                  }}
+                  className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Demander un changement
+                </button>
+              )}
+              <Button variant="outline" className="w-full bg-transparent" onClick={() => setSelectedCell(null)}>
                 Fermer
               </Button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modale demande de changement (médecin) */}
+      {requestModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white p-6 rounded-xl max-w-md w-full shadow-2xl">
+            <h3 className="text-lg font-bold mb-2">Demander un changement</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {requestModal.day} – {requestModal.row}
+              {requestModal.currentDoctor && ` (actuellement: ${requestModal.currentDoctor})`}
+            </p>
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="Médecin souhaité (ex: P)"
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                value={requestedDoctor}
+                onChange={(e) => setRequestedDoctor(e.target.value)}
+              />
+              <textarea
+                placeholder="Raison de la demande (optionnel)"
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                rows={3}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => void submitRequest()}
+                disabled={isSubmitting}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {isSubmitting ? "Envoi..." : "Envoyer"}
+              </button>
+              <button
+                onClick={() => {
+                  setRequestModal({ open: false, row: "", day: "" })
+                  setRequestedDoctor("")
+                  setReason("")
+                }}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg font-medium transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panneau des demandes (semaine courante) */}
+      {showRequests && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setShowRequests(false)}
+        >
+          <div
+            className="w-full max-w-lg max-h-[80vh] overflow-auto rounded-2xl bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900">Demandes de modification</h3>
+                <p className="text-xs text-slate-500">
+                  {isAdmin ? "Vue administrateur" : "Mes demandes"} · {weekKey}
+                </p>
+              </div>
+              <button onClick={() => setShowRequests(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                <X className="size-5" />
+              </button>
+            </div>
+            {changeRequests.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">Aucune demande pour cette semaine.</p>
+            ) : (
+              <ul className="space-y-2">
+                {changeRequests.map((req) => (
+                  <li key={req.id} className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-sm">
+                        <div className="font-medium text-slate-800">
+                          {req.row_key} — {req.day_name}
+                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500">
+                          {req.current_doctor || "vide"} →{" "}
+                          <span className="font-semibold text-teal-700">{req.requested_doctor}</span>
+                        </div>
+                        {req.reason && (
+                          <div className="mt-1 text-xs italic text-slate-400">« {req.reason} »</div>
+                        )}
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          req.status === "pending"
+                            ? "bg-amber-100 text-amber-700"
+                            : req.status === "approved"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {req.status === "pending"
+                          ? "En attente"
+                          : req.status === "approved"
+                            ? "Approuvée"
+                            : "Rejetée"}
+                      </span>
+                    </div>
+                    {isAdmin && req.status === "pending" && (
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          onClick={() => void approveRequest(req)}
+                          className="flex flex-1 items-center justify-center gap-1 rounded-md bg-green-600 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                        >
+                          <Check className="size-3" /> Approuver
+                        </button>
+                        <button
+                          onClick={() => void rejectRequest(req)}
+                          className="flex-1 rounded-md bg-red-100 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200"
+                        >
+                          Rejeter
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Bouton demandes (tous rôles) + panneau vocal/PDF (admin) */}
+      <button
+        onClick={() => setShowRequests(true)}
+        className="fixed bottom-20 right-20 z-40 bg-white border shadow-lg rounded-full p-3 text-slate-700"
+        aria-label="Demandes"
+      >
+        <Bell className="w-5 h-5" />
+        {pendingRequests.length > 0 && (
+          <span className="absolute -top-1 -right-1 h-5 min-w-5 rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white flex items-center justify-center">
+            {pendingRequests.length}
+          </span>
+        )}
+      </button>
+      {isAdmin && (
+        <>
+          <button
+            onClick={() => setVoicePanelOpen((v) => !v)}
+            className="fixed bottom-20 right-4 z-40 bg-teal-600 hover:bg-teal-700 text-white rounded-full p-3 shadow-lg"
+            aria-label="Panneau vocal"
+          >
+            <Mic className="w-6 h-6" />
+          </button>
+          {voicePanelOpen && (
+            <div className="fixed bottom-36 right-4 z-50 w-80 max-w-[calc(100vw-32px)] bg-white rounded-xl shadow-2xl border p-4 max-h-[70vh] overflow-auto">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="font-bold">Panneau Vocal & Upload</h3>
+                <button onClick={() => setVoicePanelOpen(false)} className="text-gray-500">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <VoiceAndUploadPanel
+                weekStartDate={isoWeekStart}
+                weekNumber={currentWeekInfo.week}
+                knownDoctors={DOCTORS}
+                currentWeekRequest={currentWeekRequest}
+                vacations={vacationPayload}
+                onCommandExecuted={(data) => applyVoiceOrUploadResult(data)}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {/* Note Modal */}
