@@ -60,7 +60,7 @@ export function FeedbackButton() {
         type="button"
         data-testid="feedback-fab"
         onClick={() => setOpen(true)}
-        className="fixed bottom-4 right-4 z-[100] flex items-center gap-2 rounded-full bg-teal-700 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-teal-800"
+        className="fixed bottom-20 left-4 z-[90] flex items-center gap-2 rounded-full bg-teal-700 px-3 py-2.5 text-sm font-semibold text-white shadow-lg hover:bg-teal-800 md:bottom-4 md:right-4 md:left-auto md:px-4 md:py-3"
         aria-label="Envoyer un feedback"
         title="Feedback"
       >

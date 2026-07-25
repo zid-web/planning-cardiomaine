@@ -1404,12 +1404,12 @@ export function ScheduleApp({
           </div>
       </div>
 
-      {/* Bottom Navigation */}
-      <div className="shrink-0 border-t bg-white p-2 safe-area-pb">
-        <div className="flex items-center justify-around">
+      {/* Bottom Navigation — above FABs so Global stays tappable on mobile */}
+      <nav className="safe-area-pb relative z-[95] shrink-0 border-t bg-white p-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+        <div className="mx-auto grid max-w-lg grid-cols-3 items-stretch gap-1">
           <Button
             variant={activeTab === "today" ? "default" : "ghost"}
-            className="flex h-auto min-h-12 min-w-12 flex-col items-center gap-1 px-3 py-2 sm:px-4"
+            className="flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2"
             onClick={() => setActiveTab("today")}
           >
             <Home className="size-5" />
@@ -1417,7 +1417,7 @@ export function ScheduleApp({
           </Button>
           <Button
             variant={activeTab === "week" ? "default" : "ghost"}
-            className="flex h-auto min-h-12 min-w-12 flex-col items-center gap-1 px-3 py-2 sm:px-4"
+            className="flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2"
             onClick={() => setActiveTab("week")}
           >
             <Calendar className="size-5" />
@@ -1425,14 +1425,15 @@ export function ScheduleApp({
           </Button>
           <Button
             variant={activeTab === "all" ? "default" : "ghost"}
-            className="flex h-auto min-h-12 min-w-12 flex-col items-center gap-1 px-3 py-2 sm:px-4"
+            className="flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2"
+            data-testid="nav-global"
             onClick={() => setActiveTab("all")}
           >
             <List className="size-5" />
             <span className="text-[10px]">Global</span>
           </Button>
         </div>
-      </div>
+      </nav>
 
       {/* Doctor Selection Modal (Bottom Sheet style) */}
       {selectedCell && (
