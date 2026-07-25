@@ -1,5 +1,4 @@
-import { DoctorVacation } from './types'
-import { FullSchedule } from './types'
+import type { DoctorVacation, ScheduleData } from './types'
 import { DAYS } from './constants'
 import { parseISO, isBefore, isAfter } from 'date-fns'
 
@@ -7,12 +6,14 @@ import { parseISO, isBefore, isAfter } from 'date-fns'
  * Remplir automatiquement la ligne "Congés" avec les initiales des médecins en vacances
  * RÈGLE ABSOLUE: Chaque médecin en vacances doit avoir son initiale dans la case "Congés"
  * correspondant à chaque jour de sa période de vacances
+ *
+ * Note: `schedule` is a **week** ScheduleData (not FullSchedule).
  */
 export function populateCongesRowFromVacations(
-  schedule: FullSchedule,
+  schedule: ScheduleData,
   vacations: DoctorVacation[],
   weekKey: string
-): FullSchedule {
+): ScheduleData {
   if (!schedule.Congés) {
     return schedule
   }
@@ -42,30 +43,29 @@ export function populateCongesRowFromVacations(
       const endDate = parseISO(vacation.end_date)
       const checkDate = parseISO(dateStr)
 
-      // Vérifier si ce jour est dans la période de vacances
-      if (
-        (isBefore(checkDate, startDate) && isBefore(startDate, endDate)) ||
-        isBefore(checkDate, endDate) &&
-        (isAfter(checkDate, startDate) || isBefore(checkDate, startDate))
-      ) {
-        // En fait, simplement vérifier: startDate <= checkDate <= endDate
-        if (
-          !isBefore(checkDate, startDate) &&
-          !isAfter(checkDate, endDate)
-        ) {
-          doctorsOnVacationThisDay.push(vacation.doctor_id)
-        }
+      if (!isBefore(checkDate, startDate) && !isAfter(checkDate, endDate)) {
+        doctorsOnVacationThisDay.push(vacation.doctor_id)
       }
     })
 
     // Ajouter les médecins en vacances à la case "Congés" du jour
     if (doctorsOnVacationThisDay.length > 0) {
-      const currentValue = schedule.Congés[dayName].value || []
+      const cell = schedule.Congés[dayName] ?? {
+        value: [],
+        type: "empty" as const,
+        status: "validated" as const,
+      }
+      const currentValue = cell.value || []
       const newValue = [
         ...currentValue,
         ...doctorsOnVacationThisDay.filter((doc) => !currentValue.includes(doc)),
       ]
-      schedule.Congés[dayName].value = newValue
+      schedule.Congés[dayName] = {
+        ...cell,
+        value: newValue,
+        type: cell.type || "doctor",
+        status: cell.status || "validated",
+      }
     }
   })
 
@@ -76,7 +76,7 @@ export function populateCongesRowFromVacations(
  * Vérifie si tous les médecins en vacances sont présents dans la ligne "Congés"
  */
 export function validateCongesRowCompleteness(
-  schedule: FullSchedule,
+  schedule: ScheduleData,
   vacations: DoctorVacation[],
   weekKey: string
 ): { isComplete: boolean; missingDoctors: Set<string>; issueDetails: string[] } {
@@ -101,25 +101,19 @@ export function validateCongesRowCompleteness(
     currentDate.setUTCDate(targetMonday.getUTCDate() + dayIndex)
     const dateStr = currentDate.toISOString().split('T')[0]
 
-    // Médecins supposés être en congés ce jour
     const doctorsShouldBe = new Set<string>()
     vacations.forEach((vacation) => {
       const startDate = parseISO(vacation.start_date)
       const endDate = parseISO(vacation.end_date)
       const checkDate = parseISO(dateStr)
 
-      if (
-        !isBefore(checkDate, startDate) &&
-        !isAfter(checkDate, endDate)
-      ) {
+      if (!isBefore(checkDate, startDate) && !isAfter(checkDate, endDate)) {
         doctorsShouldBe.add(vacation.doctor_id)
       }
     })
 
-    // Médecins présents dans la ligne Congés
-    const congesCurrent = new Set(schedule.Congés[dayName].value || [])
+    const congesCurrent = new Set(schedule.Congés[dayName]?.value || [])
 
-    // Vérifier si tous les médecins en vacances sont présents
     doctorsShouldBe.forEach((doc) => {
       if (!congesCurrent.has(doc)) {
         missingDoctors.add(doc)

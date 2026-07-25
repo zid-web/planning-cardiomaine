@@ -39,7 +39,7 @@ export function VacationsModal({
   const [success, setSuccess] = useState<string | null>(null)
   const [isSelectingRange, setIsSelectingRange] = useState(false)
   const [isClickDisabled, setIsClickDisabled] = useState(false)
-  const clickTimeoutRef = useRef<NodeJS.Timeout>()
+  const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadVacations = async () => {
     if (!selectedDoctorId) return
@@ -79,7 +79,7 @@ export function VacationsModal({
       if (isClickDisabled) return
 
       setIsClickDisabled(true)
-      clearTimeout(clickTimeoutRef.current)
+      if (clickTimeoutRef.current) clearTimeout(clickTimeoutRef.current)
       clickTimeoutRef.current = setTimeout(() => {
         setIsClickDisabled(false)
       }, 300)

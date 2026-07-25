@@ -24,10 +24,10 @@ export function buildCurrentWeekRequest(
     week_start_date: weekStartDate,
     week_number: weekNumber,
     vacations: vacations.map((v) => ({
-      doctor: v.doctor,
+      doctor: v.doctor_id,
       start_date: v.start_date,
       end_date: v.end_date,
-      type: v.type,
+      type: v.reason || "vacation",
     })),
     doctors: doctors,
     constraints: {

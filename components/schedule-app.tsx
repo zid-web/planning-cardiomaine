@@ -32,7 +32,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { LiveClock } from "@/components/live-clock"
 import { LearnMoreModal } from "@/components/learn-more-modal"
-import type { FullSchedule, ScheduleData } from "@/lib/types"
+import type { CellData, FullSchedule, ScheduleData } from "@/lib/types"
 import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
 import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays } from "@/lib/schedule-utils"
 import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
@@ -208,7 +208,7 @@ export function ScheduleApp({
           })
         },
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === "SUBSCRIBED") setRealtimeStatus("live")
         else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setRealtimeStatus("error")
       })
@@ -1269,13 +1269,15 @@ export function ScheduleApp({
                                 </td>
                                 {DAYS.map((day, dayIndex) => {
                                   // Ensure rowData exists before accessing day
-                                  const cellData = rowData
-                                    ? rowData[day]
-                                    : { value: [], type: "empty", status: "validated" }
+                                  const cellData: CellData = rowData?.[day] ?? {
+                                    value: [],
+                                    type: "empty",
+                                    status: "validated",
+                                  }
                                   const isSelected = selectedCell?.row === rowKey && selectedCell?.day === day
                                   const isWeekend = day === "SAMEDI" || day === "DIMANCHE"
                                   const isPending =
-                                    cellData?.status === "pending" || cellData?.request?.status === "pending"
+                                    cellData.status === "pending" || cellData.request?.status === "pending"
 
                                   const holidayName = isDateHoliday(weekDates[dayIndex])
                                   const isHoliday = !!holidayName
@@ -1341,9 +1343,11 @@ export function ScheduleApp({
                                       {!cellBlocked && (
                                         <div className="flex flex-wrap gap-1 justify-center items-center h-full">
                                           {/* Check for vacation conflicts */}
-                                          {cellData?.value.map((doc: string, i: number) => {
-                                            const dateStr = weekDates[day]?.toISOString().split('T')[0]
-                                            const conflict = dateStr ? detectConflict(doc, dateStr, rowKey, vacations) : { hasConflict: false }
+                                          {cellData.value.map((doc: string, i: number) => {
+                                            const dayDate = new Date(`${isoWeekStart}T12:00:00`)
+                                            dayDate.setDate(dayDate.getDate() + dayIndex)
+                                            const dateStr = dayDate.toISOString().split("T")[0]
+                                            const conflict = detectConflict(doc, dateStr, rowKey, vacations)
                                             
                                             return (
                                               <Badge
