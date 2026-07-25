@@ -1,0 +1,193 @@
+diff --git a/app/actions/guard-api-actions.ts b/app/actions/guard-api-actions.ts
+index 50fafdc..927f40c 100644
+--- a/app/actions/guard-api-actions.ts
++++ b/app/actions/guard-api-actions.ts
+@@ -7,6 +7,8 @@ import { generateWeekSchedule, getWeekNumber } from "@/lib/schedule-utils";
+ import {
+   accumulateEquityFromSchedules,
+   getCumulativeEquityFromTable,
++  getMonthlyCoroEquity,
++  getEquityWeights,
+   type EquityCounts,
+ } from "@/lib/equity-tracking";
+ import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
+@@ -27,6 +29,8 @@ interface Doctor {
+   points_garde: number;
+   points_nct: number;
+   points_weekend: number;
++  points_coro: number;
++  poids_equite_pct: number;
+ }
+ 
+ interface EquityPoints {
+@@ -65,7 +69,11 @@ async function getDoctorsFromSupabase(): Promise<Doctor[]> {
+   }
+ 
+   // Récupère les points d'équité historiques pour chaque médecin
+-  const equityPoints = await calculateEquityPoints();
++  const [equityPoints, monthlyCoro, weights] = await Promise.all([
++    calculateEquityPoints(),
++    getMonthlyCoroEquity(),
++    getEquityWeights(),
++  ]);
+ 
+   return doctors.map((doc) => ({
+     id: doc.id,
+@@ -75,6 +83,8 @@ async function getDoctorsFromSupabase(): Promise<Doctor[]> {
+     points_garde: equityPoints.garde[doc.id] || 0,
+     points_nct: equityPoints.nct[doc.id] || 0,
+     points_weekend: equityPoints.weekend[doc.id] || 0,
++    points_coro: monthlyCoro[doc.id] || 0,
++    poids_equite_pct: weights[doc.id] || 100,
+   }));
+ }
+ 
+@@ -216,6 +226,8 @@ export async function generateGuardsViaAPI(
+         points_garde: doc.points_garde,
+         points_nct: doc.points_nct,
+         points_weekend: doc.points_weekend,
++        points_coro: doc.points_coro,
++        poids_equite_pct: doc.poids_equite_pct,
+       })),
+     };
+ 
+diff --git a/lib/equity-tracking.ts b/lib/equity-tracking.ts
+index 04edef6..902a56a 100644
+--- a/lib/equity-tracking.ts
++++ b/lib/equity-tracking.ts
+@@ -6,6 +6,7 @@ export type EquityCounts = {
+   garde_count: number
+   nct_count: number
+   weekend_count: number
++  coro_count: number
+ }
+ 
+ /** Lignes planning UI → buckets d’équité (doit rester aligné avec le solveur). */
+@@ -16,10 +17,11 @@ export const ASTREINTE_ROWS = new Set([
+ ])
+ export const GARDE_ROWS = new Set(["Garde Matin", "Garde Midi", "Garde Nuit"])
+ export const NCT_ROWS = new Set(["Hors site - NCT"])
++export const CORO_ROWS = new Set(["Matin - Coro", "Apm - Coro"])
+ export const WEEKEND_DAYS = new Set(["SAMEDI", "DIMANCHE"])
+ 
+ function emptyCounts(): EquityCounts {
+-  return { astreinte_count: 0, garde_count: 0, nct_count: 0, weekend_count: 0 }
++  return { astreinte_count: 0, garde_count: 0, nct_count: 0, weekend_count: 0, coro_count: 0 }
+ }
+ 
+ /**
+@@ -39,7 +41,8 @@ export function computeWeeklyEquity(scheduleData: ScheduleData): Record<string,
+     const isAstreinte = ASTREINTE_ROWS.has(rowKey)
+     const isGarde = GARDE_ROWS.has(rowKey)
+     const isNct = NCT_ROWS.has(rowKey)
+-    if (!isAstreinte && !isGarde && !isNct) continue
++    const isCoro = CORO_ROWS.has(rowKey)
++    if (!isAstreinte && !isGarde && !isNct && !isCoro) continue
+ 
+     for (const [day, cell] of Object.entries(dayData || {})) {
+       const doctors = Array.isArray((cell as { value?: unknown })?.value)
+@@ -55,6 +58,7 @@ export function computeWeeklyEquity(scheduleData: ScheduleData): Record<string,
+           if (WEEKEND_DAYS.has(day.toUpperCase())) bump(doc, "weekend_count")
+         }
+         if (isNct) bump(doc, "nct_count")
++        if (isCoro) bump(doc, "coro_count")
+       }
+     }
+   }
+@@ -78,6 +82,7 @@ export function accumulateEquityFromSchedules(
+       total[doc].garde_count += counts.garde_count
+       total[doc].nct_count += counts.nct_count
+       total[doc].weekend_count += counts.weekend_count
++      total[doc].coro_count += counts.coro_count
+     }
+   }
+   return total
+@@ -155,3 +160,73 @@ export async function getCumulativeEquityFromTable(): Promise<Record<string, Equ
+     return null
+   }
+ }
++
++/**
++ * Équité CORO scopée au MOIS CALENDAIRE EN COURS uniquement (M/O/W - seuls
++ * coronarographistes internes, FV est externe et hors périmètre). Contrairement
++ * aux autres catégories (cumulées à vie), CORO se réévalue chaque mois - voir
++ * demande explicite de l'utilisateur. Convertit chaque week_key ISO en date du
++ * lundi correspondant pour filtrer sur le mois en cours.
++ */
++export async function getMonthlyCoroEquity(): Promise<Record<string, number>> {
++  try {
++    const supabase = await createClient()
++    const { data, error } = await supabase
++      .from("doctor_equity_weekly")
++      .select("doctor_id, week_key, coro_count")
++
++    if (error || !data) return {}
++
++    const now = new Date()
++    const currentYear = now.getFullYear()
++    const currentMonth = now.getMonth()
++
++    const result: Record<string, number> = {}
++    for (const row of data as { doctor_id: string; week_key: string; coro_count: number }[]) {
++      const monday = isoWeekKeyToMonday(row.week_key)
++      if (!monday) continue
++      if (monday.getFullYear() === currentYear && monday.getMonth() === currentMonth) {
++        result[row.doctor_id] = (result[row.doctor_id] || 0) + (row.coro_count || 0)
++      }
++    }
++    return result
++  } catch (err) {
++    console.warn("[equity-tracking] Erreur getMonthlyCoroEquity:", err)
++    return {}
++  }
++}
++
++/** Convertit "2026-W31" -> date du lundi de cette semaine ISO. */
++function isoWeekKeyToMonday(weekKey: string): Date | null {
++  const match = weekKey.match(/^(\d{4})-W(\d{2})$/)
++  if (!match) return null
++  const year = parseInt(match[1], 10)
++  const week = parseInt(match[2], 10)
++
++  const jan4 = new Date(Date.UTC(year, 0, 4))
++  const jan4Day = jan4.getUTCDay() || 7
++  const week1Monday = new Date(jan4)
++  week1Monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1)
++
++  const targetMonday = new Date(week1Monday)
++  targetMonday.setUTCDate(week1Monday.getUTCDate() + (week - 1) * 7)
++  return targetMonday
++}
++
++/** Pondérations d'équité (temps partiel/ancienneté). Absent = 100 (plein temps). */
++export async function getEquityWeights(): Promise<Record<string, number>> {
++  try {
++    const supabase = await createClient()
++    const { data, error } = await supabase.from("doctor_equity_weights").select("doctor_id, poids_equite_pct")
++    if (error) return {}
++
++    const weights: Record<string, number> = {}
++    for (const row of data as { doctor_id: string; poids_equite_pct: number }[]) {
++      weights[row.doctor_id] = row.poids_equite_pct
++    }
++    return weights
++  } catch (err) {
++    console.warn("[equity-tracking] Erreur getEquityWeights:", err)
++    return {}
++  }
++}
+diff --git a/supabase/migrations/20260726_add_coro_count_and_grants.sql b/supabase/migrations/20260726_add_coro_count_and_grants.sql
+new file mode 100644
+index 0000000..3003720
+--- /dev/null
++++ b/supabase/migrations/20260726_add_coro_count_and_grants.sql
+@@ -0,0 +1,9 @@
++-- Ajoute le comptage CORO à la table d'équité hebdomadaire, nécessaire pour
++-- l'équité CORO mensuelle (M/O/W uniquement) - voir lib/equity-tracking.ts
++-- (getMonthlyCoroEquity) et solver.py (points_coro).
++
++ALTER TABLE public.doctor_equity_weekly
++  ADD COLUMN IF NOT EXISTS coro_count INTEGER NOT NULL DEFAULT 0;
++
++GRANT SELECT, INSERT, UPDATE, DELETE ON public.doctor_equity_weekly TO anon, authenticated, service_role;
++GRANT SELECT, INSERT, UPDATE, DELETE ON public.doctor_equity_weights TO anon, authenticated, service_role;
