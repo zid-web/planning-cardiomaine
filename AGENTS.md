@@ -8,6 +8,7 @@ required service is the Next.js dev server; the backend is Supabase.
 
 ### Solver generation entry point (post Claude cleanup — 2026-07-25)
 - **Only** `GuardGenerationButton` → equity-aware Render pipeline (`guard-api-actions` / `guard-generation-actions`). Do **not** reintroduce `generateWeekWithSolver`, `app/actions/solver-api-actions.ts`, `components/solver-generation-button.tsx`, or a second « Générer avec Solveur » button (equity hardcoded to 0 — removed twice after bad merges).
+- **Equity / CellData:** real cells are `{ value: string[], status, type? }` with activity = **row key** (`Astreintes ATL Nuit`, `Garde Matin`, …). Never read `cell.doctor` / `cell.activity` in equity code — that silently zeros all points. Use `lib/equity-tracking.ts` (`computeWeeklyEquity` / `upsertWeeklyEquity`); `saveScheduleToDb` refreshes weekly snapshots.
 - Freeze on `schedule-app.tsx` / `solver-api-actions.ts` is **lifted** after that cleanup is on `main`.
 
 ### Run / build / lint
