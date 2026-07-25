@@ -15,7 +15,7 @@
 | `NEXT_PUBLIC_SENTRY_DSN` | Optionnel | Quand Sentry est branché |
 
 Après ajout / modification : **Redeploy** Production.  
-Activer le cron `*/5 * * * *` → `/api/ping-solver` (Vercel **Pro**), **ou** un ping externe toutes les 5 min vers la même URL (Hobby ne permet souvent qu’un cron quotidien).
+`vercel.json` : cron quotidien Hobby-safe `0 4 * * *` → `/api/ping-solver`. Pour garder Render chaud : **cron externe toutes les 5 min** vers la même URL (évite aussi l’échec de deploy si un `*/5` est remis dans `vercel.json` sur Hobby).
 
 > **Statut (2026-07-25)** : variables Production vérifiées manuellement dans le dashboard Vercel.  
 > Migration `20250725000004_…` + keep-alive cron : confirmés côté équipe.  
