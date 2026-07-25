@@ -12,6 +12,7 @@ interface GuardGenerationButtonProps {
   vacations: DoctorVacation[]
   onGenerationComplete: (schedule: ScheduleData, warnings: string[]) => void
   disabled?: boolean
+  className?: string
 }
 
 export function GuardGenerationButton({
@@ -19,6 +20,7 @@ export function GuardGenerationButton({
   vacations,
   onGenerationComplete,
   disabled = false,
+  className = '',
 }: GuardGenerationButtonProps) {
   const [isLoading, setIsLoading] = useState(false)
 
@@ -62,19 +64,19 @@ export function GuardGenerationButton({
     <Button
       onClick={handleGenerateGuards}
       disabled={disabled || isLoading}
-      className="gap-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
+      size="sm"
+      className={`h-7 gap-1 bg-gradient-to-r from-blue-600 to-blue-700 px-2 text-[11px] hover:from-blue-700 hover:to-blue-800 ${className}`}
       title="Génère le planning via l'API d'optimisation (moteur avancé)"
     >
       {isLoading ? (
         <>
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span>Génération...</span>
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span>Génération…</span>
         </>
       ) : (
         <>
-          <Zap className="w-4 h-4" />
-          <span>Générer le planning</span>
-          <span className="text-xs font-medium opacity-75">(moteur d'optimisation)</span>
+          <Zap className="h-3.5 w-3.5" />
+          <span>Générer</span>
         </>
       )}
     </Button>
