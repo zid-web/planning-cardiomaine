@@ -156,23 +156,35 @@ export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>
   return data
 }
 
+/**
+ * Charge le planning : blob `full_schedule` comme base, puis les lignes
+ * semaine (`YYYY-Www`) écrasent le blob (source de vérité).
+ */
 export async function loadFullScheduleFromDb() {
   const supabase = await createClient()
 
-  const scheduleKey = "full_schedule"
-
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from("schedules")
-    .select("schedule_data")
-    .eq("week_key", scheduleKey)
-    .single()
+    .select("week_key, schedule_data")
 
-  if (error && error.code !== "PGRST116") {
+  if (error) {
     console.error("[v0] Load error:", error)
     return null
   }
 
-  return data?.schedule_data || null
+  if (!rows?.length) return null
+
+  const assembled: Record<string, unknown> = {}
+  const blob = rows.find((r) => r.week_key === "full_schedule")
+  if (blob?.schedule_data && typeof blob.schedule_data === "object") {
+    Object.assign(assembled, blob.schedule_data as Record<string, unknown>)
+  }
+  for (const row of rows) {
+    if (row.week_key === "full_schedule") continue
+    assembled[row.week_key] = row.schedule_data
+  }
+
+  return assembled
 }
 
 export type ScheduleHistoryRow = {
