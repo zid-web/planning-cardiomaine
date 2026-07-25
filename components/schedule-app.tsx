@@ -74,6 +74,7 @@ import {
 } from "@/lib/guard-api-mapping"
 import { toast } from "sonner"
 import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
+import { applyNctAssignmentsToFullSchedule, type NctAssignment } from "@/lib/nct-command"
 
 type ChangeRequest = {
   id: string
@@ -575,18 +576,60 @@ export function ScheduleApp({
         doctor_out?: string | null
         doctor_in: string
       }
+      nct_assignments?: NctAssignment[]
       updated_schedule?: { assignments?: Array<any>; warnings?: string[] }
       raw_extraction?: { rows?: Array<any> }
       mapped_existing_schedule?: Record<string, string[]>
       operations?: Array<{ action: string; doctor?: string; day?: string; row?: string }>
       warnings?: string[]
     }) => {
+      // Calendrier NCT multi-semaines (saisie manuelle / dictée de liste)
+      if (data?.nct_assignments?.length) {
+        const { next, touchedWeekKeys, applied, skipped } = applyNctAssignmentsToFullSchedule(
+          fullSchedule,
+          data.nct_assignments,
+        )
+        if (applied === 0) {
+          toast.error("Aucune NCT appliquée (dates ou médecins invalides)")
+          return
+        }
+        setFullSchedule(next)
+        void (async () => {
+          try {
+            for (const wk of touchedWeekKeys) {
+              const weekData = next[wk]
+              if (weekData) {
+                await saveScheduleToDb(wk, weekData, currentUser || "unknown", { source: "voice" })
+              }
+            }
+            toast.success(
+              `${applied} NCT enregistrée(s) sur ${touchedWeekKeys.length} semaine(s)`,
+            )
+            if (skipped.length) {
+              toast.warning(`Ignorées : ${skipped.slice(0, 3).join(", ")}`)
+            }
+          } catch (err) {
+            console.error("[nct] save failed:", err)
+            toast.error("NCT appliquées en mémoire mais sauvegarde partielle en échec")
+          }
+        })()
+        return
+      }
+
       let next = schedule
       let changed = false
 
       if (data?.parsed_command?.doctor_in) {
+        const cmd = {
+          ...data.parsed_command,
+          activity: String(data.parsed_command.activity || "").toUpperCase(),
+          slot:
+            String(data.parsed_command.activity || "").toUpperCase() === "NCT"
+              ? "nuit"
+              : data.parsed_command.slot,
+        }
         const before = JSON.stringify(next)
-        next = applyParsedCommandToSchedule(next, data.parsed_command)
+        next = applyParsedCommandToSchedule(next, cmd)
         if (JSON.stringify(next) !== before) changed = true
       }
 
@@ -637,9 +680,9 @@ export function ScheduleApp({
         void updateSchedule(next, source)
       }
     },
-    // updateSchedule closes over schedule/fullSchedule; intentional for apply-after-response
+    // updateSchedule / fullSchedule intentionally captured for apply-after-response
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [schedule],
+    [schedule, fullSchedule, currentUser, setFullSchedule],
   )
 
   const handleNoteClick = (day: string) => {

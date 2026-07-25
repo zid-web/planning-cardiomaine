@@ -7,6 +7,7 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     ASTREINTE: "Astreintes ATL Matin",
     GARDE: "Garde Matin",
     CORO: "Matin - Coro",
+    NCT: "Hors site - NCT",
     DEMI_JOURNEE_LIBRE: "1/2 journée off Matin",
   },
   am: {
@@ -14,6 +15,7 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     GARDE: "Garde Midi",
     CORO: "Apm - Coro",
     REEDUC: "Apm - RÉEDUCATION",
+    NCT: "Hors site - NCT",
     DEMI_JOURNEE_LIBRE: "1/2 journée off Après-midi",
   },
   nuit: {
@@ -24,6 +26,7 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
   weekend: {
     ASTREINTE: "Garde Matin",
     GARDE: "Garde Matin",
+    NCT: "Hors site - NCT",
   },
 };
 
@@ -131,12 +134,19 @@ export function scheduleToExistingSchedule(schedule: ScheduleData): Record<strin
   return out;
 }
 
-function resolveRowKey(slot: string, activity: string, dayKey: string): string | null {
-  if (slot === "weekend") {
+export function resolveRowKey(slot: string, activity: string, dayKey: string): string | null {
+  const act = (activity || "").toUpperCase().trim();
+  const sl = (slot || "").toLowerCase().trim();
+
+  // NCT = ligne unique « Hors site - NCT », quel que soit le créneau renvoyé par Claude
+  // (souvent "matin" à tort → erreur "Combinaison créneau/activité non reconnue : matin / NCT").
+  if (act === "NCT") return "Hors site - NCT";
+
+  if (sl === "weekend") {
     if (dayKey === "SAMEDI" || dayKey === "DIMANCHE") return "Garde Matin";
   }
-  const mapping = ACTIVITY_TO_ROW[slot];
-  if (mapping && mapping[activity]) return mapping[activity];
+  const mapping = ACTIVITY_TO_ROW[sl];
+  if (mapping && mapping[act]) return mapping[act];
   return null;
 }
 
