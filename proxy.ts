@@ -1,96 +1,41 @@
-import { type NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
-  const response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
+/**
+ * Proxy (anciennement middleware) pour la protection des routes
+ * Voir : https://nextjs.org/docs/messages/middleware-to-proxy
+ */
+export function proxy(request: NextRequest) {
+  // Exemple : rediriger vers /auth/login si non authentifié
+  // Adaptez selon votre logique d'authentification
 
-  // Check if Supabase environment variables are configured
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const { pathname } = request.nextUrl;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    // If Supabase is not configured, allow request to proceed
-    return response
-  }
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll()
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
-        )
-      },
-    },
-  })
-
-  // Check if user is authenticated
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
-
-  // Allow public routes
-  const publicRoutes = ['/auth/login', '/auth/sign-up', '/auth/forgot-password', '/']
+  // Exclure les routes publiques
+  const publicRoutes = ['/', '/auth/login', '/auth/sign-up', '/auth/forgot-password'];
   if (publicRoutes.includes(pathname)) {
-    return response
+    return NextResponse.next();
   }
 
-  // If no user, redirect to login
-  if (!user) {
-    return NextResponse.redirect(new URL('/auth/login', request.url))
+  // Vérifier la session (via cookie ou header)
+  const session = request.cookies.get('sb-access-token') || request.cookies.get('supabase-auth-token');
+  if (!session) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/auth/login';
+    return NextResponse.redirect(url);
   }
 
-  // Check if user needs to change password
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('must_change_password')
-    .eq('id', user.id)
-    .single()
-
-  // Allow access to setup-account page
-  if (pathname === '/auth/setup-account') {
-    return response
-  }
-
-  // If must_change_password is true, redirect to setup page
-  if (profile?.must_change_password) {
-    return NextResponse.redirect(new URL('/auth/setup-account', request.url))
-  }
-
-  // Allow all other authenticated requests
-  return response
+  // Si tout est ok, continuer
+  return NextResponse.next();
 }
 
 export const config = {
   matcher: [
     /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - images - .svg, .png, .jpg, .jpeg, .gif, .webp
-     * Feel free to modify this pattern to include more paths.
+     * Match tous les chemins sauf :
+     * - les dossiers statiques (_next, public, favicon, etc.)
+     * - les pages publiques d'auth
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|auth/login|auth/sign-up|auth/forgot-password|icon-|manifest.json).*)',
   ],
-}
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-
-export function middleware(request: NextRequest) {
-  // Logique d'authentification (vérification de session, redirection, etc.)
-  // Exemple : rediriger vers /auth/login si non authentifié
-  // ...
-}
-
-export const config = {
-  matcher: ['/protected/:path*'], // ou d'autres chemins
 };
