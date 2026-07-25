@@ -397,25 +397,26 @@ export function VoiceAndUploadPanel({
             )}
           </button>
 
-          {/* Affichage du Transcript */}
-          {(transcript || editedTranscript) && !isListening && (
+          {/* Transcription / saisie manuelle (toujours visible hors écoute) */}
+          {!isListening && (
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Transcription (modifiable):
+                Commande (dictée ou saisie manuelle):
               </label>
               <textarea
                 value={editedTranscript}
                 onChange={(e) => setEditedTranscript(e.target.value)}
                 className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white resize-none"
                 rows={3}
-                placeholder="Corrigez la transcription si nécessaire..."
+                placeholder='Ex: "demain S remplace B en garde de nuit"'
               />
 
               {/* Boutons d'action */}
               <div className="flex gap-2">
                 <button
                   onClick={() => copyToClipboard()}
-                  className="flex-1 py-2 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                  disabled={!editedTranscript.trim()}
+                  className="flex-1 py-2 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Copy className="w-4 h-4" />
                   Copier
