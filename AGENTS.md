@@ -37,3 +37,8 @@ Requires Docker + the Supabase CLI installed in the VM (not part of the update s
 3. Point `.env` `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` at the local stack (`http://127.0.0.1:54321` + the printed anon key) and restart `bun run dev`. Restore `.env` to the hosted values when done.
 - Non-obvious gotcha: Supabase REST needs table-level `GRANT`s to `anon`/`authenticated` in addition to RLS; without them PostgREST returns `401 permission denied for table ...`. The init migration already includes these grants.
 - Note: the hosted Supabase project (the default `.env` target) may still have the older/inconsistent schema; these migrations describe the schema the code expects.
+### Supabase service role key (local vs hébergé)
+
+- En **local**, utilisez la clé `service_role` générée par `supabase status` (copiez la clé dans `.env.local`).
+- En **hébergé** (Supabase en production), utilisez la clé `service_role` du projet hébergé (disponible dans Settings → API).
+- Ne pas confondre les deux clés : elles ne sont pas interchangeables.
