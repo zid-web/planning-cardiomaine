@@ -267,21 +267,48 @@ export function VoiceAndUploadPanel({
 
       setStatus({ type: "loading", message: "Upload et traitement du PDF..." })
 
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("week_start_date", resolveWeekStart())
+      const weekStart = resolveWeekStart()
+      const maxAttempts = 2
+      let data: Record<string, unknown> | null = null
+      let lastError = "Erreur lors du upload du PDF"
 
-      const response = await fetch("/api/upload-pdf", {
-        method: "POST",
-        body: formData,
-      })
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (attempt > 1) {
+          setStatus({
+            type: "loading",
+            message: "Nouvelle tentative d’extraction PDF…",
+          })
+        }
 
-      const data = await response.json()
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("week_start_date", weekStart)
 
-      if (!response.ok) {
-        const detail = data.error || data.detail || data.message
-        const errorMessage = typeof detail === "string" ? detail : JSON.stringify(detail)
-        throw new Error(errorMessage || "Erreur lors du upload du PDF")
+        const response = await fetch("/api/upload-pdf", {
+          method: "POST",
+          body: formData,
+        })
+
+        const payload = (await response.json()) as Record<string, unknown>
+        if (response.ok) {
+          data = payload
+          break
+        }
+
+        const detail = payload.error || payload.detail || payload.message
+        lastError =
+          typeof detail === "string" ? detail : JSON.stringify(detail) || lastError
+        const retryable =
+          payload.retryable === true ||
+          /JSON malformé|Expecting value/i.test(lastError)
+
+        if (!retryable || attempt === maxAttempts) {
+          throw new Error(lastError)
+        }
+      }
+
+      if (!data) {
+        throw new Error(lastError)
       }
 
       setUploadedFileName(file.name)
@@ -289,7 +316,7 @@ export function VoiceAndUploadPanel({
       const successMessage =
         warnCount > 0
           ? `PDF traité avec ${warnCount} avertissement(s)`
-          : `PDF traité: ${data.message || "Fichier importé avec succès"}`
+          : `PDF traité: ${(data.message as string) || "Fichier importé avec succès"}`
 
       setStatus({ type: "success", message: successMessage })
       toast.success(successMessage)

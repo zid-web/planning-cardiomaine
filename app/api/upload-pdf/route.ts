@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Claude Vision + PDF peut dépasser 10–15s ; Hobby/Pro Vercel max 60s.
+export const maxDuration = 60;
+export const runtime = 'nodejs';
+
 // GUARD_API_BASE_URL is the preferred name; GUARD_API_URL is already used elsewhere in the repo.
 const RENDER_API_URL = (
   process.env.GUARD_API_BASE_URL ||
@@ -7,6 +11,9 @@ const RENDER_API_URL = (
   'https://guard-api-cardiomaine.onrender.com'
 ).replace(/\/$/, '');
 const API_KEY = process.env.GUARD_API_KEY || '';
+
+const JSON_MALFORMED_HINT =
+  'L’extraction PDF a renvoyé un JSON incomplet. Réessayez ; si l’échec persiste, le PDF est peut‑être trop dense (plusieurs pages / tableau saturé).';
 
 function formatUpstreamError(data: unknown): string {
   if (!data || typeof data !== 'object') return 'Erreur du backend';
@@ -77,8 +84,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!response.ok) {
+      const upstream = formatUpstreamError(data);
+      const isMalformedJson =
+        /JSON malformé|JSONDecodeError|Expecting value/i.test(upstream);
       return NextResponse.json(
-        { error: formatUpstreamError(data) },
+        {
+          error: isMalformedJson ? `${upstream}\n\n${JSON_MALFORMED_HINT}` : upstream,
+          retryable: isMalformedJson,
+        },
         { status: response.status }
       );
     }
