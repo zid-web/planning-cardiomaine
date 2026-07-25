@@ -859,10 +859,12 @@ export function ScheduleApp({
                   </ul>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <LiveClock />
+              <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+                <div className="hidden sm:block">
+                  <LiveClock />
+                </div>
                 {isAdmin && (
-                  <div className="flex gap-2 flex-wrap items-center">
+                  <div className="flex max-w-full flex-wrap items-center gap-1.5 md:gap-2">
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
                         realtimeStatus === "live"
