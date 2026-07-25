@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server"
 import { buildPlanningPdf } from "@/lib/planning-pdf"
 import type { ScheduleData } from "@/lib/types"
 
+/**
+ * Fallback serveur. L’UI préfère l’export navigateur (`downloadPlanningPdf`)
+ * pour éviter les 413 liés aux cookies auth trop volumineux sur Vercel.
+ */
+export const runtime = "nodejs"
+export const maxDuration = 30
+
 export async function GET(req: NextRequest) {
   const weekKey = req.nextUrl.searchParams.get("week_key")
   if (!weekKey) {

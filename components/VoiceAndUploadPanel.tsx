@@ -222,9 +222,13 @@ export function VoiceAndUploadPanel({
     const file = event.target.files?.[0]
     if (!file) return
 
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadError("Le fichier est trop volumineux (max 10MB)")
-      toast.error("Le fichier est trop volumineux (max 10MB)")
+    // Limite pratique Vercel Hobby/Pro pour le body des Serverless Functions (~4,5 Mo).
+    const maxUploadBytes = 4 * 1024 * 1024
+    if (file.size > maxUploadBytes) {
+      const msg =
+        "Fichier trop volumineux pour l’upload (max 4 Mo). Compressez le PDF ou photographiez une seule page."
+      setUploadError(msg)
+      toast.error(msg)
       return
     }
 
@@ -289,7 +293,21 @@ export function VoiceAndUploadPanel({
           body: formData,
         })
 
-        const payload = (await response.json()) as Record<string, unknown>
+        if (response.status === 413) {
+          throw new Error(
+            "Fichier refusé (413 — trop volumineux). Réduisez le PDF sous 4 Mo puis réessayez.",
+          )
+        }
+
+        let payload: Record<string, unknown> = {}
+        try {
+          payload = (await response.json()) as Record<string, unknown>
+        } catch {
+          if (!response.ok) {
+            throw new Error(`Erreur upload PDF (HTTP ${response.status})`)
+          }
+        }
+
         if (response.ok) {
           data = payload
           break
