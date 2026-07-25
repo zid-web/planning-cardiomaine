@@ -9,11 +9,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Edit3,
+  FileDown,
+  History,
   Home,
   List,
   MessageSquare,
   Mic,
   UserCircle,
+  Wifi,
+  WifiOff,
   X,
   Info,
   BarChart3,
@@ -37,7 +41,12 @@ import { canAssignDoctor, detectConflict } from "@/lib/assignment-validation"
 import { populateCongesRowFromVacations } from "@/lib/vacation-congés-mapper"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { saveScheduleToDb, saveFullScheduleToDb } from "@/app/actions/schedule-actions"
+import {
+  getScheduleHistory,
+  saveScheduleToDb,
+  type ScheduleHistoryRow,
+} from "@/app/actions/schedule-actions"
+import type { ScheduleSaveSource } from "@/lib/schedule-diff"
 import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
 import { getAllVacations } from "@/app/actions/vacation-actions"
 import { generateWeekWithSolver } from "@/app/actions/solver-api-actions"
@@ -125,6 +134,10 @@ export function ScheduleApp({
   const [requestedDoctor, setRequestedDoctor] = useState("")
   const [reason, setReason] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyRows, setHistoryRows] = useState<ScheduleHistoryRow[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "live" | "error">("connecting")
 
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
@@ -161,6 +174,45 @@ export function ScheduleApp({
     void refreshRequests()
   }, [refreshRequests])
 
+  // G3: sync planning between admins via Supabase Realtime
+  useEffect(() => {
+    if (!isAdmin) return
+
+    setRealtimeStatus("connecting")
+    const channel = supabase
+      .channel("planning-schedules")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "schedules" },
+        (payload) => {
+          const row = payload.new as {
+            week_key?: string
+            schedule_data?: ScheduleData
+            updated_by?: string
+          } | null
+          if (!row?.week_key || row.week_key === "full_schedule") return
+          if (row.updated_by && row.updated_by === currentUser) return
+          if (!row.schedule_data) return
+
+          setFullSchedule((prev) => ({
+            ...prev,
+            [row.week_key!]: row.schedule_data!,
+          }))
+          toast.message(`Planning ${row.week_key} synchronisé`, {
+            description: row.updated_by ? `par ${row.updated_by}` : undefined,
+          })
+        },
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") setRealtimeStatus("live")
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setRealtimeStatus("error")
+      })
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [supabase, isAdmin, currentUser, setFullSchedule])
+
   // Gère le résultat de la génération via API — persiste en base (patch Claude)
   const handleGenerationComplete = async (schedule: ScheduleData, warnings: string[]) => {
     const currentWeekKey = formatWeekKey(currentDate)
@@ -176,8 +228,9 @@ export function ScheduleApp({
     setFullSchedule(updatedFullSchedule)
 
     try {
-      await saveScheduleToDb(currentWeekKey, mergedWeekSchedule, currentUser || "unknown")
-      await saveFullScheduleToDb(updatedFullSchedule)
+      await saveScheduleToDb(currentWeekKey, mergedWeekSchedule, currentUser || "unknown", {
+        source: "solver",
+      })
     } catch (error) {
       toast.error("Le planning a été généré mais la sauvegarde a échoué. Réessayez.")
       console.error("[schedule-app] Échec de sauvegarde après génération:", error)
@@ -218,8 +271,10 @@ export function ScheduleApp({
   const workloadStats = useMemo(() => calculateWorkloadStats(schedule), [schedule])
 
   // Update full schedule when local schedule changes
-  const updateSchedule = async (newSchedule: ScheduleData) => {
-    // Optimistic update
+  const updateSchedule = async (
+    newSchedule: ScheduleData,
+    source: ScheduleSaveSource = "ui",
+  ) => {
     const updatedFullSchedule = {
       ...fullSchedule,
       [weekKey]: newSchedule,
@@ -227,16 +282,33 @@ export function ScheduleApp({
     setFullSchedule(updatedFullSchedule)
 
     try {
-      await saveScheduleToDb(weekKey, newSchedule, currentUser || "unknown")
-      // Also save the full schedule to persist all data
-      await saveFullScheduleToDb(updatedFullSchedule)
-      console.log("[v0] Saved to Supabase")
-      toast.success("Planning saved successfully")
+      // saveScheduleToDb historise + synchronise le blob full_schedule
+      await saveScheduleToDb(weekKey, newSchedule, currentUser || "unknown", { source })
+      toast.success("Planning enregistré")
     } catch (error) {
       console.error("[v0] Failed to save to Supabase:", error)
-      toast.error("Failed to save planning")
-      // Optionally revert state or show error
+      toast.error("Échec de l'enregistrement du planning")
     }
+  }
+
+  const openHistoryPanel = async () => {
+    setShowHistory(true)
+    setHistoryLoading(true)
+    try {
+      const res = await getScheduleHistory(weekKey, 50)
+      if (!res.success) {
+        toast.error(res.error || "Impossible de charger l'historique")
+        setHistoryRows([])
+      } else {
+        setHistoryRows(res.rows)
+      }
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const exportWeekPdf = () => {
+    window.location.href = `/api/export-planning-pdf?week_key=${encodeURIComponent(weekKey)}`
   }
 
   const currentDayIndex = (currentDate.getDay() + 6) % 7 // 0 = Monday
@@ -447,19 +519,17 @@ export function ScheduleApp({
       return
     }
     toast.success(result.message)
-    // Recharger la semaine depuis schedules (applyChangeRequest met à jour la grille)
+    // Recharger la semaine (saveScheduleToDb a déjà sync le blob)
     const { data } = await supabase
       .from("schedules")
       .select("schedule_data")
       .eq("week_key", weekKey)
       .single()
     if (data?.schedule_data) {
-      const updated = {
-        ...fullSchedule,
+      setFullSchedule((prev) => ({
+        ...prev,
         [weekKey]: data.schedule_data as ScheduleData,
-      }
-      setFullSchedule(updated)
-      void saveFullScheduleToDb(updated)
+      }))
     }
     await refreshRequests()
   }
@@ -536,7 +606,14 @@ export function ScheduleApp({
       const warnings = data?.warnings || data?.updated_schedule?.warnings || []
       if (warnings.length) toast.warning(warnings.slice(0, 3).join("\n"))
 
-      if (changed) void updateSchedule(next)
+      if (changed) {
+        const source: ScheduleSaveSource = data?.raw_extraction?.rows?.length
+          ? "pdf"
+          : data?.mapped_existing_schedule && !data?.parsed_command
+            ? "csv"
+            : "voice"
+        void updateSchedule(next, source)
+      }
     },
     // updateSchedule closes over schedule/fullSchedule; intentional for apply-after-response
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -770,7 +847,29 @@ export function ScheduleApp({
               <div className="flex items-center gap-2">
                 <LiveClock />
                 {isAdmin && (
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        realtimeStatus === "live"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : realtimeStatus === "error"
+                            ? "bg-red-50 text-red-700"
+                            : "bg-slate-100 text-slate-500"
+                      }`}
+                      title="Synchronisation Realtime entre admins"
+                    >
+                      {realtimeStatus === "live" ? (
+                        <Wifi className="h-3 w-3" />
+                      ) : (
+                        <WifiOff className="h-3 w-3" />
+                      )}
+                      {realtimeStatus === "live"
+                        ? "Temps réel"
+                        : realtimeStatus === "error"
+                          ? "Hors ligne"
+                          : "Connexion…"}
+                    </span>
+
                     <Button variant="outline" size="sm" onClick={handleGenerateGuards}>
                       <Calendar className="h-4 w-4 mr-2" />
                       Générer Gardes Nuit
@@ -790,6 +889,26 @@ export function ScheduleApp({
                         void handleGenerationComplete(sched, warnings)
                       }}
                     />
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={exportWeekPdf}
+                      title="Exporter la semaine en PDF"
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Exporter en PDF
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void openHistoryPanel()}
+                      title="Historique des modifications"
+                    >
+                      <History className="h-4 w-4 mr-2" />
+                      Historique
+                    </Button>
 
                     <Button
                       variant="outline"
@@ -1434,6 +1553,58 @@ export function ScheduleApp({
                 Annuler
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panneau historique (admin) */}
+      {showHistory && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setShowHistory(false)}
+        >
+          <div
+            className="w-full max-w-lg max-h-[80vh] overflow-auto rounded-2xl bg-white p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-slate-900">Historique des modifications</h3>
+                <p className="text-xs text-slate-500">{weekKey} · 50 derniers changements</p>
+              </div>
+              <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                <X className="size-5" />
+              </button>
+            </div>
+            {historyLoading ? (
+              <p className="py-8 text-center text-sm text-slate-400">Chargement…</p>
+            ) : historyRows.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">Aucun historique pour cette semaine.</p>
+            ) : (
+              <ul className="space-y-2">
+                {historyRows.map((row) => (
+                  <li key={row.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-medium text-slate-800">
+                          {row.row_key} — {row.day_name}
+                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500">
+                          {(row.old_value || []).join(",") || "vide"} →{" "}
+                          <span className="font-semibold text-teal-700">
+                            {(row.new_value || []).join(",") || "vide"}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-[10px] text-slate-400">
+                          {row.changed_by || "?"} · {row.source || "ui"} ·{" "}
+                          {new Date(row.changed_at).toLocaleString("fr-FR")}
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       )}

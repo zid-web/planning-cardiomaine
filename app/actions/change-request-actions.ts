@@ -2,12 +2,14 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { saveScheduleToDb } from '@/app/actions/schedule-actions';
+import type { ScheduleData } from '@/lib/types';
 
 /**
  * Applique une demande de changement approuvée
  * - Vérifie que l'utilisateur est admin
  * - Récupère la demande
- * - Met à jour la table schedules
+ * - Met à jour la table schedules (via saveScheduleToDb → historique + sync blob)
  * - Marque la demande comme approved
  */
 export async function applyChangeRequest(requestId: string) {
@@ -21,7 +23,7 @@ export async function applyChangeRequest(requestId: string) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, doctor_code')
     .eq('id', user.id)
     .single();
 
@@ -42,7 +44,6 @@ export async function applyChangeRequest(requestId: string) {
   }
 
   // 3. Appliquer la modification dans schedules
-  // Récupérer le planning actuel de la semaine
   const { data: currentSchedule, error: scheduleError } = await supabase
     .from('schedules')
     .select('schedule_data')
@@ -53,10 +54,8 @@ export async function applyChangeRequest(requestId: string) {
     return { success: false, error: 'Erreur lors de la récupération du planning' };
   }
 
-  // Construire le nouveau planning
-  const scheduleData = currentSchedule?.schedule_data || {};
+  const scheduleData = (currentSchedule?.schedule_data || {}) as ScheduleData;
 
-  // S'assurer que la ligne existe
   if (!scheduleData[request.row_key]) {
     scheduleData[request.row_key] = {};
   }
@@ -64,33 +63,25 @@ export async function applyChangeRequest(requestId: string) {
     scheduleData[request.row_key][request.day_name] = { value: [], type: 'empty', status: 'validated' };
   }
 
-  // Appliquer la modification
   const cell = scheduleData[request.row_key][request.day_name];
 
-  // Si un médecin actuel est spécifié, le retirer
   if (request.current_doctor) {
     cell.value = cell.value.filter((d: string) => d !== request.current_doctor);
   }
 
-  // Ajouter le nouveau médecin s'il n'est pas déjà présent
   if (!cell.value.includes(request.requested_doctor)) {
     cell.value.push(request.requested_doctor);
     cell.type = 'doctor';
   }
 
-  // 4. Sauvegarder le planning mis à jour
-  const { error: upsertError } = await supabase
-    .from('schedules')
-    .upsert(
-      {
-        week_key: request.week_key,
-        schedule_data: scheduleData,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'week_key' }
-    );
-
-  if (upsertError) {
+  // 4. Sauvegarder via action centralisée (historique G2 + sync full_schedule G6)
+  try {
+    const updatedBy =
+      profile.doctor_code || user.email?.split('@')[0]?.toUpperCase() || 'admin';
+    await saveScheduleToDb(request.week_key, scheduleData, updatedBy, {
+      source: 'change_request',
+    });
+  } catch {
     return { success: false, error: 'Erreur lors de la mise à jour du planning' };
   }
 
