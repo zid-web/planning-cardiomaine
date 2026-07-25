@@ -143,9 +143,13 @@ export function ScheduleApp({
   const [historyRows, setHistoryRows] = useState<ScheduleHistoryRow[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "live" | "error">("connecting")
+  /** In Global view the admin toolbar starts collapsed to free vertical space for the grid */
+  const [toolbarExpanded, setToolbarExpanded] = useState(false)
 
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
+  const isGlobalView = activeTab === "all"
+  const compactHeader = isGlobalView && !toolbarExpanded
 
   const currentWeekInfo = useMemo(() => getWeekNumber(currentDate), [currentDate])
   const weekKey = useMemo(() => formatWeekKey(currentDate), [currentDate])
@@ -824,165 +828,245 @@ export function ScheduleApp({
       >
           <div
             className={cn(
-              "p-3 md:p-4",
-              activeTab === "all" ? "flex min-h-0 flex-1 flex-col pb-2" : "pb-6",
+              isGlobalView ? "flex min-h-0 flex-1 flex-col p-2 pb-1 md:p-3 md:pb-2" : "p-3 pb-6 md:p-4",
             )}
           >
-            <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border bg-white p-3 shadow-sm md:mb-6 md:p-4">
-              <div className="flex flex-wrap items-center gap-2 md:gap-4">
-                <Button variant="outline" size="icon" onClick={prevWeek} className="h-10 w-10 shrink-0">
-                  <ChevronLeft className="h-4 w-4" />
+            <div
+              className={cn(
+                "sticky top-0 z-30 flex shrink-0 flex-wrap items-center justify-between gap-1.5 rounded-lg border bg-white/95 shadow-sm backdrop-blur-sm",
+                compactHeader ? "mb-1.5 p-1.5" : "mb-2 p-2 md:mb-3 md:p-3",
+              )}
+            >
+              <div className="flex flex-wrap items-center gap-1 md:gap-1.5">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={prevWeek}
+                  className={cn("shrink-0", compactHeader ? "h-7 w-7" : "h-8 w-8")}
+                >
+                  <ChevronLeft className={compactHeader ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </Button>
-                <div className="min-w-0 text-center">
-                  <h2 className="text-base font-bold text-slate-900 md:text-lg">Semaine {currentWeekInfo.week}</h2>
-                  <p className="text-xs text-slate-500">{currentWeekInfo.year}</p>
+                <div className="min-w-0 px-0.5 text-center">
+                  <h2
+                    className={cn(
+                      "font-bold leading-tight text-slate-900",
+                      compactHeader ? "text-sm" : "text-sm md:text-base",
+                    )}
+                  >
+                    {compactHeader ? `S${currentWeekInfo.week}` : `Semaine ${currentWeekInfo.week}`}
+                  </h2>
+                  {!compactHeader && (
+                    <p className="text-[10px] leading-none text-slate-500">{currentWeekInfo.year}</p>
+                  )}
                 </div>
-                <Button variant="outline" size="icon" onClick={nextWeek} className="h-10 w-10 shrink-0">
-                  <ChevronRight className="h-4 w-4" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={nextWeek}
+                  className={cn("shrink-0", compactHeader ? "h-7 w-7" : "h-8 w-8")}
+                >
+                  <ChevronRight className={compactHeader ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </Button>
-                <Button variant="outline" size="icon" onClick={goToToday} title="Semaine actuelle" className="h-10 w-10 shrink-0">
-                  <CalendarIcon className="h-4 w-4" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={goToToday}
+                  title="Semaine actuelle"
+                  className={cn("shrink-0", compactHeader ? "h-7 w-7" : "h-8 w-8")}
+                >
+                  <CalendarIcon className={compactHeader ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={goToToday} className="hidden text-xs sm:inline-flex">
-                  Aujourd&apos;hui
-                </Button>
+                {!compactHeader && (
+                  <Button variant="ghost" size="sm" onClick={goToToday} className="hidden h-8 px-2 text-xs sm:inline-flex">
+                    Aujourd&apos;hui
+                  </Button>
+                )}
               </div>
-              {generatedScheduleWarnings.length > 0 && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-                  <p className="font-semibold text-yellow-900 mb-2">Alertes de génération:</p>
-                  <ul className="text-sm text-yellow-800 list-disc list-inside">
+              {generatedScheduleWarnings.length > 0 && !compactHeader && (
+                <div className="mb-1 w-full rounded-md border border-yellow-200 bg-yellow-50 p-2">
+                  <p className="mb-1 text-xs font-semibold text-yellow-900">Alertes de génération:</p>
+                  <ul className="list-inside list-disc text-[11px] text-yellow-800">
                     {generatedScheduleWarnings.map((warning, i) => (
                       <li key={i}>{warning}</li>
                     ))}
                   </ul>
                 </div>
               )}
-              <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
-                <div className="hidden sm:block">
-                  <LiveClock />
-                </div>
-                {isAdmin && (
-                  <div className="flex max-w-full flex-wrap items-center gap-1.5 md:gap-2">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        realtimeStatus === "live"
-                          ? "bg-emerald-50 text-emerald-700"
-                          : realtimeStatus === "error"
-                            ? "bg-red-50 text-red-700"
-                            : "bg-slate-100 text-slate-500"
-                      }`}
-                      title="Synchronisation Realtime entre admins"
-                    >
-                      {realtimeStatus === "live" ? (
-                        <Wifi className="h-3 w-3" />
-                      ) : (
-                        <WifiOff className="h-3 w-3" />
-                      )}
-                      {realtimeStatus === "live"
-                        ? "Temps réel"
-                        : realtimeStatus === "error"
-                          ? "Hors ligne"
-                          : "Connexion…"}
-                    </span>
-
-                    <Button variant="outline" size="sm" onClick={handleGenerateGuards}>
-                      <Calendar className="h-4 w-4 mr-2" />
-                      Générer Gardes Nuit
-                    </Button>
-
-                    <VacationsButton
-                      onClick={() => {
-                        setSelectedDoctorForVacations("")
-                        setVacationsModalOpen(true)
-                      }}
-                    />
-
-                    <Suspense fallback={null}>
-                      <GuardGenerationButton
-                        weekKey={isoWeekStart}
-                        vacations={vacations}
-                        onGenerationComplete={(sched, warnings) => {
-                          void handleGenerationComplete(sched, warnings)
-                        }}
-                      />
-                    </Suspense>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={exportWeekPdf}
-                      title="Exporter la semaine en PDF"
-                    >
-                      <FileDown className="h-4 w-4 mr-2" />
-                      Exporter en PDF
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void openHistoryPanel()}
-                      title="Historique des modifications"
-                    >
-                      <History className="h-4 w-4 mr-2" />
-                      Historique
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push("/protected/admin/requests")}
-                      title="Tableau de bord des demandes"
-                    >
-                      <Bell className="h-4 w-4 mr-2" />
-                      Demandes
-                      {pendingRequests.length > 0 && (
-                        <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
-                          {pendingRequests.length}
-                        </span>
-                      )}
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push("/protected/admin/users")}
-                      title="Gestion des comptes"
-                    >
-                      <UserCog className="h-4 w-4 mr-2" />
-                      Comptes
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push("/protected/admin/feedback")}
-                      title="Feedback utilisateurs"
-                    >
-                      <MessageSquare className="h-4 w-4 mr-2" />
-                      Feedback
-                    </Button>
-
-                    {/* Bouton doublon "Générer avec Solveur" retiré à nouveau (23/07/2026) :
-                        appelait generateWeekWithSolver (app/actions/solver-api-actions.ts),
-                        qui envoie une équité codée en dur à 0 pour tous les médecins - déjà
-                        supprimé une première fois, réapparu suite à une fusion Git. Le bouton
-                        GuardGenerationButton ci-dessus reste l'unique point d'entrée valide
-                        vers le moteur d'optimisation Render (vraie équité historique). */}
-
-                    {showProposals && (
-                      <Button variant="outline" size="sm" onClick={() => setShowProposals(!showProposals)}>
-                        {showProposals ? "Masquer" : "Afficher"} Propositions
-                      </Button>
-                    )}
-
-                    <Button variant="outline" size="sm" onClick={() => setShowWorkloadStats(!showWorkloadStats)}>
-                      <BarChart3 className="h-4 w-4 mr-2" />
-                      {showWorkloadStats ? "Masquer" : "Afficher"} Stats
-                    </Button>
+              <div className="flex max-w-full flex-wrap items-center justify-end gap-1">
+                {!compactHeader && (
+                  <div className="hidden sm:block">
+                    <LiveClock />
                   </div>
                 )}
-                <Button variant="ghost" size="icon" onClick={() => setLearnMoreOpen(true)} className="text-blue-600">
-                  <Info className="h-5 w-5" />
+                {isAdmin && (
+                  <>
+                    {isGlobalView && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-[11px]"
+                        onClick={() => setToolbarExpanded((v) => !v)}
+                        title={toolbarExpanded ? "Réduire la barre d’outils" : "Afficher tous les outils"}
+                      >
+                        {toolbarExpanded ? "Réduire" : "Outils"}
+                        {pendingRequests.length > 0 && !toolbarExpanded && (
+                          <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
+                            {pendingRequests.length}
+                          </span>
+                        )}
+                      </Button>
+                    )}
+                    {(!isGlobalView || toolbarExpanded) && (
+                      <div className="flex max-w-full flex-wrap items-center gap-1">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                            realtimeStatus === "live"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : realtimeStatus === "error"
+                                ? "bg-red-50 text-red-700"
+                                : "bg-slate-100 text-slate-500"
+                          }`}
+                          title="Synchronisation Realtime entre admins"
+                        >
+                          {realtimeStatus === "live" ? (
+                            <Wifi className="h-3 w-3" />
+                          ) : (
+                            <WifiOff className="h-3 w-3" />
+                          )}
+                          <span className="hidden lg:inline">
+                            {realtimeStatus === "live"
+                              ? "Temps réel"
+                              : realtimeStatus === "error"
+                                ? "Hors ligne"
+                                : "Connexion…"}
+                          </span>
+                        </span>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={handleGenerateGuards}
+                          title="Générer Gardes Nuit"
+                        >
+                          <Calendar className="mr-1 h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Gardes Nuit</span>
+                        </Button>
+
+                        <VacationsButton
+                          className="!gap-1 !rounded-md !px-2 !py-1 !text-xs"
+                          onClick={() => {
+                            setSelectedDoctorForVacations("")
+                            setVacationsModalOpen(true)
+                          }}
+                        />
+
+                        <Suspense fallback={null}>
+                          <GuardGenerationButton
+                            weekKey={isoWeekStart}
+                            vacations={vacations}
+                            onGenerationComplete={(sched, warnings) => {
+                              void handleGenerationComplete(sched, warnings)
+                            }}
+                          />
+                        </Suspense>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={exportWeekPdf}
+                          title="Exporter la semaine en PDF"
+                        >
+                          <FileDown className="mr-1 h-3.5 w-3.5" />
+                          <span className="hidden md:inline">PDF</span>
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => void openHistoryPanel()}
+                          title="Historique des modifications"
+                        >
+                          <History className="mr-1 h-3.5 w-3.5" />
+                          <span className="hidden lg:inline">Historique</span>
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => router.push("/protected/admin/requests")}
+                          title="Tableau de bord des demandes"
+                        >
+                          <Bell className="mr-1 h-3.5 w-3.5" />
+                          <span className="hidden lg:inline">Demandes</span>
+                          {pendingRequests.length > 0 && (
+                            <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
+                              {pendingRequests.length}
+                            </span>
+                          )}
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => router.push("/protected/admin/users")}
+                          title="Gestion des comptes"
+                        >
+                          <UserCog className="mr-1 h-3.5 w-3.5" />
+                          <span className="hidden xl:inline">Comptes</span>
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => router.push("/protected/admin/feedback")}
+                          title="Feedback utilisateurs"
+                        >
+                          <MessageSquare className="mr-1 h-3.5 w-3.5" />
+                          <span className="hidden xl:inline">Feedback</span>
+                        </Button>
+
+                        {/* Bouton doublon "Générer avec Solveur" retiré : GuardGenerationButton = seule entrée. */}
+
+                        {showProposals && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => setShowProposals(!showProposals)}
+                          >
+                            {showProposals ? "Masquer" : "Afficher"} Prop.
+                          </Button>
+                        )}
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => setShowWorkloadStats(!showWorkloadStats)}
+                          title="Statistiques de charge"
+                        >
+                          <BarChart3 className="mr-1 h-3.5 w-3.5" />
+                          <span className="hidden lg:inline">
+                            {showWorkloadStats ? "Masquer" : "Stats"}
+                          </span>
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setLearnMoreOpen(true)}
+                  className={cn("text-blue-600", compactHeader ? "h-7 w-7" : "h-8 w-8")}
+                >
+                  <Info className={compactHeader ? "h-4 w-4" : "h-4 w-4"} />
                 </Button>
               </div>
             </div>
@@ -1147,25 +1231,14 @@ export function ScheduleApp({
 
             {/* GLOBAL VIEW */}
             {activeTab === "all" && (
-              <div className="flex min-h-0 flex-1 flex-col gap-2">
-                <div className="z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 bg-slate-50 py-1">
-                  <div className="min-w-0">
-                    <h3 className="text-lg font-bold text-slate-900 md:text-xl">Planning Global</h3>
-                    <p className="text-xs text-slate-500">
-                      Semaine {currentWeekInfo.week} - {currentWeekInfo.year}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="min-h-10" onClick={prevWeek}>
-                      Sem. Préc.
-                    </Button>
-                    <Button variant="outline" size="sm" className="min-h-10" onClick={nextWeek}>
-                      Sem. Suiv.
-                    </Button>
-                  </div>
+              <div className="flex min-h-0 flex-1 flex-col gap-1">
+                <div className="flex shrink-0 items-center justify-between gap-2 px-0.5">
+                  <h3 className="text-xs font-semibold text-slate-600 md:text-sm">
+                    Planning global · S{currentWeekInfo.week}
+                  </h3>
                 </div>
 
-                <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
+                <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white shadow-sm">
                   <div
                     className="pointer-events-none absolute right-0 top-0 z-20 h-full w-6 bg-gradient-to-l from-white to-transparent md:hidden"
                     aria-hidden
