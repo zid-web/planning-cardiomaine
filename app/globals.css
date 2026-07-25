@@ -166,4 +166,42 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+
+  /* Mobile planning: fluid pan + contain bounce */
+  .planning-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .planning-table {
+    touch-action: pan-x pan-y;
+    overscroll-behavior: contain;
+  }
+
+  .table-responsive {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .safe-area-pb {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@layer base {
+  /* Prefer tap over double-tap zoom on interactive cells */
+  button,
+  td,
+  th {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Table cells keep pan for scrolling the grid */
+  .planning-table td,
+  .planning-table th {
+    touch-action: manipulation;
+  }
 }
