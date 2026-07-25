@@ -1,0 +1,481 @@
+diff --git a/app/actions/solver-api-actions.ts b/app/actions/solver-api-actions.ts
+deleted file mode 100644
+index fbcab28..0000000
+--- a/app/actions/solver-api-actions.ts
++++ /dev/null
+@@ -1,283 +0,0 @@
+-'use server'
+-
+-import { getAllVacations } from './vacation-actions'
+-import { DOCTOR_METADATA, DAYS } from '@/lib/constants'
+-import type { ScheduleData, CellData } from '@/lib/types'
+-import { getWeekNumber } from '@/lib/schedule-utils'
+-
+-// Mapping des activités du solveur vers les lignes du planning
+-const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
+-  'matin': {
+-    'ASTREINTE': 'Astreintes ATL Matin',
+-    'GARDE': 'Garde Matin',
+-    'CORO': 'Matin - Coro',
+-  },
+-  'am': {
+-    'ASTREINTE': 'Astreintes ATL Midi',
+-    'GARDE': 'Garde Midi',
+-    'CORO': 'Apm - Coro',
+-  },
+-  'nuit': {
+-    'ASTREINTE': 'Astreintes ATL Nuit',
+-    'GARDE': 'Garde Nuit',
+-    'NCT': 'Hors site - NCT',
+-  },
+-  'weekend': {
+-    'ASTREINTE': 'Garde Matin',
+-  },
+-}
+-
+-// Statuts pour le solveur (mapping depuis DOCTOR_METADATA)
+-const getSolverStatus = (doctorId: string) => {
+-  const meta = DOCTOR_METADATA[doctorId]
+-  if (!meta) return 'permanent'
+-  if (doctorId === 'M' || doctorId === 'O' || doctorId === 'W') return 'astreinte_coro'
+-  if (doctorId === 'FV') return 'fv'
+-  if (doctorId === 'DAAS' || doctorId === 'D') return 'daas'
+-  if (doctorId === 'CH') return 'ch'
+-  return 'permanent'
+-}
+-
+-export interface SolverResponse {
+-  schedule: ScheduleData | null
+-  warnings: string[]
+-  error?: string
+-}
+-
+-export async function generateWeekWithSolver(
+-  weekStartDate: string,
+-  weekendMode: 'CH' | 'ROTATION' = 'ROTATION'
+-): Promise<SolverResponse> {
+-  const { getSolverCache, setSolverCache, solverCacheKey } = await import('@/lib/solver-cache')
+-  const { perfLog, perfWarn } = await import('@/lib/perf-log')
+-  const cacheKey = solverCacheKey(weekStartDate, weekendMode)
+-  const cached = getSolverCache<SolverResponse>(cacheKey)
+-  if (cached?.schedule) {
+-    perfLog('solver-api', 'cache_hit', { weekStartDate, weekendMode })
+-    return cached
+-  }
+-
+-  const started = Date.now()
+-  try {
+-    // 1. Récupérer tous les médecins (depuis les constantes)
+-    const medecins = Object.keys(DOCTOR_METADATA).map((id) => ({
+-      id,
+-      statut: getSolverStatus(id),
+-      points_astreinte: 0,
+-      points_garde: 0,
+-      points_nct: 0,
+-      points_weekend: 0,
+-    }))
+-
+-    // 2. Récupérer les vacances
+-    const vacations = await getAllVacations()
+-    const vacationPayload = vacations.map((v) => ({
+-      doctor_id: v.doctor_id,
+-      start_date: v.start_date,
+-      end_date: v.end_date,
+-    }))
+-
+-    // 3. Déterminer la parité de la semaine (ISO)
+-    const dateObj = new Date(weekStartDate)
+-    const weekInfo = getWeekNumber(dateObj)
+-    const semaine_iso_impaire = weekInfo % 2 === 1
+-
+-    // 4. Récupérer le dernier NCT (si stocké en DB)
+-    const lastNctDoctor = null
+-
+-    // 5. Construire la requête pour l'API
+-    const payload = {
+-      week_start_date: weekStartDate,
+-      medecins,
+-      vacations: vacationPayload,
+-      weekend_mode: weekendMode,
+-      semaine_iso_impaire,
+-      last_nct_doctor: lastNctDoctor,
+-    }
+-
+-    // 6. Appeler l'API Render
+-    const base =
+-      process.env.GUARD_API_BASE_URL ||
+-      process.env.GUARD_API_URL ||
+-      'https://guard-api-cardiomaine.onrender.com'
+-    const controller = new AbortController()
+-    const timeout = setTimeout(() => controller.abort(), 65000)
+-
+-    let response: Response
+-    try {
+-      response = await fetch(`${base.replace(/\/$/, '')}/generate-week`, {
+-        method: 'POST',
+-        headers: { 'Content-Type': 'application/json' },
+-        body: JSON.stringify(payload),
+-        signal: controller.signal,
+-      })
+-    } finally {
+-      clearTimeout(timeout)
+-    }
+-
+-    if (!response.ok) {
+-      const errorText = await response.text()
+-      console.error('[solver-api] API error:', response.status, errorText)
+-      throw new Error(`API error (${response.status}): ${errorText}`)
+-    }
+-
+-    const result = await response.json()
+-    perfLog('solver-api', 'generate_week', {
+-      weekStartDate,
+-      weekendMode,
+-      ms: Date.now() - started,
+-      assignments: Array.isArray(result?.assignments) ? result.assignments.length : 0,
+-    })
+-
+-    // 7. Transformer les assignations en ScheduleData
+-    const schedule: ScheduleData = createEmptySchedule()
+-
+-    result.assignments?.forEach((assign: any) => {
+-      const { date, day_name, slot, activity, doctor } = assign
+-      const dayKey = day_name.toUpperCase()
+-
+-      if (!DAYS.includes(dayKey)) {
+-        console.warn('[solver-api] Unknown day:', dayKey)
+-        return
+-      }
+-
+-      // Déterminer la ligne cible
+-      let rowKey = ''
+-      if (slot === 'weekend') {
+-        if (dayKey === 'SAMEDI' || dayKey === 'DIMANCHE') {
+-          rowKey = 'Garde Matin'
+-        }
+-      } else {
+-        const mapping = ACTIVITY_TO_ROW[slot]
+-        if (mapping && mapping[activity]) {
+-          rowKey = mapping[activity]
+-        }
+-      }
+-
+-      if (!rowKey) {
+-        console.warn('[solver-api] No mapping for slot:', slot, 'activity:', activity)
+-        return
+-      }
+-
+-      // Ajouter le médecin dans la cellule
+-      if (!schedule[rowKey]) {
+-        console.warn('[solver-api] Row not found:', rowKey)
+-        return
+-      }
+-
+-      const cell = schedule[rowKey][dayKey]
+-      if (!cell) {
+-        console.warn('[solver-api] Cell not found:', rowKey, dayKey)
+-        return
+-      }
+-
+-      // Éviter les doublons
+-      if (!cell.value.includes(doctor)) {
+-        cell.value = [...cell.value, doctor]
+-        cell.type = 'doctor'
+-        cell.status = 'pending'
+-      }
+-    })
+-
+-    const responsePayload = { schedule, warnings: result.warnings || [] as string[] }
+-    setSolverCache(cacheKey, responsePayload)
+-    return responsePayload
+-  } catch (error) {
+-    const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
+-    console.error('[solver-api] Error:', error)
+-    perfWarn('solver-api', 'generate_week_failed', {
+-      weekStartDate,
+-      weekendMode,
+-      ms: Date.now() - started,
+-      error: errorMessage,
+-    })
+-
+-    // Gérer l'erreur de timeout
+-    if (error instanceof Error && error.name === 'AbortError') {
+-      return {
+-        schedule: null,
+-        warnings: [],
+-        error: 'Timeout: l\'API a pris trop de temps (65s). Le serveur Render redémarre peut-être. Veuillez réessayer.',
+-      }
+-    }
+-
+-    return {
+-      schedule: null,
+-      warnings: [],
+-      error: errorMessage,
+-    }
+-  }
+-}
+-
+-/**
+- * Utilitaire pour créer un planning vide
+- */
+-function createEmptySchedule(): ScheduleData {
+-  const createEmptyRow = () => {
+-    return DAYS.reduce(
+-      (acc, day) => ({
+-        ...acc,
+-        [day]: { value: [], type: 'empty' as const, status: 'validated' as const, request: null },
+-      }),
+-      {} as { [key: string]: CellData }
+-    )
+-  }
+-
+-  return {
+-    'Astreintes ATL Matin': createEmptyRow(),
+-    'Astreintes ATL Midi': createEmptyRow(),
+-    'Astreintes ATL Nuit': createEmptyRow(),
+-    'Garde Matin': createEmptyRow(),
+-    'Garde Midi': createEmptyRow(),
+-    'Garde Nuit': createEmptyRow(),
+-    'Matin - Visite': createEmptyRow(),
+-    'Hors site - NCT': createEmptyRow(),
+-    'Hors site - CDL': createEmptyRow(),
+-    'Hors site - IRM': createEmptyRow(),
+-    'Hors site - Scinti': createEmptyRow(),
+-    'Hors site - LFB': createEmptyRow(),
+-    'Hors site - PSSL': createEmptyRow(),
+-    'Matin - Cs PSS': createEmptyRow(),
+-    'Matin - Cs Tessée': createEmptyRow(),
+-    'Matin - Stress': createEmptyRow(),
+-    'Matin - ETT salle 1': createEmptyRow(),
+-    'Matin - ETT salle 2': createEmptyRow(),
+-    'Matin - EE1': createEmptyRow(),
+-    'Matin - EE2': createEmptyRow(),
+-    'Matin - Rythmo': createEmptyRow(),
+-    'Matin - Coro': createEmptyRow(),
+-    'Apm - Cs PSS': createEmptyRow(),
+-    'Apm - Cs Tessée': createEmptyRow(),
+-    'Apm - Stress': createEmptyRow(),
+-    'Apm - ETT salle 1': createEmptyRow(),
+-    'Apm - ETT salle 2': createEmptyRow(),
+-    'Apm - RÉEDUCATION': createEmptyRow(),
+-    'Apm - EE1': createEmptyRow(),
+-    'Apm - EE2': createEmptyRow(),
+-    'Apm - Rythmo': createEmptyRow(),
+-    'Apm - Coro': createEmptyRow(),
+-    'Entrées PSS': createEmptyRow(),
+-    'Pré-op': createEmptyRow(),
+-    '1/2 journée off Matin': createEmptyRow(),
+-    '1/2 journée off Après-midi': createEmptyRow(),
+-    Vacances: createEmptyRow(),
+-    Congrès: createEmptyRow(),
+-    Congés: createEmptyRow(),
+-    'Notes du jour': createEmptyRow(),
+-  }
+-}
+-
+-/**
+- * Vérifie la santé de l'API
+- */
+-export async function checkSolverAPIHealth(): Promise<boolean> {
+-  try {
+-    const response = await fetch('https://guard-api-cardiomaine.onrender.com/health', {
+-      method: 'GET',
+-      signal: AbortSignal.timeout(5000),
+-    })
+-    return response.ok
+-  } catch {
+-    return false
+-  }
+-}
+diff --git a/components/schedule-app.tsx b/components/schedule-app.tsx
+index 2124153..fab8c48 100644
+--- a/components/schedule-app.tsx
++++ b/components/schedule-app.tsx
+@@ -49,7 +49,6 @@ import {
+ import type { ScheduleSaveSource } from "@/lib/schedule-diff"
+ import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
+ import { getAllVacations } from "@/app/actions/vacation-actions"
+-import { generateWeekWithSolver } from "@/app/actions/solver-api-actions"
+ import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions"
+ import { VacationsButton } from "@/components/vacations-button"
+ import { VacationsBadge } from "@/components/vacations-badge"
+@@ -127,7 +126,6 @@ export function ScheduleApp({
+   const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
+   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
+   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
+-  const [isGenerating, setIsGenerating] = useState(false)
+   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
+   const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([])
+   const [showRequests, setShowRequests] = useState(false)
+@@ -191,7 +189,7 @@ export function ScheduleApp({
+       .on(
+         "postgres_changes",
+         { event: "*", schema: "public", table: "schedules" },
+-        (payload) => {
++        (payload: { new: unknown }) => {
+           const row = payload.new as {
+             week_key?: string
+             schedule_data?: ScheduleData
+@@ -964,38 +962,12 @@ export function ScheduleApp({
+                       Feedback
+                     </Button>
+ 
+-                    <Button
+-                      variant="outline"
+-                      size="sm"
+-                      onClick={async () => {
+-                        setIsGenerating(true)
+-                        try {
+-                          const result = await generateWeekWithSolver(isoWeekStart, "ROTATION")
+-                          if (result.error) {
+-                            toast.error(`Erreur: ${result.error}`)
+-                          } else if (result.schedule) {
+-                            await handleGenerationComplete(result.schedule, result.warnings || [])
+-                          }
+-                        } catch (error) {
+-                          toast.error("Erreur lors de la génération")
+-                        } finally {
+-                          setIsGenerating(false)
+-                        }
+-                      }}
+-                      disabled={isGenerating}
+-                    >
+-                      {isGenerating ? (
+-                        <>
+-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+-                          Génération...
+-                        </>
+-                      ) : (
+-                        <>
+-                          <Calendar className="h-4 w-4 mr-2" />
+-                          Générer avec Solveur
+-                        </>
+-                      )}
+-                    </Button>
++                    {/* Bouton doublon "Générer avec Solveur" retiré à nouveau (23/07/2026) :
++                        appelait generateWeekWithSolver (app/actions/solver-api-actions.ts),
++                        qui envoie une équité codée en dur à 0 pour tous les médecins - déjà
++                        supprimé une première fois, réapparu suite à une fusion Git. Le bouton
++                        GuardGenerationButton ci-dessus reste l'unique point d'entrée valide
++                        vers le moteur d'optimisation Render (vraie équité historique). */}
+ 
+                     {showProposals && (
+                       <Button variant="outline" size="sm" onClick={() => setShowProposals(!showProposals)}>
+diff --git a/components/solver-generation-button.tsx b/components/solver-generation-button.tsx
+deleted file mode 100644
+index 96d6371..0000000
+--- a/components/solver-generation-button.tsx
++++ /dev/null
+@@ -1,87 +0,0 @@
+-'use client'
+-
+-import React, { useState } from 'react'
+-import { Button } from '@/components/ui/button'
+-import { Loader2, Brain } from 'lucide-react'
+-import { generateWeekWithSolver } from '@/app/actions/solver-api-actions'
+-import { ScheduleData } from '@/lib/types'
+-import { toast } from 'sonner'
+-import { getWeekNumber } from '@/lib/schedule-utils'
+-
+-interface SolverGenerationButtonProps {
+-  currentDate: Date
+-  weekendMode: 'CH' | 'ROTATION'
+-  onGenerationComplete: (schedule: ScheduleData, warnings: string[]) => void
+-  disabled?: boolean
+-}
+-
+-export function SolverGenerationButton({
+-  currentDate,
+-  weekendMode,
+-  onGenerationComplete,
+-  disabled = false,
+-}: SolverGenerationButtonProps) {
+-  const [isLoading, setIsLoading] = useState(false)
+-
+-  const handleGenerateWithSolver = async () => {
+-    setIsLoading(true)
+-    const toastId = toast.loading('Génération avec solveur en cours... (jusqu\'à 65s)')
+-
+-    try {
+-      const weekStart = new Date(currentDate)
+-      weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1) // Lundi
+-      const weekStartStr = weekStart.toISOString().split('T')[0]
+-
+-      const result = await generateWeekWithSolver(weekStartStr, weekendMode)
+-
+-      if (result.error) {
+-        toast.error(`Erreur: ${result.error}`, { id: toastId })
+-        return
+-      }
+-
+-      if (!result.schedule) {
+-        toast.error('Aucun planning généré', { id: toastId })
+-        return
+-      }
+-
+-      if (result.warnings && result.warnings.length > 0) {
+-        toast.warning(
+-          `Planning généré avec ${result.warnings.length} avertissement(s):\n${result.warnings.slice(0, 3).join('\n')}`,
+-          { id: toastId, duration: 5000 }
+-        )
+-      } else {
+-        toast.success('Planning généré avec succès!', { id: toastId })
+-      }
+-
+-      onGenerationComplete(result.schedule, result.warnings)
+-    } catch (error) {
+-      const errorMessage = error instanceof Error ? error.message : 'Erreur inconnue'
+-      console.error('[solver] Generation error:', error)
+-      toast.error(`Erreur: ${errorMessage}`, { id: toastId })
+-    } finally {
+-      setIsLoading(false)
+-    }
+-  }
+-
+-  return (
+-    <Button
+-      onClick={handleGenerateWithSolver}
+-      disabled={disabled || isLoading}
+-      className="gap-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white"
+-      title="Génère le planning avec le solveur d'optimisation avancé (moteur IA)"
+-    >
+-      {isLoading ? (
+-        <>
+-          <Loader2 className="w-4 h-4 animate-spin" />
+-          <span>Solveur...</span>
+-        </>
+-      ) : (
+-        <>
+-          <Brain className="w-4 h-4" />
+-          <span>Solveur (IA)</span>
+-          <span className="text-xs font-medium opacity-75">v2</span>
+-        </>
+-      )}
+-    </Button>
+-  )
+-}
+diff --git a/lib/types.ts b/lib/types.ts
+index c9083f3..27f179b 100644
+--- a/lib/types.ts
++++ b/lib/types.ts
+@@ -39,6 +39,7 @@ export type DoctorVacation = {
+   doctor_id: string // UUID or TEXT code (e.g., "FV", "Z", "A")
+   start_date: string // YYYY-MM-DD
+   end_date: string // YYYY-MM-DD
++  reason?: string
+   created_at: string
+   updated_at: string
+ }
+diff --git a/package.json b/package.json
+index 7b08a91..f17466d 100644
+--- a/package.json
++++ b/package.json
+@@ -64,7 +64,7 @@
+     "swr": "^2.4.2",
+     "tailwind-merge": "^2.5.5",
+     "tailwindcss-animate": "^1.0.7",
+-    "vaul": "^0.9.9",
++    "vaul": "^1.1.2",
+     "xlsx": "^0.18.5",
+     "zod": "3.25.76"
+   },
