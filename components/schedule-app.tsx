@@ -28,7 +28,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { LiveClock } from "@/components/live-clock"
@@ -817,29 +816,37 @@ export function ScheduleApp({
   }
 
   return (
-    <div className="flex flex-col h-full layout-main">
-      {/* Main Content Area */}
-      <div className="flex-1">
-        <ScrollArea className="h-full">
-          <div className="p-4 pb-24">
-            <div className="header-sticky flex items-center justify-between mb-6 bg-white p-4 rounded-xl shadow-sm border">
-              <div className="flex items-center gap-4">
-                <Button variant="outline" size="icon" onClick={prevWeek}>
+    <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
+      {/* Main Content Area — native overflow so mobile pan-x/pan-y works in Global */}
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          activeTab !== "all" && "overflow-y-auto overscroll-y-contain",
+        )}
+      >
+          <div
+            className={cn(
+              "p-3 md:p-4",
+              activeTab === "all" ? "flex min-h-0 flex-1 flex-col pb-2" : "pb-6",
+            )}
+          >
+            <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border bg-white p-3 shadow-sm md:mb-6 md:p-4">
+              <div className="flex flex-wrap items-center gap-2 md:gap-4">
+                <Button variant="outline" size="icon" onClick={prevWeek} className="h-10 w-10 shrink-0">
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <div className="text-center">
-                  <h2 className="text-lg font-bold text-slate-900">Semaine {currentWeekInfo.week}</h2>
+                <div className="min-w-0 text-center">
+                  <h2 className="text-base font-bold text-slate-900 md:text-lg">Semaine {currentWeekInfo.week}</h2>
                   <p className="text-xs text-slate-500">{currentWeekInfo.year}</p>
                 </div>
-                <Button variant="outline" size="icon" onClick={nextWeek}>
+                <Button variant="outline" size="icon" onClick={nextWeek} className="h-10 w-10 shrink-0">
                   <ChevronRight className="h-4 w-4" />
                 </Button>
-                {/* Adding icon button to return to current week */}
-                <Button variant="outline" size="icon" onClick={goToToday} title="Semaine actuelle">
+                <Button variant="outline" size="icon" onClick={goToToday} title="Semaine actuelle" className="h-10 w-10 shrink-0">
                   <CalendarIcon className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={goToToday} className="text-xs">
-                  Aujourd'hui
+                <Button variant="ghost" size="sm" onClick={goToToday} className="hidden text-xs sm:inline-flex">
+                  Aujourd&apos;hui
                 </Button>
               </div>
               {generatedScheduleWarnings.length > 0 && (
@@ -1008,39 +1015,40 @@ export function ScheduleApp({
 
             {/* TODAY VIEW */}
             {activeTab === "today" && (
-              <div className="space-y-4 max-w-md mx-auto">
-                <div className="flex tabs-scroll pb-2 gap-2 scrollbar-none">
+              <div className="mx-auto w-full max-w-[400px] space-y-4 px-1 sm:px-3">
+                <div className="flex flex-wrap justify-center gap-1 pb-2 scrollbar-none">
                   {DAYS.map((day, idx) => {
                     const isSelected = idx === currentDayIndex
                     const date = weekDates[idx].split("/")[0]
                     return (
                       <button
                         key={day}
+                        type="button"
                         onClick={() => goToDay(idx)}
                         className={`
-                          flex flex-col items-center justify-center min-w-[60px] p-2 rounded-xl border transition-all
-                          ${isSelected ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:border-blue-300"}
+                          flex min-h-11 min-w-[44px] flex-1 flex-col items-center justify-center rounded-xl border p-2 transition-all sm:min-w-[60px] sm:flex-none
+                          ${isSelected ? "border-blue-600 bg-blue-600 text-white shadow-md" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300"}
                         `}
                       >
                         <span className="text-[10px] font-medium uppercase opacity-80">{day.slice(0, 3)}</span>
-                        <span className="text-lg font-bold">{date}</span>
+                        <span className="text-base font-bold md:text-lg">{date}</span>
                       </button>
                     )
                   })}
                 </div>
 
-                <div className="flex items-center justify-between rounded-2xl bg-blue-600 p-6 text-white shadow-lg shadow-blue-200">
+                <div className="flex items-center justify-between rounded-2xl bg-blue-600 p-4 text-white shadow-lg shadow-blue-200 md:p-6">
                   <div>
-                    <p className="text-blue-100">Aujourd'hui</p>
-                    <h3 className="text-2xl font-bold">{DAYS[currentDayIndex]}</h3>
+                    <p className="text-sm text-blue-100">Aujourd&apos;hui</p>
+                    <h3 className="text-xl font-bold md:text-2xl">{DAYS[currentDayIndex]}</h3>
                     <p className="text-sm text-blue-100">{weekDates[currentDayIndex]}</p>
                   </div>
-                  <Calendar className="size-8 text-blue-200" />
+                  <Calendar className="size-7 text-blue-200 md:size-8" />
                 </div>
 
-                <div className="rounded-xl border bg-white p-4 shadow-sm">
+                <div className="rounded-xl border bg-white p-3 shadow-sm md:p-4">
                   <div className="mb-2 flex items-center justify-between">
-                    <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+                    <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900 md:text-base">
                       <MessageSquare className="size-4 text-blue-500" />
                       Notes du jour
                     </h4>
@@ -1054,7 +1062,7 @@ export function ScheduleApp({
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="px-1 font-semibold text-slate-900">Mon Planning</h4>
+                  <h4 className="px-1 text-sm font-semibold text-slate-900 md:text-base">Mon Planning</h4>
                   {getAllTasksForDay(DAYS[currentDayIndex]).filter((task) => task.doctors.includes(doctorCode)).length >
                   0 ? (
                     getAllTasksForDay(DAYS[currentDayIndex])
@@ -1082,26 +1090,26 @@ export function ScheduleApp({
                         return (
                           <Card
                             key={idx}
-                            className={`flex items-center gap-4 border-l-4 p-4 transition-all hover:shadow-md ${colorClasses}`}
+                            className={`flex items-center gap-2 border-l-4 p-2 transition-all hover:shadow-md md:gap-4 md:p-4 ${colorClasses}`}
                           >
-                            <div className="rounded-full bg-slate-100 p-2 text-xl">
+                            <div className="rounded-full bg-slate-100 p-1.5 text-lg md:p-2 md:text-xl">
                               {/* @ts-ignore */}
                               {ACTIVITY_ICONS[
                                 Object.keys(ACTIVITY_ICONS).find((k) => task.activity.includes(k)) || ""
                               ] || "•"}
                             </div>
-                            <div className="flex-1">
-                              <p className="font-medium text-slate-900">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-slate-900 md:text-base">
                                 {task.activity
                                   .replace("Matin - ", "")
                                   .replace("Apm - ", "")
                                   .replace("Hors site - ", "")}
                               </p>
-                              <div className="flex flex-wrap gap-1 mt-1">
+                              <div className="mt-1 flex flex-wrap gap-1">
                                 {task.doctors.map((doc, i) => (
                                   <Badge
                                     key={i}
-                                    className={`${DOCTOR_COLORS[doc] || "bg-slate-500"} text-white border-none px-1.5 py-0 text-[10px]`}
+                                    className={`${DOCTOR_COLORS[doc] || "bg-slate-500"} border-none px-1.5 py-0 text-[10px] text-white`}
                                   >
                                     {doc}
                                   </Badge>
@@ -1116,7 +1124,7 @@ export function ScheduleApp({
                       <div className="mb-2 rounded-full bg-slate-100 p-3">
                         <UserCircle className="size-6 text-slate-400" />
                       </div>
-                      <p className="text-slate-500">Aucune activité prévue pour vous ce jour</p>
+                      <p className="text-sm text-slate-500">Aucune activité prévue pour vous ce jour</p>
                     </div>
                   )}
                 </div>
@@ -1125,36 +1133,36 @@ export function ScheduleApp({
 
             {/* WEEK VIEW */}
             {activeTab === "week" && (
-              <div className="space-y-6 max-w-md mx-auto">
-                <h3 className="text-xl font-bold text-slate-900">Ma Semaine {currentWeekInfo.week}</h3>
+              <div className="mx-auto w-full max-w-[400px] space-y-6 px-1 sm:px-3">
+                <h3 className="text-lg font-bold text-slate-900 md:text-xl">Ma Semaine {currentWeekInfo.week}</h3>
                 {DAYS.map((day, idx) => {
                   const tasks = getUserTasks(day)
                   const isToday = idx === currentDayIndex
 
                   return (
-                    <div key={day} className="relative pl-6">
+                    <div key={day} className="relative pl-4 md:pl-6">
                       {/* Timeline line */}
-                      <div className="absolute bottom-0 left-2 top-0 w-0.5 bg-slate-200" />
+                      <div className="absolute bottom-0 left-1.5 top-0 w-0.5 bg-slate-200 md:left-2" />
                       <div
-                        className={`absolute left-0 top-0 size-4 rounded-full border-2 border-white ${isToday ? "bg-blue-600" : "bg-slate-300"}`}
+                        className={`absolute left-0 top-0 size-3 rounded-full border-2 border-white md:size-4 ${isToday ? "bg-blue-600" : "bg-slate-300"}`}
                       />
 
                       <div className="mb-6">
-                        <div className="mb-2 flex items-baseline justify-between">
-                          <h4 className={`font-bold ${isToday ? "text-blue-600" : "text-slate-700"}`}>{day}</h4>
+                        <div className="mb-2 flex items-baseline justify-between gap-2">
+                          <h4 className={`text-sm font-bold md:text-base ${isToday ? "text-blue-600" : "text-slate-700"}`}>{day}</h4>
                           <span className="text-xs text-slate-400">{weekDates[idx].split("/")[0]}</span>
                         </div>
 
                         {tasks.length > 0 ? (
                           <div className="space-y-2">
                             {tasks.map((task, tIdx) => (
-                              <Card key={tIdx} className="p-3 text-sm shadow-sm">
+                              <Card key={tIdx} className="p-2 text-xs shadow-sm md:p-3 md:text-sm">
                                 {task}
                               </Card>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-xs italic text-slate-400">Repos / Pas d'affectation</p>
+                          <p className="text-xs italic text-slate-400">Repos / Pas d&apos;affectation</p>
                         )}
                       </div>
                     </div>
@@ -1165,31 +1173,34 @@ export function ScheduleApp({
 
             {/* GLOBAL VIEW */}
             {activeTab === "all" && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between sticky top-0 bg-slate-50 z-10 py-2">
-                  <div>
-                    <h3 className="text-xl font-bold text-slate-900">Planning Global</h3>
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
+                <div className="z-10 flex shrink-0 flex-wrap items-center justify-between gap-2 bg-slate-50 py-1">
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-bold text-slate-900 md:text-xl">Planning Global</h3>
                     <p className="text-xs text-slate-500">
                       Semaine {currentWeekInfo.week} - {currentWeekInfo.year}
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={prevWeek}>
+                    <Button variant="outline" size="sm" className="min-h-10" onClick={prevWeek}>
                       Sem. Préc.
                     </Button>
-                    <Button variant="outline" size="sm" onClick={nextWeek}>
+                    <Button variant="outline" size="sm" className="min-h-10" onClick={nextWeek}>
                       Sem. Suiv.
                     </Button>
                   </div>
                 </div>
 
-                <div className="rounded-xl border bg-white shadow-sm">
-                  <div className="relative">
-                    {/* Scroll indicator gradient */}
-                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white/50 to-transparent pointer-events-none z-10 md:hidden" />
-                  </div>
-                  <div className="overflow-x-auto w-full md:max-w-none -webkit-overflow-scrolling-touch">
-                    <table className="text-xs border-collapse table-layout-fixed w-max md:w-full min-w-[700px]">
+                <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
+                  <div
+                    className="pointer-events-none absolute right-0 top-0 z-20 h-full w-6 bg-gradient-to-l from-white to-transparent md:hidden"
+                    aria-hidden
+                  />
+                  <div
+                    className="planning-scroll planning-table min-h-0 flex-1 overflow-auto overscroll-contain"
+                    style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y" }}
+                  >
+                    <table className="w-max min-w-[700px] border-collapse text-xs table-layout-fixed md:w-full">
                       <thead className="sticky top-0 z-40 bg-slate-100 shadow-sm">
                         <tr>
                           <th className="sticky left-0 z-50 bg-slate-100 p-2 md:p-3 text-left font-bold text-slate-700 border-b border-r min-w-[120px] text-[10px] md:text-xs shadow-[4px_0_8px_-2px_rgba(0,0,0,0.15)]">
@@ -1389,23 +1400,22 @@ export function ScheduleApp({
               </div>
             )}
           </div>
-        </ScrollArea>
       </div>
 
       {/* Bottom Navigation */}
-      <div className="border-t bg-white p-2">
-        <div className="flex justify-around items-center">
+      <div className="shrink-0 border-t bg-white p-2 safe-area-pb">
+        <div className="flex items-center justify-around">
           <Button
             variant={activeTab === "today" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-4"
+            className="flex h-auto min-h-12 min-w-12 flex-col items-center gap-1 px-3 py-2 sm:px-4"
             onClick={() => setActiveTab("today")}
           >
             <Home className="size-5" />
-            <span className="text-[10px]">Aujourd'hui</span>
+            <span className="text-[10px]">Aujourd&apos;hui</span>
           </Button>
           <Button
             variant={activeTab === "week" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-4"
+            className="flex h-auto min-h-12 min-w-12 flex-col items-center gap-1 px-3 py-2 sm:px-4"
             onClick={() => setActiveTab("week")}
           >
             <Calendar className="size-5" />
@@ -1413,7 +1423,7 @@ export function ScheduleApp({
           </Button>
           <Button
             variant={activeTab === "all" ? "default" : "ghost"}
-            className="flex flex-col items-center gap-1 h-auto py-2 px-4"
+            className="flex h-auto min-h-12 min-w-12 flex-col items-center gap-1 px-3 py-2 sm:px-4"
             onClick={() => setActiveTab("all")}
           >
             <List className="size-5" />
