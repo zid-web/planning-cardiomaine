@@ -9,6 +9,27 @@ import { createServerClient } from "@supabase/ssr"
  * @see https://nextjs.org/docs/messages/middleware-to-proxy
  */
 export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  const publicRoutes = [
+    "/",
+    "/auth/login",
+    "/auth/sign-up",
+    "/auth/forgot-password",
+    "/auth/callback",
+    "/auth/error",
+    "/auth/sign-up-success",
+    "/auth/reset-password-confirm",
+    "/api/ping-solver", // keep-alive cron (cron-job.org / Vercel Cron) — no login
+  ]
+
+  // Public routes: skip auth entirely (needed for external keep-alive cron)
+  if (publicRoutes.includes(pathname)) {
+    return NextResponse.next({
+      request: { headers: request.headers },
+    })
+  }
+
   const response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -39,24 +60,6 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
-
-  const publicRoutes = [
-    "/",
-    "/auth/login",
-    "/auth/sign-up",
-    "/auth/forgot-password",
-    "/auth/callback",
-    "/auth/error",
-    "/auth/sign-up-success",
-    "/auth/reset-password-confirm",
-  ]
-
-  // Vercel Cron keep-alive (optionally protected by CRON_SECRET in the route)
-  if (publicRoutes.includes(pathname) || pathname === "/api/ping-solver") {
-    return response
-  }
 
   if (!user) {
     return NextResponse.redirect(new URL("/auth/login", request.url))

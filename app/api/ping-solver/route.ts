@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from "next/server"
 
 /**
  * Keep-alive for the Render guard API (avoids ~20–60s cold starts).
- * Called by Vercel Cron every 5 minutes. Optional CRON_SECRET auth.
+ * Intended for Vercel Cron and external crons (e.g. cron-job.org).
+ *
+ * Auth: if `CRON_SECRET` is set AND the request sends `Authorization`,
+ * it must be `Bearer <CRON_SECRET>`. Requests with no Authorization header
+ * are allowed so public keep-alive crons work without extra config.
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET
-  if (secret) {
-    const auth = req.headers.get("authorization")
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
-    }
+  const auth = req.headers.get("authorization")
+  if (secret && auth && auth !== `Bearer ${secret}`) {
+    return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
   }
 
   const base =
