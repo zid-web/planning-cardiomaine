@@ -11,8 +11,11 @@
 | `GUARD_API_URL` | Optionnel | Alias legacy utilisé par `guard-api-actions` |
 | `GUARD_API_KEY` | Optionnel | Si le backend Render exige `x-api-key` |
 | `ANTHROPIC_API_KEY` | **Non (Next.js)** | Uniquement sur le **backend Render**, pas dans Vercel/frontend |
+| `CRON_SECRET` | Recommandé | Protège `GET /api/ping-solver` (Vercel Cron envoie `Authorization: Bearer …`) |
+| `NEXT_PUBLIC_SENTRY_DSN` | Optionnel | Quand Sentry est branché |
 
-Après ajout / modification : **Redeploy** Production.
+Après ajout / modification : **Redeploy** Production.  
+Activer le cron `*/5 * * * *` → `/api/ping-solver` (Vercel **Pro**), **ou** un ping externe toutes les 5 min vers la même URL (Hobby ne permet souvent qu’un cron quotidien).
 
 > **Statut (2026-07-25)** : variables Production vérifiées manuellement dans le dashboard Vercel.
 
@@ -24,6 +27,7 @@ Appliquer si pas déjà fait :
 - `20250725000001_enable_realtime_schedules.sql`
 - `20250725000002_prevent_role_self_escalation.sql`
 - `20250725000003_fix_role_escalation_trigger.sql`
+- `20250725000004_perf_indexes_and_feedback.sql` (index + table `app_feedback`)
 - (+ Realtime `change_requests` déjà présent)
 
 Vérifier Publication `supabase_realtime` : tables `schedules` + `change_requests`.
@@ -38,6 +42,8 @@ Vérifier Publication `supabase_realtime` : tables `schedules` + `change_request
 6. Deux onglets admin : sync Realtime
 7. Médecin : demande de changement → admin approuve
 8. `/protected/admin/users` : liste visible (service role)
+9. Bouton **Feedback** (bas-droite) → envoi → visible dans `/protected/admin/feedback`
+10. Cron : `GET /api/ping-solver` répond `{ success: true }` (logs Vercel)
 
 ## Logs
 

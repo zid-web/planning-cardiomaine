@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useCallback, useEffect } from "react"
+import React, { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import {
   Bell,
@@ -52,12 +52,19 @@ import { generateGuardsWithVacations } from "@/app/actions/guard-generation-acti
 import { getAllVacations } from "@/app/actions/vacation-actions"
 import { generateWeekWithSolver } from "@/app/actions/solver-api-actions"
 import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions"
-import { VacationsModal } from "@/components/vacations-modal"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
-import { GuardGenerationButton } from "@/components/guard-generation-button"
-import { VoiceAndUploadPanel } from "@/components/VoiceAndUploadPanel"
 import { DoctorVacation } from "@/lib/types"
+
+const VoiceAndUploadPanel = lazy(() =>
+  import("@/components/VoiceAndUploadPanel").then((m) => ({ default: m.VoiceAndUploadPanel })),
+)
+const VacationsModal = lazy(() =>
+  import("@/components/vacations-modal").then((m) => ({ default: m.VacationsModal })),
+)
+const GuardGenerationButton = lazy(() =>
+  import("@/components/guard-generation-button").then((m) => ({ default: m.GuardGenerationButton })),
+)
 import { createClient } from "@/lib/supabase/client"
 import {
   applyMappedExistingSchedule,
@@ -883,13 +890,15 @@ export function ScheduleApp({
                       }}
                     />
 
-                    <GuardGenerationButton
-                      weekKey={isoWeekStart}
-                      vacations={vacations}
-                      onGenerationComplete={(sched, warnings) => {
-                        void handleGenerationComplete(sched, warnings)
-                      }}
-                    />
+                    <Suspense fallback={null}>
+                      <GuardGenerationButton
+                        weekKey={isoWeekStart}
+                        vacations={vacations}
+                        onGenerationComplete={(sched, warnings) => {
+                          void handleGenerationComplete(sched, warnings)
+                        }}
+                      />
+                    </Suspense>
 
                     <Button
                       variant="outline"
@@ -934,6 +943,16 @@ export function ScheduleApp({
                     >
                       <UserCog className="h-4 w-4 mr-2" />
                       Comptes
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => router.push("/protected/admin/feedback")}
+                      title="Feedback utilisateurs"
+                    >
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Feedback
                     </Button>
 
                     <Button
@@ -1730,14 +1749,16 @@ export function ScheduleApp({
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <VoiceAndUploadPanel
-                weekStartDate={isoWeekStart}
-                weekNumber={currentWeekInfo.week}
-                knownDoctors={DOCTORS}
-                currentWeekRequest={currentWeekRequest}
-                vacations={vacationPayload}
-                onCommandExecuted={(data) => applyVoiceOrUploadResult(data)}
-              />
+              <Suspense fallback={<p className="text-sm text-slate-500">Chargement du panneau…</p>}>
+                <VoiceAndUploadPanel
+                  weekStartDate={isoWeekStart}
+                  weekNumber={currentWeekInfo.week}
+                  knownDoctors={DOCTORS}
+                  currentWeekRequest={currentWeekRequest}
+                  vacations={vacationPayload}
+                  onCommandExecuted={(data) => applyVoiceOrUploadResult(data)}
+                />
+              </Suspense>
             </div>
           )}
         </>
@@ -1866,13 +1887,15 @@ export function ScheduleApp({
       )}
 
       {/* Vacations Modal */}
-      <VacationsModal
-        doctorId={selectedDoctorForVacations || currentUser || ""}
-        doctorCode={doctorCode}
-        isOpen={vacationsModalOpen}
-        onClose={() => setVacationsModalOpen(false)}
-        onVacationsUpdated={loadVacations}
-      />
+      <Suspense fallback={null}>
+        <VacationsModal
+          doctorId={selectedDoctorForVacations || currentUser || ""}
+          doctorCode={doctorCode}
+          isOpen={vacationsModalOpen}
+          onClose={() => setVacationsModalOpen(false)}
+          onVacationsUpdated={loadVacations}
+        />
+      </Suspense>
     </div>
   )
 }

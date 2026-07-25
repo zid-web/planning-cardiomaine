@@ -41,7 +41,8 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   const publicRoutes = ["/", "/auth/login", "/auth/sign-up", "/auth/forgot-password"]
-  if (publicRoutes.includes(pathname)) {
+  // Vercel Cron keep-alive (optionally protected by CRON_SECRET in the route)
+  if (publicRoutes.includes(pathname) || pathname === "/api/ping-solver") {
     return response
   }
 
