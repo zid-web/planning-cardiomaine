@@ -3,10 +3,19 @@
 import { parseISO, subDays } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { DoctorVacation, ScheduleData } from "@/lib/types";
-import { getWeekNumber } from "@/lib/schedule-utils";
+import { generateWeekSchedule, getWeekNumber } from "@/lib/schedule-utils";
+import {
+  accumulateEquityFromSchedules,
+  getCumulativeEquityFromTable,
+  type EquityCounts,
+} from "@/lib/equity-tracking";
+import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
 
 // Configuration
-const GUARD_API_URL = process.env.GUARD_API_URL || "https://guard-api-cardiomaine.onrender.com";
+const GUARD_API_URL =
+  process.env.GUARD_API_BASE_URL ||
+  process.env.GUARD_API_URL ||
+  "https://guard-api-cardiomaine.onrender.com";
 const GUARD_API_KEY = process.env.GUARD_API_KEY;
 
 // Types pour les médecins
@@ -25,6 +34,17 @@ interface EquityPoints {
   garde: Record<string, number>;
   nct: Record<string, number>;
   weekend: Record<string, number>;
+}
+
+function equityCountsToPoints(counts: Record<string, EquityCounts>): EquityPoints {
+  const points: EquityPoints = { astreinte: {}, garde: {}, nct: {}, weekend: {} };
+  for (const [doc, c] of Object.entries(counts)) {
+    points.astreinte[doc] = c.astreinte_count;
+    points.garde[doc] = c.garde_count;
+    points.nct[doc] = c.nct_count;
+    points.weekend[doc] = c.weekend_count;
+  }
+  return points;
 }
 
 /**
@@ -59,57 +79,52 @@ async function getDoctorsFromSupabase(): Promise<Doctor[]> {
 }
 
 /**
- * Calcule les points d'équité historiques pour chaque médecin
+ * Calcule les points d'équité historiques pour chaque médecin.
+ *
+ * IMPORTANT : le vrai CellData est `{ value: string[], status, type? }` —
+ * l'activité est la **clé de ligne** (`Astreintes ATL Nuit`, `Garde Matin`, …),
+ * pas `cell.doctor` / `cell.activity` (champs inexistants → équité toujours 0).
  */
 async function calculateEquityPoints(): Promise<EquityPoints> {
+  const fromTable = await getCumulativeEquityFromTable();
+  if (fromTable && Object.keys(fromTable).length > 0) {
+    return equityCountsToPoints(fromTable);
+  }
+
   const supabase = await createClient();
-  
-  // Récupère les 13 dernières semaines de planning
+
+  // Repli : scan de l'historique JSON (exclut le blob full_schedule)
   const { data: schedules, error } = await supabase
     .from("schedules")
-    .select("schedule_data")
+    .select("week_key, schedule_data")
+    .neq("week_key", "full_schedule")
     .order("week_key", { ascending: false })
-    .limit(13);
+    .limit(52);
 
   if (error || !schedules || schedules.length === 0) {
+    if (error) {
+      console.warn("[guard-api] Lecture schedules pour équité:", error.message);
+    }
     return { astreinte: {}, garde: {}, nct: {}, weekend: {} };
   }
 
-  const points: EquityPoints = {
-    astreinte: {},
-    garde: {},
-    nct: {},
-    weekend: {},
-  };
+  const counts = accumulateEquityFromSchedules(
+    schedules.map((s) => ({
+      week_key: s.week_key as string,
+      schedule_data: s.schedule_data as ScheduleData,
+    })),
+  );
 
-  // Parcours chaque semaine pour cumuler les points
-  schedules.forEach((schedule) => {
-    const data = schedule.schedule_data;
-    if (!data) return;
+  const nonZero = Object.values(counts).some(
+    (c) => c.astreinte_count + c.garde_count + c.nct_count + c.weekend_count > 0,
+  );
+  if (!nonZero) {
+    console.warn(
+      "[guard-api] Équité historique à 0 après scan CellData.value — vérifier les plannings en base.",
+    );
+  }
 
-    // Parcours chaque ligne du planning
-    Object.values(data).forEach((row: any) => {
-      Object.values(row).forEach((cell: any) => {
-        if (!cell || !cell.doctor) return;
-
-        const doctorId = cell.doctor;
-        const activity = cell.activity || cell.type;
-
-        // Compte les points selon l'activité
-        if (activity === "ASTREINTE") {
-          points.astreinte[doctorId] = (points.astreinte[doctorId] || 0) + 1;
-        } else if (activity === "GARDE") {
-          points.garde[doctorId] = (points.garde[doctorId] || 0) + 1;
-        } else if (activity === "NCT") {
-          points.nct[doctorId] = (points.nct[doctorId] || 0) + 1;
-        } else if (activity === "ASTREINTE_WEEKEND" || activity === "GARDE_WEEKEND") {
-          points.weekend[doctorId] = (points.weekend[doctorId] || 0) + 1;
-        }
-      });
-    });
-  });
-
-  return points;
+  return equityCountsToPoints(counts);
 }
 
 /**
@@ -285,45 +300,19 @@ async function getCongres(): Promise<{ doctor_id: string; start_date: string; en
 }
 
 /**
- * Convertit la réponse de l'API Render en format ScheduleData
+ * Convertit la réponse Render (assignments) en vrai ScheduleData UI
+ * (`row → day → { value: string[] }`), via le mapping ACTIVITY_TO_ROW.
  */
-function convertAPIResponseToSchedule(response: any): any {
-  if (!response || !response.assignments) {
+function convertAPIResponseToSchedule(response: {
+  assignments?: GuardAssignment[];
+}): ScheduleData {
+  if (!response?.assignments?.length) {
     console.warn("Réponse Render sans assignments :", response);
     return {};
   }
 
-  const scheduleData: any = {};
-
-  // Parcours chaque assignment
-  response.assignments.forEach((assignment: any) => {
-    const date = assignment.date;
-    const dayName = assignment.day_name; // LUNDI, MARDI, ...
-    const slot = assignment.slot; // matin, am, nuit
-    const activity = assignment.activity;
-    const doctor = assignment.doctor;
-    const note = assignment.note || null;
-
-    // Construit la clé du jour (ex: "2026-07-27_LUNDI")
-    const dayKey = `${date}_${dayName}`;
-
-    if (!scheduleData[dayKey]) {
-      scheduleData[dayKey] = {};
-    }
-
-    // Construit la clé du slot (ex: "matin", "am", "nuit")
-    const slotKey = slot;
-
-    scheduleData[dayKey][slotKey] = {
-      activity,
-      doctor,
-      note,
-      status: "confirmed",
-      type: activity,
-    };
-  });
-
-  return scheduleData;
+  const base = generateWeekSchedule("generated");
+  return mergeAssignmentsIntoSchedule(base, response.assignments);
 }
 
 // Export pour compatibilité avec l'ancien code

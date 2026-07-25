@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import type { ScheduleData } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 import { diffScheduleCells, type ScheduleSaveSource } from "@/lib/schedule-diff"
+import { upsertWeeklyEquity } from "@/lib/equity-tracking"
 
 export type SaveScheduleOptions = {
   source?: ScheduleSaveSource
@@ -58,6 +59,11 @@ export async function saveScheduleToDb(
   if (error) {
     console.error("[app] Error saving schedule to Supabase:", error)
     throw new Error(`Failed to save schedule: ${error.message}`)
+  }
+
+  // Snapshot d'équité hebdo (CellData.value) — ne bloque jamais la sauvegarde
+  if (weekKey !== "full_schedule") {
+    await upsertWeeklyEquity(weekKey, scheduleData)
   }
 
   // G2: cell-level history (never for the mega-blob)
