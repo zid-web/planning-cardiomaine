@@ -6,6 +6,12 @@ Next.js 16 (App Router, React 19) + Supabase app ("Cardiomaine Planning", a Fren
 medical shift-scheduling tool). Package manager is **bun** (`bun.lock`). The single
 required service is the Next.js dev server; the backend is Supabase.
 
+### File ownership freeze (Claude ↔ Cursor) — 2026-07-25
+Until Claude’s cleanup PR is **merged** into `main`:
+- **Do not edit** `components/schedule-app.tsx` or `app/actions/solver-api-actions.ts`.
+- Reason: a deleted buggy solver path (`generateWeekWithSolver` + equity hardcoded to `0`) was reintroduced by parallel merges and is still wired to the admin button « Générer avec Solveur ». Claude owns the single cleanup PR (remove/replace that path, dead imports, TS baseline).
+- Cursor may work elsewhere (proxy, cron, docs, admin pages, etc.). After that PR merges, rebase onto `main` before touching `schedule-app.tsx` again.
+
 ### Run / build / lint
 - Dev server: `bun run dev` → http://localhost:3000 (this is the app; use dev, not `build`/`start`).
 - Build: `bun run build` (note: `next.config.js` sets `typescript.ignoreBuildErrors: true`, so TS errors do not fail the build).
