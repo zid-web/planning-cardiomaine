@@ -1,40 +1,201 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { ArrowDownUp, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { createClient } from '@/lib/supabase/client';
 import { applyChangeRequest, rejectChangeRequest } from '@/app/actions/change-request-actions';
+import { DOCTORS } from '@/lib/constants';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+
+const PAGE_SIZE = 20;
+
+type RequestStatus = 'pending' | 'approved' | 'rejected';
+type StatusFilter = 'all' | RequestStatus;
+
+type ChangeRequestRow = {
+  id: string;
+  requester_id: string | null;
+  week_key: string;
+  day_name: string;
+  row_key: string;
+  slot: string | null;
+  current_doctor: string | null;
+  requested_doctor: string;
+  reason: string | null;
+  status: RequestStatus;
+  admin_comment: string | null;
+  created_at: string;
+  updated_at: string;
+  profiles?: { email?: string | null } | null;
+};
+
+type RequesterOption = {
+  id: string;
+  email: string;
+};
+
+function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function truncate(text: string | null | undefined, max = 48) {
+  if (!text) return '—';
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function StatusBadge({ status }: { status: RequestStatus }) {
+  if (status === 'pending') {
+    return (
+      <Badge className="border-transparent bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+        En attente
+      </Badge>
+    );
+  }
+  if (status === 'approved') {
+    return (
+      <Badge className="border-transparent bg-green-100 text-green-800 hover:bg-green-100">
+        Approuvée
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="border-transparent bg-red-100 text-red-800 hover:bg-red-100">
+      Refusée
+    </Badge>
+  );
+}
 
 export default function AdminRequestsPage() {
   const supabase = createClient();
   const router = useRouter();
-  const [requests, setRequests] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(false);
 
-  const loadRequests = async () => {
+  const [authorized, setAuthorized] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [requests, setRequests] = useState<ChangeRequestRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [requesters, setRequesters] = useState<RequesterOption[]>([]);
+
+  // Filters
+  const [status, setStatus] = useState<StatusFilter>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [requesterId, setRequesterId] = useState<string>('all');
+  const [doctor, setDoctor] = useState<string>('all');
+  const [sortAsc, setSortAsc] = useState(false);
+  const [page, setPage] = useState(1);
+
+  // Detail modal
+  const [selected, setSelected] = useState<ChangeRequestRow | null>(null);
+  const [related, setRelated] = useState<ChangeRequestRow[]>([]);
+  const [adminComment, setAdminComment] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  const loadRequesters = useCallback(async () => {
     const { data, error } = await supabase
       .from('change_requests')
-      .select('*, profiles(email)')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
+      .select('requester_id, profiles(email)')
+      .not('requester_id', 'is', null);
 
     if (error) {
-      toast.error('Erreur de chargement');
-    } else {
-      setRequests(data || []);
+      console.error('[admin/requests] requesters', error);
+      return;
     }
-  };
+
+    const map = new Map<string, string>();
+    for (const row of data || []) {
+      const id = row.requester_id as string | null;
+      const email = (row as any).profiles?.email as string | undefined;
+      if (id && email && !map.has(id)) map.set(id, email);
+    }
+    setRequesters(
+      Array.from(map.entries())
+        .map(([id, email]) => ({ id, email }))
+        .sort((a, b) => a.email.localeCompare(b.email, 'fr')),
+    );
+  }, [supabase]);
+
+  const loadRequests = useCallback(async () => {
+    setTableLoading(true);
+    try {
+      let query = supabase
+        .from('change_requests')
+        .select('*, profiles(email)', { count: 'exact' })
+        .order('created_at', { ascending: sortAsc })
+        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+      if (status !== 'all') query = query.eq('status', status);
+      if (requesterId !== 'all') query = query.eq('requester_id', requesterId);
+      if (doctor !== 'all') query = query.eq('requested_doctor', doctor);
+      if (dateFrom) query = query.gte('created_at', `${dateFrom}T00:00:00`);
+      if (dateTo) query = query.lte('created_at', `${dateTo}T23:59:59.999`);
+
+      const { data, error, count } = await query;
+      if (error) {
+        console.error('[admin/requests] load', error);
+        toast.error('Erreur de chargement des demandes');
+        setRequests([]);
+        setTotalCount(0);
+        return;
+      }
+
+      setRequests((data as ChangeRequestRow[]) || []);
+      setTotalCount(count ?? 0);
+    } finally {
+      setTableLoading(false);
+      setLoading(false);
+    }
+  }, [supabase, page, status, requesterId, doctor, dateFrom, dateTo, sortAsc]);
 
   useEffect(() => {
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         router.replace('/auth/login');
         return;
       }
-      // Garde admin : seuls les administrateurs accèdent à cette page
+
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
@@ -48,79 +209,480 @@ export default function AdminRequestsPage() {
       }
 
       setAuthorized(true);
-      await loadRequests();
-      setLoading(false);
+      await loadRequesters();
     };
-    init();
+    void init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Approbation/refus via la Server Action centralisée
+  useEffect(() => {
+    if (!authorized) return;
+    void loadRequests();
+  }, [authorized, loadRequests]);
+
+  const setStatusAndReset = (value: StatusFilter) => {
+    setPage(1);
+    setStatus(value);
+  };
+  const setRequesterAndReset = (value: string) => {
+    setPage(1);
+    setRequesterId(value);
+  };
+  const setDoctorAndReset = (value: string) => {
+    setPage(1);
+    setDoctor(value);
+  };
+  const setDateFromAndReset = (value: string) => {
+    setPage(1);
+    setDateFrom(value);
+  };
+  const setDateToAndReset = (value: string) => {
+    setPage(1);
+    setDateTo(value);
+  };
+  const toggleSortAndReset = () => {
+    setPage(1);
+    setSortAsc((v) => !v);
+  };
+
+  const openDetail = async (req: ChangeRequestRow) => {
+    setSelected(req);
+    setAdminComment(req.admin_comment || '');
+    const { data } = await supabase
+      .from('change_requests')
+      .select('*, profiles(email)')
+      .eq('week_key', req.week_key)
+      .eq('day_name', req.day_name)
+      .eq('row_key', req.row_key)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    setRelated(((data as ChangeRequestRow[]) || []).filter((r) => r.id !== req.id));
+  };
+
   const handleApprove = async (id: string) => {
-    const result = await applyChangeRequest(id);
-    if (result.success) {
-      toast.success(result.message);
-      loadRequests();
-    } else {
-      toast.error(result.error);
+    setActionLoading(true);
+    try {
+      const result = await applyChangeRequest(id);
+      if (result.success) {
+        toast.success(result.message);
+        setSelected(null);
+        await loadRequests();
+        await loadRequesters();
+      } else {
+        toast.error(result.error);
+      }
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const handleReject = async (id: string, comment?: string) => {
-    const result = await rejectChangeRequest(id, comment);
-    if (result.success) {
-      toast.success(result.message);
-      loadRequests();
-    } else {
-      toast.error(result.error);
+  const handleReject = async (id: string) => {
+    setActionLoading(true);
+    try {
+      const result = await rejectChangeRequest(id, adminComment.trim() || undefined);
+      if (result.success) {
+        toast.success(result.message);
+        setSelected(null);
+        await loadRequests();
+        await loadRequesters();
+      } else {
+        toast.error(result.error);
+      }
+    } finally {
+      setActionLoading(false);
     }
   };
+
+  const clearFilters = () => {
+    setStatus('all');
+    setDateFrom('');
+    setDateTo('');
+    setRequesterId('all');
+    setDoctor('all');
+    setSortAsc(false);
+    setPage(1);
+  };
+
+  const pageNumbers = useMemo(() => {
+    const maxButtons = 5;
+    if (totalPages <= maxButtons) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const start = Math.max(1, Math.min(page - 2, totalPages - maxButtons + 1));
+    return Array.from({ length: maxButtons }, (_, i) => start + i);
+  }, [page, totalPages]);
+
+  const rangeLabel = useMemo(() => {
+    if (totalCount === 0) return '0 résultat';
+    const from = (page - 1) * PAGE_SIZE + 1;
+    const to = Math.min(page * PAGE_SIZE, totalCount);
+    return `${from}–${to} sur ${totalCount}`;
+  }, [page, totalCount]);
 
   if (loading) return <div className="p-6">Chargement...</div>;
   if (!authorized) return null;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">📋 Demandes de changement</h1>
-      {requests.length === 0 && (
-        <p className="text-gray-500">Aucune demande en attente.</p>
-      )}
-      {requests.map((req) => (
-        <div key={req.id} className="border p-4 rounded-lg mb-3 bg-white shadow-sm">
-          <div className="flex justify-between items-start">
-            <div className="flex-1">
-              <p className="font-semibold">{req.profiles?.email || 'Utilisateur inconnu'}</p>
-              <p className="text-sm text-gray-600">
-                {req.day_name} – {req.row_key}
-                {req.slot && ` (${req.slot})`}
-              </p>
-              <p className="text-sm">
-                Actuellement: <span className="font-medium">{req.current_doctor || 'vide'}</span>
-                {' → '}
-                Demandé: <span className="font-medium text-blue-600">{req.requested_doctor}</span>
-              </p>
-              {req.reason && <p className="text-sm text-gray-500 italic">"{req.reason}"</p>}
-              <p className="text-xs text-gray-400 mt-1">
-                Demandé le {new Date(req.created_at).toLocaleDateString()}
-              </p>
-            </div>
-            <div className="flex gap-2 ml-4">
-              <button
-                onClick={() => handleApprove(req.id)}
-                className="bg-green-500 hover:bg-green-600 text-white px-4 py-1 rounded text-sm transition-colors"
-              >
-                ✅ Accepter
-              </button>
-              <button
-                onClick={() => handleReject(req.id)}
-                className="bg-red-500 hover:bg-red-600 text-white px-4 py-1 rounded text-sm transition-colors"
-              >
-                ❌ Refuser
-              </button>
-            </div>
+    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
+      <div className="mx-auto max-w-7xl space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Demandes de changement</h1>
+            <p className="text-sm text-slate-500">
+              Historique complet, filtres cumulables et pagination ({PAGE_SIZE}/page).
+            </p>
           </div>
+          <Button variant="outline" onClick={() => router.push('/protected/planning')}>
+            Retour au planning
+          </Button>
         </div>
-      ))}
+
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <Search className="h-4 w-4" />
+              Filtres
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="space-y-1.5">
+                <Label>Statut</Label>
+                <Select value={status} onValueChange={(v) => setStatusAndReset(v as StatusFilter)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Statut" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous</SelectItem>
+                    <SelectItem value="pending">En attente</SelectItem>
+                    <SelectItem value="approved">Approuvées</SelectItem>
+                    <SelectItem value="rejected">Refusées</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Du</Label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFromAndReset(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Au</Label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateToAndReset(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Demandeur</Label>
+                <Select value={requesterId} onValueChange={setRequesterAndReset}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Demandeur" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous</SelectItem>
+                    {requesters.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Médecin demandé</Label>
+                <Select value={doctor} onValueChange={setDoctorAndReset}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Médecin" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous</SelectItem>
+                    {DOCTORS.map((code) => (
+                      <SelectItem key={code} value={code}>
+                        {code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={toggleSortAndReset}
+              >
+                <ArrowDownUp className="mr-1 h-4 w-4" />
+                Date {sortAsc ? '↑ ancienne → récente' : '↓ récente → ancienne'}
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+                <X className="mr-1 h-4 w-4" />
+                Réinitialiser
+              </Button>
+              <span className="ml-auto text-sm text-slate-500">{rangeLabel}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Demandeur</TableHead>
+                  <TableHead>Case</TableHead>
+                  <TableHead>Changement</TableHead>
+                  <TableHead className="hidden md:table-cell">Raison</TableHead>
+                  <TableHead>Statut</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tableLoading && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-slate-500">
+                      Chargement…
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!tableLoading && requests.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-slate-500">
+                      Aucune demande ne correspond aux filtres.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!tableLoading &&
+                  requests.map((req) => (
+                    <TableRow
+                      key={req.id}
+                      className="cursor-pointer"
+                      onClick={() => void openDetail(req)}
+                    >
+                      <TableCell className="whitespace-nowrap text-xs md:text-sm">
+                        {formatDateTime(req.created_at)}
+                      </TableCell>
+                      <TableCell className="max-w-[160px] truncate text-sm">
+                        {req.profiles?.email || 'Inconnu'}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <div className="font-medium">
+                          {req.day_name} – {req.row_key}
+                        </div>
+                        <div className="text-xs text-slate-400">{req.week_key}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <span className="text-slate-500">{req.current_doctor || 'vide'}</span>
+                        {' → '}
+                        <span className="font-semibold text-blue-700">{req.requested_doctor}</span>
+                      </TableCell>
+                      <TableCell className="hidden max-w-[200px] truncate text-sm text-slate-500 md:table-cell">
+                        {truncate(req.reason)}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={req.status} />
+                      </TableCell>
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        {req.status === 'pending' ? (
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="sm"
+                              className="bg-green-600 hover:bg-green-700"
+                              disabled={actionLoading}
+                              onClick={() => void handleApprove(req.id)}
+                            >
+                              Accepter
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={actionLoading}
+                              onClick={() => void openDetail(req)}
+                            >
+                              Refuser
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button size="sm" variant="ghost" onClick={() => void openDetail(req)}>
+                            Détails
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <div className="flex flex-wrap items-center justify-center gap-2 pb-8">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1 || tableLoading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft className="mr-1 h-4 w-4" />
+            Précédent
+          </Button>
+          {pageNumbers.map((n) => (
+            <Button
+              key={n}
+              size="sm"
+              variant={n === page ? 'default' : 'outline'}
+              disabled={tableLoading}
+              onClick={() => setPage(n)}
+            >
+              {n}
+            </Button>
+          ))}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages || tableLoading}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Suivant
+            <ChevronRight className="ml-1 h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          {selected && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Détail de la demande</DialogTitle>
+                <DialogDescription>
+                  {selected.day_name} – {selected.row_key} ({selected.week_key})
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Statut</span>
+                  <StatusBadge status={selected.status} />
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">Demandeur</span>
+                  <span className="font-medium">{selected.profiles?.email || 'Inconnu'}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">Créée le</span>
+                  <span>{formatDateTime(selected.created_at)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">Mise à jour</span>
+                  <span>{formatDateTime(selected.updated_at)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">Changement</span>
+                  <span>
+                    {selected.current_doctor || 'vide'} →{' '}
+                    <strong>{selected.requested_doctor}</strong>
+                  </span>
+                </div>
+                {selected.slot && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-slate-500">Créneau</span>
+                    <span>{selected.slot}</span>
+                  </div>
+                )}
+                <div>
+                  <div className="mb-1 text-slate-500">Raison</div>
+                  <p className="rounded-md bg-slate-50 p-2 text-slate-700">
+                    {selected.reason || '—'}
+                  </p>
+                </div>
+                {selected.admin_comment && selected.status !== 'pending' && (
+                  <div>
+                    <div className="mb-1 text-slate-500">Commentaire admin</div>
+                    <p className="rounded-md bg-slate-50 p-2 text-slate-700">
+                      {selected.admin_comment}
+                    </p>
+                  </div>
+                )}
+
+                {selected.status === 'pending' && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="admin-comment">Commentaire (refus)</Label>
+                    <Textarea
+                      id="admin-comment"
+                      value={adminComment}
+                      onChange={(e) => setAdminComment(e.target.value)}
+                      placeholder="Optionnel — visible dans l’historique"
+                      rows={3}
+                    />
+                  </div>
+                )}
+
+                {related.length > 0 && (
+                  <div>
+                    <div className="mb-2 font-medium text-slate-700">
+                      Autres demandes sur cette case
+                    </div>
+                    <ul className="space-y-2">
+                      {related.map((r) => (
+                        <li
+                          key={r.id}
+                          className="rounded-md border bg-white p-2 text-xs text-slate-600"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span>{formatDateTime(r.created_at)}</span>
+                            <StatusBadge status={r.status} />
+                          </div>
+                          <div>
+                            {r.current_doctor || 'vide'} → {r.requested_doctor}
+                            {r.profiles?.email ? ` · ${r.profiles.email}` : ''}
+                          </div>
+                          {r.admin_comment && (
+                            <div className="mt-1 italic text-slate-500">« {r.admin_comment} »</div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="outline" onClick={() => setSelected(null)}>
+                  Fermer
+                </Button>
+                {selected.status === 'pending' && (
+                  <>
+                    <Button
+                      variant="destructive"
+                      disabled={actionLoading}
+                      onClick={() => void handleReject(selected.id)}
+                    >
+                      Refuser
+                    </Button>
+                    <Button
+                      className="bg-green-600 hover:bg-green-700"
+                      disabled={actionLoading}
+                      onClick={() => void handleApprove(selected.id)}
+                    >
+                      Accepter
+                    </Button>
+                  </>
+                )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
