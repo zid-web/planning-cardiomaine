@@ -17,7 +17,9 @@
 Après ajout / modification : **Redeploy** Production.  
 Activer le cron `*/5 * * * *` → `/api/ping-solver` (Vercel **Pro**), **ou** un ping externe toutes les 5 min vers la même URL (Hobby ne permet souvent qu’un cron quotidien).
 
-> **Statut (2026-07-25)** : variables Production vérifiées manuellement dans le dashboard Vercel.
+> **Statut (2026-07-25)** : variables Production vérifiées manuellement dans le dashboard Vercel.  
+> Migration `20250725000004_…` + keep-alive cron : confirmés côté équipe.  
+> **Attention** : le déploiement Vercel Production du merge PR #37 a signalé un échec GitHub (`Deployment failed`) — aucun déploiement Production listé pour le SHA `ed3bfa8`. Relancer un deploy Production puis vérifier `GET /api/ping-solver`.
 
 ## Migrations Supabase (hébergé)
 
