@@ -11,6 +11,12 @@ import {
   toIsoDateLocal,
   type GenerateWeekRequestPayload,
 } from '@/lib/guard-api-mapping'
+import {
+  isPlanningPdf,
+  isPlanningSpreadsheet,
+  parseCsvToMapped,
+  parseExcelToMapped,
+} from '@/lib/planning-import'
 
 interface VoiceAndUploadPanelProps {
   onCommandExecuted?: (result: any) => void
@@ -231,14 +237,6 @@ export function VoiceAndUploadPanel({
     const file = event.target.files?.[0]
     if (!file) return
 
-    // Vérifier que c'est un PDF
-    if (file.type !== 'application/pdf') {
-      setUploadError("Veuillez sélectionner un fichier PDF")
-      toast.error("Veuillez sélectionner un fichier PDF")
-      return
-    }
-
-    // Vérifier la taille du fichier (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       setUploadError("Le fichier est trop volumineux (max 10MB)")
       toast.error("Le fichier est trop volumineux (max 10MB)")
@@ -247,48 +245,58 @@ export function VoiceAndUploadPanel({
 
     setUploadError("")
     setIsLoading(true)
-    setStatus({ type: "loading", message: "Upload et traitement du PDF..." })
-    
-    console.log("[v0] PDF Upload - Fichier sélectionné:", {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      timestamp: new Date().toISOString()
-    })
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      
-      const computedWeekStartDate = resolveWeekStart()
-      formData.append('week_start_date', computedWeekStartDate)
-      
-      console.log("[v0] PDF Upload - FormData contents:", {
-        fileName: file.name,
-        fileSize: file.size,
-        weekStartDate: computedWeekStartDate,
-        apiUrl: '/api/upload-pdf'
-      })
+      // G4: CSV / Excel — parse local, applique via mapped_existing_schedule
+      if (isPlanningSpreadsheet(file)) {
+        setStatus({ type: "loading", message: "Import CSV/Excel en cours..." })
+        const name = file.name.toLowerCase()
+        const result = name.endsWith(".csv") || file.type === "text/csv"
+          ? parseCsvToMapped(await file.text())
+          : parseExcelToMapped(await file.arrayBuffer())
 
-      // Proxy Next.js → backend Render (évite les problèmes CORS)
-      const response = await fetch('/api/upload-pdf', {
-        method: 'POST',
+        if (Object.keys(result.mapped).length === 0) {
+          throw new Error("Aucune affectation trouvée dans le fichier")
+        }
+
+        setUploadedFileName(file.name)
+        const successMessage = `Import ${name.endsWith(".csv") ? "CSV" : "Excel"} : ${Object.keys(result.mapped).length} case(s) (${result.rowCount} ligne(s))`
+        setStatus({ type: "success", message: successMessage })
+        toast.success(successMessage)
+        result.warnings.slice(0, 3).forEach((w) => toast.warning(w))
+
+        onCommandExecuted?.({
+          mapped_existing_schedule: result.mapped,
+          warnings: result.warnings,
+        })
+
+        setTimeout(() => setStatus({ type: "idle", message: "" }), 3000)
+        return
+      }
+
+      if (!isPlanningPdf(file)) {
+        setUploadError("Formats acceptés : PDF, CSV, XLSX")
+        toast.error("Formats acceptés : PDF, CSV, XLSX")
+        return
+      }
+
+      setStatus({ type: "loading", message: "Upload et traitement du PDF..." })
+
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("week_start_date", resolveWeekStart())
+
+      const response = await fetch("/api/upload-pdf", {
+        method: "POST",
         body: formData,
       })
 
       const data = await response.json()
-      
-      console.log("[v0] PDF Upload - Backend Response:", {
-        status: response.status,
-        statusText: response.statusText,
-        data: data,
-        timestamp: new Date().toISOString()
-      })
 
       if (!response.ok) {
         const detail = data.error || data.detail || data.message
-        const errorMessage = typeof detail === 'string' ? detail : JSON.stringify(detail)
-        throw new Error(errorMessage || 'Erreur lors du upload du PDF')
+        const errorMessage = typeof detail === "string" ? detail : JSON.stringify(detail)
+        throw new Error(errorMessage || "Erreur lors du upload du PDF")
       }
 
       setUploadedFileName(file.name)
@@ -296,44 +304,22 @@ export function VoiceAndUploadPanel({
       const successMessage =
         warnCount > 0
           ? `PDF traité avec ${warnCount} avertissement(s)`
-          : `PDF traité: ${data.message || 'Fichier importé avec succès'}`
-      
-      setStatus({
-        type: "success",
-        message: successMessage
-      })
+          : `PDF traité: ${data.message || "Fichier importé avec succès"}`
 
+      setStatus({ type: "success", message: successMessage })
       toast.success(successMessage)
+      onCommandExecuted?.(data)
 
-      console.log("[v0] PDF Upload - Succès!")
-
-      if (onCommandExecuted) {
-        onCommandExecuted(data)
-      }
-
-      setTimeout(() => {
-        setStatus({ type: "idle", message: "" })
-      }, 3000)
-    } catch (error: any) {
-      const errorMessage = error.message || "Erreur lors du traitement du PDF"
-      
-      console.error('[v0] PDF Upload - Erreur détaillée:', {
-        error: error.toString(),
-        message: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-      })
-      
-      setStatus({
-        type: "error",
-        message: errorMessage
-      })
-
+      setTimeout(() => setStatus({ type: "idle", message: "" }), 3000)
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Erreur lors du traitement du fichier"
+      setStatus({ type: "error", message: errorMessage })
       toast.error(errorMessage)
     } finally {
       setIsLoading(false)
       if (fileInputRef.current) {
-        fileInputRef.current.value = ''
+        fileInputRef.current.value = ""
       }
     }
   }, [onCommandExecuted, resolveWeekStart])
@@ -361,7 +347,7 @@ export function VoiceAndUploadPanel({
             Panneau Vocal & Upload
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Utilisez la reconnaissance vocale pour ajouter des médecins au planning ou importez un PDF
+            Reconnaissance vocale, import PDF (Render), ou CSV/Excel local
           </p>
         </div>
 
@@ -443,19 +429,22 @@ export function VoiceAndUploadPanel({
           )}
         </div>
 
-        {/* Section Upload PDF */}
+        {/* Section Upload PDF / CSV / Excel */}
         <div className="space-y-3 p-3 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
             <Upload className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Import PDF du Planning
+              Import PDF / CSV / Excel
             </span>
           </div>
+          <p className="text-[11px] text-slate-500">
+            CSV/XLSX : colonnes <code>activite,LUNDI,…,DIMANCHE</code> (initiales séparées par virgule).
+          </p>
 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf"
+            accept=".pdf,.csv,.xlsx,.xls,application/pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             onChange={handleFileUpload}
             disabled={isLoading}
             className="w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 file:transition-colors file:cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
