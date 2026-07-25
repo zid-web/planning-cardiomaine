@@ -14,6 +14,8 @@
 
 Après ajout / modification : **Redeploy** Production.
 
+> **Statut (2026-07-25)** : variables Production vérifiées manuellement dans le dashboard Vercel.
+
 ## Migrations Supabase (hébergé)
 
 Appliquer si pas déjà fait :
