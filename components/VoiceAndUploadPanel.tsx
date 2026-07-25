@@ -2,20 +2,38 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Mic, MicOff, Upload, Loader2, CheckCircle2, AlertCircle, Copy } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { toast } from 'sonner'
-
-// URL de l'API Render pour l'upload du planning PDF
-const PLANNING_API_URL = 'https://guard-api-cardiomaine.onrender.com'
+import { DOCTORS } from '@/lib/constants'
+import {
+  buildCurrentWeekRequestPayload,
+  getIsoWeekStartDate,
+  toIsoDateLocal,
+  type GenerateWeekRequestPayload,
+} from '@/lib/guard-api-mapping'
 
 interface VoiceAndUploadPanelProps {
   onCommandExecuted?: (result: any) => void
   isOpen?: boolean
-  weekStartDate?: string // Date de début de semaine (YYYY-MM-DD)
+  /** Monday of the current week (YYYY-MM-DD) */
+  weekStartDate?: string
+  /** ISO week number (used to derive week_type 1|2) */
+  weekNumber?: number
+  knownDoctors?: string[]
+  /** Full GenerateWeekRequest; if omitted, built from weekStartDate + weekNumber */
+  currentWeekRequest?: GenerateWeekRequestPayload
+  vacations?: Array<{ doctor_id: string; start_date: string; end_date: string }>
 }
 
-export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStartDate: initialWeekStartDate }: VoiceAndUploadPanelProps) {
+export function VoiceAndUploadPanel({
+  onCommandExecuted,
+  isOpen = true,
+  weekStartDate: initialWeekStartDate,
+  weekNumber,
+  knownDoctors = DOCTORS,
+  currentWeekRequest,
+  vacations = [],
+}: VoiceAndUploadPanelProps) {
   const [transcript, setTranscript] = useState("")
   const [editedTranscript, setEditedTranscript] = useState("")
   const [isListening, setIsListening] = useState(false)
@@ -89,6 +107,19 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
     setEditedTranscript(transcript)
   }, [transcript])
 
+  const resolveWeekStart = useCallback(() => {
+    return initialWeekStartDate || getIsoWeekStartDate(new Date())
+  }, [initialWeekStartDate])
+
+  const resolveWeekRequest = useCallback((): GenerateWeekRequestPayload => {
+    if (currentWeekRequest) return currentWeekRequest
+    return buildCurrentWeekRequestPayload({
+      weekStartDate: resolveWeekStart(),
+      weekNumber: weekNumber ?? 1,
+      vacations,
+    })
+  }, [currentWeekRequest, resolveWeekStart, weekNumber, vacations])
+
   const toggleListening = useCallback(() => {
     if (!recognitionRef.current) {
       setStatus({
@@ -118,25 +149,26 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
       return
     }
 
-    console.log("[v0] Voice Command - Envoi:", {
-      command: text.trim(),
-      timestamp: new Date().toISOString()
-    })
+    const payload = {
+      text: text.trim(),
+      reference_date: toIsoDateLocal(new Date()),
+      known_doctors: knownDoctors,
+      current_week_request: resolveWeekRequest(),
+    }
+
+    console.log("[v0] Voice Command - Envoi:", payload)
 
     setIsLoading(true)
     setStatus({ type: "loading", message: "Interprétation de la consigne..." })
 
     try {
-      // Appel au backend pour interpréter la commande vocale
+      // Proxy Next.js → backend Render (évite les problèmes CORS)
       const response = await fetch('/api/voice-command', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          command: text.trim(),
-          timestamp: new Date().toISOString(),
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await response.json()
@@ -149,7 +181,9 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
       })
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || 'Erreur lors du traitement de la commande')
+        const detail = data.error || data.detail || data.message
+        const msg = typeof detail === 'string' ? detail : JSON.stringify(detail)
+        throw new Error(msg || 'Erreur lors du traitement de la commande')
       }
 
       const successMessage = `Succès: ${data.message || 'Commande exécutée'}`
@@ -158,21 +192,17 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
         message: successMessage
       })
 
-      // Afficher un toast de succès
       toast.success(successMessage)
 
       console.log("[v0] Voice Command - Succès!")
 
-      // Réinitialiser le transcript
       setTranscript("")
       setEditedTranscript("")
 
-      // Appeler le callback si fourni
       if (onCommandExecuted) {
         onCommandExecuted(data)
       }
 
-      // Effacer le message de succès après 3 secondes
       setTimeout(() => {
         setStatus({ type: "idle", message: "" })
       }, 3000)
@@ -191,12 +221,11 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
         message: errorMessage
       })
 
-      // Afficher un toast d'erreur
       toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
-  }, [onCommandExecuted])
+  }, [onCommandExecuted, knownDoctors, resolveWeekRequest])
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -228,26 +257,23 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
     })
 
     try {
-      // Créer le FormData avec le fichier et la date de début de semaine
       const formData = new FormData()
       formData.append('file', file)
       
-      // Ajouter la date de début de semaine
-      const computedWeekStartDate = initialWeekStartDate || new Date().toISOString().split('T')[0]
+      const computedWeekStartDate = resolveWeekStart()
       formData.append('week_start_date', computedWeekStartDate)
       
       console.log("[v0] PDF Upload - FormData contents:", {
         fileName: file.name,
         fileSize: file.size,
         weekStartDate: computedWeekStartDate,
-        apiUrl: `${PLANNING_API_URL}/upload-planning-pdf`
+        apiUrl: '/api/upload-pdf'
       })
 
-      // Envoyer le fichier à Render
-      const response = await fetch(`${PLANNING_API_URL}/upload-planning-pdf`, {
+      // Proxy Next.js → backend Render (évite les problèmes CORS)
+      const response = await fetch('/api/upload-pdf', {
         method: 'POST',
         body: formData,
-        // N'ajouter pas de Content-Type - le navigateur le définira automatiquement avec le boundary
       })
 
       const data = await response.json()
@@ -260,19 +286,23 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
       })
 
       if (!response.ok) {
-        const errorMessage = data.error || data.message || 'Erreur lors du upload du PDF'
-        throw new Error(errorMessage)
+        const detail = data.error || data.detail || data.message
+        const errorMessage = typeof detail === 'string' ? detail : JSON.stringify(detail)
+        throw new Error(errorMessage || 'Erreur lors du upload du PDF')
       }
 
       setUploadedFileName(file.name)
-      const successMessage = `PDF traité: ${data.message || 'Fichier importé avec succès'}`
+      const warnCount = Array.isArray(data.warnings) ? data.warnings.length : 0
+      const successMessage =
+        warnCount > 0
+          ? `PDF traité avec ${warnCount} avertissement(s)`
+          : `PDF traité: ${data.message || 'Fichier importé avec succès'}`
       
       setStatus({
         type: "success",
         message: successMessage
       })
 
-      // Afficher un toast de succès
       toast.success(successMessage)
 
       console.log("[v0] PDF Upload - Succès!")
@@ -281,7 +311,6 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
         onCommandExecuted(data)
       }
 
-      // Effacer le message après 3 secondes
       setTimeout(() => {
         setStatus({ type: "idle", message: "" })
       }, 3000)
@@ -300,16 +329,14 @@ export function VoiceAndUploadPanel({ onCommandExecuted, isOpen = true, weekStar
         message: errorMessage
       })
 
-      // Afficher un toast d'erreur
       toast.error(errorMessage)
     } finally {
       setIsLoading(false)
-      // Réinitialiser l'input
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
     }
-  }, [onCommandExecuted, initialWeekStartDate])
+  }, [onCommandExecuted, resolveWeekStart])
 
   const copyToClipboard = useCallback(() => {
     if (editedTranscript) {
