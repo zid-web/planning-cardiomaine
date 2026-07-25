@@ -11,7 +11,7 @@
 | `GUARD_API_URL` | Optionnel | Alias legacy utilisé par `guard-api-actions` |
 | `GUARD_API_KEY` | Optionnel | Si le backend Render exige `x-api-key` |
 | `ANTHROPIC_API_KEY` | **Non (Next.js)** | Uniquement sur le **backend Render**, pas dans Vercel/frontend |
-| `CRON_SECRET` | Recommandé | Protège `GET /api/ping-solver` (Vercel Cron envoie `Authorization: Bearer …`) |
+| `CRON_SECRET` | Optionnel | Si défini : Vercel Cron peut envoyer `Authorization: Bearer …`. Les pings **sans** header (cron-job.org) restent autorisés. Un mauvais Bearer → 401. |
 | `NEXT_PUBLIC_SENTRY_DSN` | Optionnel | Quand Sentry est branché |
 
 Après ajout / modification : **Redeploy** Production.  
