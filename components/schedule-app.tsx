@@ -63,7 +63,15 @@ const VacationsModal = lazy(() =>
 const GuardGenerationButton = lazy(() =>
   import("@/components/guard-generation-button").then((m) => ({ default: m.GuardGenerationButton })),
 )
+const HistoryImportDialog = lazy(() =>
+  import("@/components/history-import-dialog").then((m) => ({ default: m.HistoryImportDialog })),
+)
+const PatternFillDialog = lazy(() =>
+  import("@/components/pattern-fill-dialog").then((m) => ({ default: m.PatternFillDialog })),
+)
 import { createClient } from "@/lib/supabase/client"
+import type { PdfWeekExtraction } from "@/lib/history-import"
+import { loadFullScheduleFromDb } from "@/app/actions/schedule-actions"
 import {
   applyMappedExistingSchedule,
   applyParsedCommandToSchedule,
@@ -148,6 +156,9 @@ export function ScheduleApp({
   /** In Global view the admin toolbar starts collapsed to free vertical space for the grid */
   const [toolbarExpanded, setToolbarExpanded] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
+  const [historyWeeks, setHistoryWeeks] = useState<PdfWeekExtraction[]>([])
+  const [historyImportOpen, setHistoryImportOpen] = useState(false)
+  const [patternFillOpen, setPatternFillOpen] = useState(false)
 
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
@@ -1031,6 +1042,17 @@ export function ScheduleApp({
                           variant="outline"
                           size="sm"
                           className="h-7 px-2 text-[11px]"
+                          onClick={() => setPatternFillOpen(true)}
+                          title="Pré-remplir Cs/ETT/EE/hors site selon l’historique (revue avant écriture)"
+                        >
+                          <BarChart3 className="mr-1 h-3.5 w-3.5" />
+                          <span className="hidden lg:inline">Historique+</span>
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
                           onClick={() => void exportWeekPdf()}
                           disabled={isExportingPdf}
                           title="Exporter la semaine en PDF"
@@ -1876,10 +1898,46 @@ export function ScheduleApp({
                   currentWeekRequest={currentWeekRequest}
                   vacations={vacationPayload}
                   onCommandExecuted={(data) => applyVoiceOrUploadResult(data)}
+                  onHistoryWeeksExtracted={(weeks) => {
+                    setHistoryWeeks(weeks as PdfWeekExtraction[])
+                    setHistoryImportOpen(true)
+                  }}
                 />
               </Suspense>
             </div>
           )}
+
+          <Suspense fallback={null}>
+            <HistoryImportDialog
+              open={historyImportOpen}
+              onOpenChange={setHistoryImportOpen}
+              weeks={historyWeeks}
+              currentUser={currentUser || "admin"}
+              onImported={async () => {
+                try {
+                  const loaded = await loadFullScheduleFromDb()
+                  if (loaded && typeof loaded === "object") {
+                    setFullSchedule(loaded as FullSchedule)
+                  }
+                } catch (err) {
+                  console.error("[history-import] reload failed:", err)
+                }
+              }}
+            />
+            <PatternFillDialog
+              open={patternFillOpen}
+              onOpenChange={setPatternFillOpen}
+              currentSchedule={schedule}
+              onApply={(next, meta) => {
+                void updateSchedule(next, "solver")
+                toast.success(
+                  `${meta.applied} cellule(s) proposée(s) (pending)${
+                    meta.skippedTies ? ` · ${meta.skippedTies} ex-æquo ignoré(s)` : ""
+                  }`,
+                )
+              }}
+            />
+          </Suspense>
         </>
       )}
 
