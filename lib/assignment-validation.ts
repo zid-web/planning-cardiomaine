@@ -1,3 +1,4 @@
+import { isListedDoctor } from '@/lib/doctor-code'
 import { DoctorVacation } from '@/lib/types'
 import { parseISO, isAfter, isBefore } from 'date-fns'
 
@@ -9,8 +10,10 @@ export function isDoctorUnavailable(
   dateStr: string,
   vacations: DoctorVacation[]
 ): boolean {
-  // CH et FV n'ont pas de vacances
-  if (doctorId === 'CH' || doctorId === 'FV') return false
+  // CH = structure externe (pas de congés individuels). FV peut être en vacances.
+  if (doctorId === 'CH') return false
+  // Remplaçant (texte libre) : hors contrôle vacances
+  if (!isListedDoctor(doctorId)) return false
 
   const doctorVacations = vacations.filter((v) => v.doctor_id === doctorId)
   if (doctorVacations.length === 0) return false

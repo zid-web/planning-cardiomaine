@@ -2,10 +2,13 @@ export const DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"
 
 // DOCTORS list includes both internal (with login accounts) and external doctors (no login)
 // External doctors: FV, CH (Centre Hospitalier), DAAS, D (no Supabase account, no authentication)
-// FV constraints: Garde Nuit lundi only, Coro jeudi après-midi only
+// FV: Garde Nuit chaque lundi + Coro chaque jeudi après-midi (hors vacances)
 // CH: Centre Hospitalier externe (astreinte/garde)
-// DAAS: EE2 consultation externe (lundi)
+// DAAS: uniquement EE (Apm - EE2) chaque lundi après-midi (hors vacances)
 // D: Echo PSS stress consultation externe (jeudi)
+// IRM: uniquement S — lundi matin + vendredi après-midi (hors vacances)
+// Visite: uniquement U, A, B en rotation hebdomadaire
+// Rythmo: A chaque lundi + jeudi après-midi
 export const DOCTORS = [
   "P",
   "Z",

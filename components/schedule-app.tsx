@@ -38,6 +38,8 @@ import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolid
 import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
 import { calculateWorkloadStats } from "@/lib/scheduler-algo"
 import { canAssignDoctor, detectConflict } from "@/lib/assignment-validation"
+import { isListedDoctor, normalizeRemplacantLabel } from "@/lib/doctor-code"
+import { clearFixedAssigneesOnVacation } from "@/lib/fixed-assignments"
 import { populateCongesRowFromVacations } from "@/lib/vacation-congés-mapper"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -160,6 +162,7 @@ export function ScheduleApp({
   const [historyWeeks, setHistoryWeeks] = useState<PdfWeekExtraction[]>([])
   const [historyImportOpen, setHistoryImportOpen] = useState(false)
   const [patternFillOpen, setPatternFillOpen] = useState(false)
+  const [remplacantInput, setRemplacantInput] = useState("")
 
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
@@ -279,7 +282,7 @@ export function ScheduleApp({
     let scheduleToUse: ScheduleData
     
     if (!fullSchedule[weekKey]) {
-      const generated = generateWeekSchedule(weekKey)
+      const generated = generateWeekSchedule(weekKey, vacations)
       // Ensure all days in the generated schedule have empty notes for consistency
       DAYS.forEach((day) => {
         if (!generated["Notes du jour"][day]) {
@@ -294,6 +297,7 @@ export function ScheduleApp({
     // RÈGLE ABSOLUE: Remplir automatiquement la ligne "Congés" avec les médecins en vacances
     if (vacations.length > 0) {
       scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
+      scheduleToUse = clearFixedAssigneesOnVacation(scheduleToUse, weekKey, vacations)
     }
 
     return scheduleToUse
@@ -387,6 +391,7 @@ export function ScheduleApp({
   const handleCellClick = (rowKey: string, day: string) => {
     if (isCellBlocked(rowKey, day)) return
     // Admin et médecin ouvrent la même modale (édition vs lecture + demande)
+    setRemplacantInput("")
     setSelectedCell({ row: rowKey, day })
   }
 
@@ -396,7 +401,7 @@ export function ScheduleApp({
 
     // Vérifier si le médecin est indisponible (en vacances)
     const dayIndex = DAYS.indexOf(selectedCell.day)
-    if (dayIndex >= 0 && isoWeekStart) {
+    if (dayIndex >= 0 && isoWeekStart && isListedDoctor(doctor)) {
       const dayDate = new Date(`${isoWeekStart}T12:00:00`)
       dayDate.setDate(dayDate.getDate() + dayIndex)
       const dateStr = dayDate.toISOString().split("T")[0]
@@ -411,6 +416,7 @@ export function ScheduleApp({
     const currentCell = newSchedule[selectedCell.row][selectedCell.day]
     const currentValues = currentCell.value
 
+    if (currentValues.includes(doctor)) return
     const newValues = [...currentValues, doctor]
 
     const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
@@ -429,8 +435,8 @@ export function ScheduleApp({
           : undefined,
     }
 
-    // Garde logic
-    if (selectedCell.row.includes("Garde Nuit")) {
+    // Garde logic (uniquement pour les initiales listées)
+    if (selectedCell.row.includes("Garde Nuit") && isListedDoctor(doctor)) {
       const dayIndex = DAYS.indexOf(selectedCell.day)
       // dayIndex 4 = Friday, 5 = Saturday
       if (
@@ -450,6 +456,27 @@ export function ScheduleApp({
     }
 
     updateSchedule(newSchedule)
+  }
+
+  const addRemplacantToCell = () => {
+    if (!isAdmin || !selectedCell || !schedule) return
+    const label = normalizeRemplacantLabel(remplacantInput)
+    if (!label) {
+      toast.error(
+        remplacantInput.trim() && isListedDoctor(remplacantInput.trim())
+          ? "Ce code existe déjà dans la liste — utilisez le bouton correspondant"
+          : "Nom de remplaçant invalide (1–40 caractères)",
+      )
+      return
+    }
+    const currentValues = schedule[selectedCell.row][selectedCell.day].value || []
+    if (currentValues.includes(label)) {
+      toast.message("Ce remplaçant est déjà dans la case")
+      return
+    }
+    addDoctorToCell(label)
+    setRemplacantInput("")
+    toast.success(`Remplaçant « ${label} » ajouté`)
   }
 
   const removeDoctorFromCell = (indexToRemove: number) => {
@@ -791,8 +818,13 @@ export function ScheduleApp({
     // Scinti: Block Thu, Fri
     if (row.includes("Scinti") && ["JEUDI", "VENDREDI"].includes(day)) return true
 
-    // IRM: Block Tue, Wed, Thu
-    if (row.includes("IRM") && ["MARDI", "MERCREDI", "JEUDI"].includes(day)) return true
+    // IRM: uniquement Lundi (matin) + Vendredi (après-midi) — autres jours bloqués
+    if (
+      row.includes("IRM") &&
+      ["MARDI", "MERCREDI", "JEUDI", "SAMEDI", "DIMANCHE"].includes(day)
+    ) {
+      return true
+    }
 
     // CDL: Block Mon, Wed, Thu, Fri
     if (row.includes("CDL") && ["LUNDI", "MERCREDI", "JEUDI", "VENDREDI"].includes(day)) return true
@@ -1507,16 +1539,28 @@ export function ScheduleApp({
                                             const dayDate = new Date(`${isoWeekStart}T12:00:00`)
                                             dayDate.setDate(dayDate.getDate() + dayIndex)
                                             const dateStr = dayDate.toISOString().split("T")[0]
-                                            const conflict = detectConflict(doc, dateStr, rowKey, vacations)
+                                            const listed = isListedDoctor(doc)
+                                            const conflict = listed
+                                              ? detectConflict(doc, dateStr, rowKey, vacations)
+                                              : { hasConflict: false as const }
                                             
                                             return (
                                               <Badge
                                                 key={i}
                                                 className={`
-                                                  ${conflict.hasConflict ? "bg-red-500 ring-2 ring-red-300" : DOCTOR_COLORS[doc] || "bg-slate-500"} text-white border-none px-1 py-0 text-[9px] h-5 min-w-[20px] justify-center
+                                                  ${
+                                                    conflict.hasConflict
+                                                      ? "bg-red-500 ring-2 ring-red-300"
+                                                      : listed
+                                                        ? DOCTOR_COLORS[doc] || "bg-slate-500"
+                                                        : "bg-amber-600"
+                                                  } text-white border-none px-1 py-0 text-[9px] h-5 min-w-[20px] justify-center
                                                   ${isPending && cellData.request?.requester === doc ? "ring-2 ring-orange-400" : ""}
                                                 `}
-                                                title={conflict.message}
+                                                title={
+                                                  conflict.message ||
+                                                  (listed ? doc : `Remplaçant : ${doc}`)
+                                                }
                                               >
                                                 {doc}
                                               </Badge>
@@ -1593,46 +1637,86 @@ export function ScheduleApp({
               {schedule[selectedCell.row][selectedCell.day].value.length === 0 && (
                 <span className="text-slate-400 text-sm italic self-center">Aucun médecin sélectionné</span>
               )}
-              {schedule[selectedCell.row][selectedCell.day].value.map((doc, index) => (
-                <div
-                  key={`${doc}-${index}`}
-                  className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${DOCTOR_COLORS[doc] || "bg-gray-500"}`}
-                >
-                  {doc}
-                  {isAdmin && (
-                    <button
-                      onClick={() => removeDoctorFromCell(index)}
-                      className="ml-1 hover:bg-black/20 rounded-full p-0.5"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  )}
-                </div>
-              ))}
+              {schedule[selectedCell.row][selectedCell.day].value.map((doc, index) => {
+                const listed = isListedDoctor(doc)
+                return (
+                  <div
+                    key={`${doc}-${index}`}
+                    title={listed ? doc : `Remplaçant : ${doc}`}
+                    className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${
+                      listed ? DOCTOR_COLORS[doc] || "bg-gray-500" : "bg-amber-600"
+                    }`}
+                  >
+                    {!listed && <span className="text-[10px] font-normal opacity-90">Rpl</span>}
+                    {doc}
+                    {isAdmin && (
+                      <button
+                        onClick={() => removeDoctorFromCell(index)}
+                        className="ml-1 hover:bg-black/20 rounded-full p-0.5"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
 
             {isAdmin ? (
-              <div className="grid grid-cols-4 gap-2 mb-4 max-h-[300px] overflow-y-auto">
-                {DOCTORS.map((doc) => {
-                  const isSelected =
-                    schedule && selectedCell && schedule[selectedCell.row][selectedCell.day].value.includes(doc)
+              <>
+                <div className="grid grid-cols-4 gap-2 mb-3 max-h-[220px] overflow-y-auto">
+                  {DOCTORS.map((doc) => {
+                    const isSelected =
+                      schedule && selectedCell && schedule[selectedCell.row][selectedCell.day].value.includes(doc)
 
-                  return (
-                    <button
-                      key={doc}
-                      onClick={() => addDoctorToCell(doc)}
-                      disabled={isSelected}
-                      className={`
+                    return (
+                      <button
+                        key={doc}
+                        onClick={() => addDoctorToCell(doc)}
+                        disabled={isSelected}
+                        className={`
                       flex h-10 items-center justify-center rounded-lg font-bold transition-all
                       ${isSelected ? "opacity-20 cursor-not-allowed bg-slate-100 text-slate-400" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"}
                     `}
+                      >
+                        <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
+                        {doc}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-2">
+                  <Label htmlFor="remplacant-input" className="text-xs font-medium text-amber-900">
+                    Remplaçant (texte libre)
+                  </Label>
+                  <div className="mt-1 flex gap-2">
+                    <input
+                      id="remplacant-input"
+                      type="text"
+                      value={remplacantInput}
+                      onChange={(e) => setRemplacantInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          addRemplacantToCell()
+                        }
+                      }}
+                      placeholder="Ex. Dr Martin"
+                      maxLength={40}
+                      className="h-9 flex-1 rounded-md border border-amber-200 bg-white px-2 text-sm text-slate-800 outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-300"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-9 border-amber-300 text-amber-900 hover:bg-amber-100"
+                      onClick={addRemplacantToCell}
                     >
-                      <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
-                      {doc}
-                    </button>
-                  )
-                })}
-              </div>
+                      Ajouter
+                    </Button>
+                  </div>
+                </div>
+              </>
             ) : (
               <div className="mb-4 text-center text-sm text-slate-500 py-2">
                 Mode lecture. Utilisez le bouton ci-dessous pour demander un changement.

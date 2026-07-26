@@ -55,6 +55,8 @@ function main() {
 
   const existing = generateWeekSchedule(wk!)
   existing["Matin - Cs PSS"].LUNDI = { value: ["S"], type: "doctor", status: "validated" }
+  // Vider Garde Nuit Lundi (sinon FV fixe via generateWeekSchedule bloque le fill OCR)
+  existing["Garde Nuit"].LUNDI = { value: [], type: "empty", status: "validated" }
   const merged = mergeOcrIntoExisting(existing, schedule)
   assert.deepEqual(merged["Matin - Cs PSS"].LUNDI.value, ["S"], "manual kept")
   assert.deepEqual(merged["Garde Nuit"].LUNDI.value, ["W"], "empty filled from OCR")

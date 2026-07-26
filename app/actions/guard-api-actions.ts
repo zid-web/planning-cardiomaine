@@ -9,6 +9,7 @@ import {
   getCumulativeEquityFromTable,
   type EquityCounts,
 } from "@/lib/equity-tracking";
+import { applyFixedClinicalAssignments } from "@/lib/fixed-assignments";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
 import { fillClinicalVacationsFromPatterns } from "@/lib/pattern-analysis";
 
@@ -242,11 +243,11 @@ export async function generateGuardsViaAPI(
 
     const data = await response.json();
 
-    // 6. Convertit la réponse en format ScheduleData pour l'affichage
+    // 6. Convertit la réponse : assignments solveur + règles fixes (IRM/FV/DAAS/…)
     // weekStartDate est le lundi ISO (yyyy-MM-dd) passé par GuardGenerationButton.
     const wn = getWeekNumber(parseISO(weekStartDate));
     const weekKey = `${wn.year}-W${String(wn.week).padStart(2, "0")}`;
-    let scheduleData = convertAPIResponseToSchedule(data, weekKey);
+    let scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations);
 
     // 7. Vacations cliniques Cs/ETT/EE : même analyse de fréquence qu’Historique+,
     // appliquée automatiquement sur les cellules encore vides (statut pending).
@@ -342,21 +343,23 @@ async function getCongres(): Promise<{ doctor_id: string; start_date: string; en
 /**
  * Convertit la réponse Render (assignments) en vrai ScheduleData UI
  * (`row → day → { value: string[] }`), via le mapping ACTIVITY_TO_ROW.
- * `weekKey` (ex. 2026-W30) permet d'appliquer les règles fixes (Rythmo, etc.).
+ * `weekKey` + `vacations` appliquent IRM/FV/DAAS/Rythmo/Visite (hors congés).
  */
 function convertAPIResponseToSchedule(
   response: {
     assignments?: GuardAssignment[];
   },
   weekKey = "generated",
+  vacations: DoctorVacation[] = [],
 ): ScheduleData {
+  const base = generateWeekSchedule(weekKey, vacations);
   if (!response?.assignments?.length) {
     console.warn("Réponse Render sans assignments :", response);
-    return generateWeekSchedule(weekKey);
+    return base;
   }
-
-  const base = generateWeekSchedule(weekKey);
-  return mergeAssignmentsIntoSchedule(base, response.assignments);
+  // Solveur d'abord, puis règles fixes (FV lundi/jeudi, IRM, DAAS, Rythmo, Visite)
+  const merged = mergeAssignmentsIntoSchedule(base, response.assignments);
+  return applyFixedClinicalAssignments(merged, weekKey, vacations);
 }
 
 // Export pour compatibilité avec l'ancien code
