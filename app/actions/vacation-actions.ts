@@ -72,8 +72,16 @@ function normalizeDates(startDate: string, endDate: string): { start: string; en
   return { start: startDate, end: endDate }
 }
 
+function isMissingSchemaColumnError(message: string, column: string): boolean {
+  const m = message.toLowerCase()
+  return m.includes('schema cache') && m.includes(column.toLowerCase())
+}
+
 /**
- * Ajoute un congé
+ * Ajoute un congé.
+ * Insert uniquement les colonnes de base (doctor_id / dates) pour rester
+ * compatible avec les schémas prod sans `reason`. Le motif est appliqué
+ * ensuite en best-effort si la colonne existe.
  */
 export async function addVacation(
   doctorId: string,
@@ -96,7 +104,6 @@ export async function addVacation(
         doctor_id: doctorId.trim(),
         start_date: dates.start,
         end_date: dates.end,
-        reason: reason?.trim() || null,
       })
       .select()
       .single()
@@ -104,6 +111,24 @@ export async function addVacation(
     if (error) {
       console.error('[app] Error adding vacation:', error)
       return { success: false, error: error.message }
+    }
+
+    const trimmedReason = reason?.trim()
+    if (trimmedReason && data?.id) {
+      const patch = await supabase
+        .from('doctor_vacations')
+        .update({ reason: trimmedReason })
+        .eq('id', data.id)
+        .select()
+        .single()
+
+      if (patch.error) {
+        if (!isMissingSchemaColumnError(patch.error.message, 'reason')) {
+          console.warn('[app] Impossible d’enregistrer le motif du congé:', patch.error.message)
+        }
+      } else if (patch.data) {
+        return { success: true, data: patch.data }
+      }
     }
 
     return { success: true, data }
@@ -154,10 +179,9 @@ export async function updateVacation(
 
     const supabase = await createClient()
 
-    const payload: Record<string, string | null> = {
+    const payload: Record<string, string> = {
       start_date: dates.start,
       end_date: dates.end,
-      updated_at: new Date().toISOString(),
     }
     if (opts?.doctorId !== undefined) {
       if (!opts.doctorId.trim()) {
@@ -165,11 +189,8 @@ export async function updateVacation(
       }
       payload.doctor_id = opts.doctorId.trim()
     }
-    if (opts && 'reason' in opts) {
-      payload.reason = opts.reason?.trim() || null
-    }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('doctor_vacations')
       .update(payload)
       .eq('id', vacationId)
@@ -179,6 +200,25 @@ export async function updateVacation(
     if (error) {
       console.error('[app] Error updating vacation:', error)
       return { success: false, error: error.message }
+    }
+
+    // Motif en best-effort (colonne absente sur certains schémas prod).
+    if (opts && 'reason' in opts && data?.id) {
+      const trimmed = opts.reason?.trim() || null
+      const patch = await supabase
+        .from('doctor_vacations')
+        .update({ reason: trimmed })
+        .eq('id', data.id)
+        .select()
+        .single()
+
+      if (patch.error) {
+        if (!isMissingSchemaColumnError(patch.error.message, 'reason')) {
+          console.warn('[app] Impossible de mettre à jour le motif:', patch.error.message)
+        }
+      } else if (patch.data) {
+        data = patch.data
+      }
     }
 
     return { success: true, data }

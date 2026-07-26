@@ -23,6 +23,7 @@ required service is the Next.js dev server; the backend is Supabase.
 - `resolveRowKey` mappe `VACANCES` et `CONGE` → `Congés`. `detectConflict` / `canAssignDoctor` n’appliquent pas le rouge conflit sur la ligne Congés — badges = `DOCTOR_COLORS`.
 - Solveur Render : n’émettre que `CONGE` (déployer `guard-api/solver.py`).
 - Header admin **Congé** → `VacationsModal` : liste complète `doctor_vacations` (filtre médecin) + ajout / modification / suppression (`vacation-actions.ts`). Refresh via `onVacationsUpdated` → `loadVacations` dans `ScheduleApp`.
+- **Écriture congés** : `addVacation` / `updateVacation` n’écrivent que `doctor_id` + dates ; le motif `reason` est patché en best-effort (projets Supabase sans colonne → erreur PostgREST « schema cache »). Migration `20250726000000_doctor_vacations_reason_column.sql` pour l’ajouter côté SQL.
 
 ### 1/2 journée off après Garde Nuit
 - Règle (`lib/half-day-off.ts`) : après Garde Nuit → **apm du lendemain** (tous les jours sauf **samedi**). Si ce créneau est déjà l’off **habituel** du médecin → **matin** du lendemain. Dimanche précédent → lundi via `previous_sunday_guard_doctor`.
