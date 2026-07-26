@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { isListedDoctor } from "@/lib/doctor-code"
 import type { ScheduleData } from "@/lib/types"
 
 export type EquityCounts = {
@@ -31,6 +32,7 @@ export function computeWeeklyEquity(scheduleData: ScheduleData): Record<string, 
 
   const bump = (doc: string, key: keyof EquityCounts) => {
     if (!doc || doc === "CH") return // CH = structure externe, hors équité individuelle
+    if (!isListedDoctor(doc)) return // remplaçant texte libre : hors équité
     if (!equity[doc]) equity[doc] = emptyCounts()
     equity[doc][key]++
   }

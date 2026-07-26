@@ -1,5 +1,6 @@
 import { DAYS } from "./constants"
-import type { CellData, ScheduleData } from "./types"
+import { applyFixedClinicalAssignments } from "./fixed-assignments"
+import type { CellData, DoctorVacation, ScheduleData } from "./types"
 import { constraints2026, generateAstreinteRotation, NCT_DATES_2026, NCT_DATES_2025_DEC } from "./guard-scheduler"
 
 export const getWeekNumber = (d: Date) => {
@@ -109,7 +110,10 @@ export const createEmptyRow = () => {
   )
 }
 
-export const generateWeekSchedule = (weekKey: string): ScheduleData => {
+export const generateWeekSchedule = (
+  weekKey: string,
+  vacations: DoctorVacation[] = [],
+): ScheduleData => {
   const schedule: ScheduleData = {
     // Astreintes ATL
     "Astreintes ATL Matin": createEmptyRow(),
@@ -201,41 +205,8 @@ export const generateWeekSchedule = (weekKey: string): ScheduleData => {
     weekDatesMap[dayName] = !!holidays[dateStr] || !!holidaysNext[dateStr]
   })
 
-  // Apply Rules
-  // P: Rythmo Matin & Apm (Mardi)
-  if (schedule["Matin - Rythmo"] && schedule["Matin - Rythmo"]["MARDI"]) {
-    schedule["Matin - Rythmo"]["MARDI"].value = ["P"]
-  }
-  if (schedule["Apm - Rythmo"] && schedule["Apm - Rythmo"]["MARDI"]) {
-    schedule["Apm - Rythmo"]["MARDI"].value = ["P"]
-  }
-
-  // U: Rythmo Mercredi Apm
-  if (schedule["Apm - Rythmo"] && schedule["Apm - Rythmo"]["MERCREDI"]) {
-    schedule["Apm - Rythmo"]["MERCREDI"].value = ["U"]
-  }
-
-  // A: Rythmo Apm (Lundi, Jeudi)
-  if (schedule["Apm - Rythmo"]) {
-    if (schedule["Apm - Rythmo"]["LUNDI"]) schedule["Apm - Rythmo"]["LUNDI"].value = ["A"]
-    if (schedule["Apm - Rythmo"]["JEUDI"]) schedule["Apm - Rythmo"]["JEUDI"].value = ["A"]
-  }
-
-  if (schedule["Hors site - IRM"]) {
-    DAYS.forEach((day) => (schedule["Hors site - IRM"][day].value = []))
-    if (schedule["Hors site - IRM"]["LUNDI"]) schedule["Hors site - IRM"]["LUNDI"].value = ["S"]
-    if (schedule["Hors site - IRM"]["VENDREDI"]) schedule["Hors site - IRM"]["VENDREDI"].value = ["S"]
-  }
-
-  if (schedule["Matin - Visite"]) {
-    const visiteUsers = ["A", "B", "U"]
-    const visiteUser = visiteUsers[weekNum % 3]
-    DAYS.forEach((day) => {
-      // Apply to all days for Visite? Usually Visite is daily.
-      // Assuming daily assignment for the whole week based on "alternance par semaine"
-      if (schedule["Matin - Visite"][day]) schedule["Matin - Visite"][day].value = [visiteUser]
-    })
-  }
+  // Contraintes fixes : IRM(S), FV, DAAS/EE, Rythmo(A), Visite(U/A/B) — hors vacances
+  applyFixedClinicalAssignments(schedule, weekKey, vacations)
 
   if (schedule["Hors site - LFB"]) {
     DAYS.forEach((day) => (schedule["Hors site - LFB"][day].value = []))
