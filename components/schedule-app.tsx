@@ -940,7 +940,9 @@ export function ScheduleApp({
 
       setGuardProposals(proposalsByWeek)
       setShowProposals(true)
-      toast.success(`${proposals.length} propositions de gardes de nuit générées (vacations incluses)`)
+      toast.success(
+        `${proposals.length} proposition(s) Garde Nuit (Mar–Dim ; Lun = FV sauf vacances)`,
+      )
     } catch (error) {
       console.error("[app] Error generating guards:", error)
       toast.error("Erreur lors de la génération des gardes")

@@ -490,6 +490,18 @@ export function generateAstreinteRotation(
   return rotations
 }
 
+/** YYYY-MM-DD en calendrier local (évite le décalage UTC de toISOString). */
+function toLocalIsoDate(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
+/**
+ * Propositions de Garde Nuit sur Lundi→Dimanche.
+ * Lundi est exclu (déjà FV) sauf si FV est en vacances ce jour-là.
+ */
 export function generateNightGuardProposals(
   startDate: Date,
   endDate: Date,
@@ -541,79 +553,98 @@ export function generateNightGuardProposals(
     astreinteDates.get(astreinte.date)!.add(astreinte.user)
   })
 
-  const currentDate = new Date(startDate)
+  const noFridayUsers = new Set(constraints.noFridayUsers || [])
 
-  while (currentDate <= endDate) {
-    const dateStr = currentDate.toISOString().split("T")[0]
-    const dayOfWeek = currentDate.getDay()
+  // Normaliser bornes à minuit local
+  const currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
+
+  while (currentDate <= end) {
+    const dateStr = toLocalIsoDate(currentDate)
+    const dayOfWeek = currentDate.getDay() // 0=Dim … 1=Lun … 6=Sam
     const dayName = ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"][dayOfWeek]
 
-    // Only Monday to Thursday (1-4)
-    if (dayOfWeek >= 1 && dayOfWeek <= 4) {
-      const weekInfo = getWeekNumber(currentDate)
-      const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, "0")}`
+    const weekInfo = getWeekNumber(currentDate)
+    const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, "0")}`
 
-      // Get tomorrow's date for NCT check
-      const tomorrow = new Date(currentDate)
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      const tomorrowStr = tomorrow.toISOString().split("T")[0]
+    // Lundi : déjà attribué à FV — pas de proposition, sauf si FV en vacances
+    const fvOnVacation = constraints.vacations2026["FV"]?.includes(dateStr) === true
+    if (dayOfWeek === 1 && !fvOnVacation) {
+      currentDate.setDate(currentDate.getDate() + 1)
+      continue
+    }
 
-      // Get yesterday for astreinte check
-      const yesterday = new Date(currentDate)
-      yesterday.setDate(yesterday.getDate() - 1)
-      const yesterdayStr = yesterday.toISOString().split("T")[0]
+    // Case déjà remplie dans le planning existant → ne pas reproposer
+    const existingNight =
+      existingSchedule?.get(weekKey)?.["Garde Nuit"]?.[dayName]?.value || []
+    if (Array.isArray(existingNight) && existingNight.length > 0) {
+      currentDate.setDate(currentDate.getDate() + 1)
+      continue
+    }
 
-      // Check who already has a guard on this date
-      const alreadyAssigned = assignedDates.get(dateStr) || new Set()
+    // Get tomorrow's date for NCT check
+    const tomorrow = new Date(currentDate)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = toLocalIsoDate(tomorrow)
 
-      // Find available users
-      const availableUsers = GUARD_ELIGIBLE_USERS.filter((user) => {
-        // Already assigned this day
-        if (alreadyAssigned.has(user)) return false
+    // Get yesterday for astreinte check
+    const yesterday = new Date(currentDate)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayStr = toLocalIsoDate(yesterday)
 
-        // On vacation
-        if (constraints.vacations2026[user]?.includes(dateStr)) return false
+    // Check who already has a guard on this date
+    const alreadyAssigned = assignedDates.get(dateStr) || new Set()
 
-        // Off-site this day
-        if (OFF_SITE_DAYS[user]?.includes(dayName)) return false
+    // Find available users
+    const availableUsers = GUARD_ELIGIBLE_USERS.filter((user) => {
+      // Already assigned this day
+      if (alreadyAssigned.has(user)) return false
 
-        // Has NCT tomorrow
-        const tomorrowNCTUsers = nctDateUsers.get(tomorrowStr) || []
-        if (tomorrowNCTUsers.includes(user)) return false
+      // On vacation
+      if (constraints.vacations2026[user]?.includes(dateStr)) return false
 
-        // M, O, W: check if had astreinte yesterday (ATL night)
-        if (["M", "O", "W"].includes(user)) {
-          const yesterdayAstreintes = astreinteDates.get(yesterdayStr) || new Set()
-          if (yesterdayAstreintes.has(user)) return false
-        }
+      // Off-site this day
+      if (OFF_SITE_DAYS[user]?.includes(dayName)) return false
 
-        return true
+      // M/W/O : pas de garde le vendredi
+      if (dayOfWeek === 5 && noFridayUsers.has(user)) return false
+
+      // Has NCT tomorrow
+      const tomorrowNCTUsers = nctDateUsers.get(tomorrowStr) || []
+      if (tomorrowNCTUsers.includes(user)) return false
+
+      // M, O, W: check if had astreinte yesterday (ATL night)
+      if (["M", "O", "W"].includes(user)) {
+        const yesterdayAstreintes = astreinteDates.get(yesterdayStr) || new Set()
+        if (yesterdayAstreintes.has(user)) return false
+      }
+
+      return true
+    })
+
+    if (availableUsers.length > 0) {
+      // Sort by total count (guards + astreintes for M/O/W) for equitable distribution
+      availableUsers.sort((a, b) => {
+        const countA = userGuardCount[a] + (["M", "O", "W"].includes(a) ? userAstreinteCount[a] * 0.5 : 0)
+        const countB = userGuardCount[b] + (["M", "O", "W"].includes(b) ? userAstreinteCount[b] * 0.5 : 0)
+        return countA - countB
       })
 
-      if (availableUsers.length > 0) {
-        // Sort by total count (guards + astreintes for M/O/W) for equitable distribution
-        availableUsers.sort((a, b) => {
-          const countA = userGuardCount[a] + (["M", "O", "W"].includes(a) ? userAstreinteCount[a] * 0.5 : 0)
-          const countB = userGuardCount[b] + (["M", "O", "W"].includes(b) ? userAstreinteCount[b] * 0.5 : 0)
-          return countA - countB
-        })
+      // Assign the user with lowest count
+      const assignedUser = availableUsers[0]
+      userGuardCount[assignedUser]++
 
-        // Assign the user with lowest count
-        const assignedUser = availableUsers[0]
-        userGuardCount[assignedUser]++
+      if (!assignedDates.has(dateStr)) assignedDates.set(dateStr, new Set())
+      assignedDates.get(dateStr)!.add(assignedUser)
 
-        if (!assignedDates.has(dateStr)) assignedDates.set(dateStr, new Set())
-        assignedDates.get(dateStr)!.add(assignedUser)
-
-        proposals.push({
-          date: dateStr,
-          day: dayName,
-          user: assignedUser,
-          type: "Garde Nuit",
-          isProposal: true,
-          weekKey,
-        })
-      }
+      proposals.push({
+        date: dateStr,
+        day: dayName,
+        user: assignedUser,
+        type: "Garde Nuit",
+        isProposal: true,
+        weekKey,
+      })
     }
 
     currentDate.setDate(currentDate.getDate() + 1)
