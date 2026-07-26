@@ -26,6 +26,9 @@ function main() {
   assert.equal(resolveRowKey("am", "nct", "JEUDI"), "Hors site - NCT")
   assert.equal(resolveRowKey("nuit", "NCT", "JEUDI"), "Hors site - NCT")
   assert.equal(resolveRowKey("matin", "GARDE", "LUNDI"), "Garde Matin")
+  assert.equal(resolveRowKey("matin", "CORO", "LUNDI"), "Matin - Coro")
+  assert.equal(resolveRowKey("am", "CORO", "JEUDI"), "Apm - Coro")
+  assert.equal(resolveRowKey("weekend", "VACANCES", "SAMEDI"), "Vacances")
 
   assert.ok(looksLikeNctScheduleText(SAMPLE))
   const parsed = parseNctAssignmentsFromText(SAMPLE)

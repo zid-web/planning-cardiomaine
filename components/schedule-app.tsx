@@ -79,6 +79,7 @@ import {
   buildCurrentWeekRequestPayload,
   getIsoWeekStartDate,
   mergeAssignmentsIntoSchedule,
+  mergeSolverWeekIntoExisting,
 } from "@/lib/guard-api-mapping"
 import { toast } from "sonner"
 import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
@@ -240,11 +241,18 @@ export function ScheduleApp({
   const handleGenerationComplete = async (schedule: ScheduleData, warnings: string[]) => {
     const currentWeekKey = formatWeekKey(currentDate)
 
-    const mergedWeekSchedule: ScheduleData = {
-      ...schedule,
-      Congés: fullSchedule[currentWeekKey]?.Congés || schedule.Congés,
-      "Notes du jour":
-        fullSchedule[currentWeekKey]?.["Notes du jour"] || schedule["Notes du jour"],
+    // Réécrit les lignes solveur (dont vacations Coro matin/soir) sans effacer
+    // les Cs/ETT/EE déjà saisis manuellement ou via Historique+.
+    let mergedWeekSchedule = mergeSolverWeekIntoExisting(
+      fullSchedule[currentWeekKey],
+      schedule,
+    )
+    if (vacations.length > 0) {
+      mergedWeekSchedule = populateCongesRowFromVacations(
+        mergedWeekSchedule,
+        vacations,
+        currentWeekKey,
+      )
     }
 
     const updatedFullSchedule = { ...fullSchedule, [currentWeekKey]: mergedWeekSchedule }

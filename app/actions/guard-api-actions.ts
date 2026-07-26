@@ -242,7 +242,10 @@ export async function generateGuardsViaAPI(
     const data = await response.json();
 
     // 6. Convertit la réponse en format ScheduleData pour l'affichage
-    const scheduleData = convertAPIResponseToSchedule(data);
+    // weekStartDate est le lundi ISO (yyyy-MM-dd) passé par GuardGenerationButton.
+    const wn = getWeekNumber(parseISO(weekStartDate));
+    const weekKey = `${wn.year}-W${String(wn.week).padStart(2, "0")}`;
+    const scheduleData = convertAPIResponseToSchedule(data, weekKey);
 
     return {
       success: true,
@@ -302,16 +305,20 @@ async function getCongres(): Promise<{ doctor_id: string; start_date: string; en
 /**
  * Convertit la réponse Render (assignments) en vrai ScheduleData UI
  * (`row → day → { value: string[] }`), via le mapping ACTIVITY_TO_ROW.
+ * `weekKey` (ex. 2026-W30) permet d'appliquer les règles fixes (Rythmo, etc.).
  */
-function convertAPIResponseToSchedule(response: {
-  assignments?: GuardAssignment[];
-}): ScheduleData {
+function convertAPIResponseToSchedule(
+  response: {
+    assignments?: GuardAssignment[];
+  },
+  weekKey = "generated",
+): ScheduleData {
   if (!response?.assignments?.length) {
     console.warn("Réponse Render sans assignments :", response);
-    return {};
+    return generateWeekSchedule(weekKey);
   }
 
-  const base = generateWeekSchedule("generated");
+  const base = generateWeekSchedule(weekKey);
   return mergeAssignmentsIntoSchedule(base, response.assignments);
 }
 
