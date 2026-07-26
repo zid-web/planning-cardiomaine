@@ -17,6 +17,7 @@ required service is the Next.js dev server; the backend is Supabase.
 - Une seule ligne UI **Congés** (plus de ligne « Vacances »). `normalizeLeaveSchedule` (`lib/vacation-congés-mapper.ts`) : fusion legacy Vacances→Congés, remplissage depuis `doctor_vacations`, puis **retrait des absents de toutes les autres lignes** (y compris `1/2 journée off Matin/Après-midi`).
 - `resolveRowKey` mappe `VACANCES` et `CONGE` → `Congés`. `detectConflict` / `canAssignDoctor` n’appliquent pas le rouge conflit sur la ligne Congés — badges = `DOCTOR_COLORS`.
 - Solveur Render : n’émettre que `CONGE` (déployer `guard-api/solver.py`).
+- Header admin **Congé** → `VacationsModal` : liste complète `doctor_vacations` (filtre médecin) + ajout / modification / suppression (`vacation-actions.ts`). Refresh via `onVacationsUpdated` → `loadVacations` dans `ScheduleApp`.
 
 ### 1/2 journée off après Garde Nuit
 - Règle (`lib/half-day-off.ts`) : après Garde Nuit → **apm du lendemain** (tous les jours sauf **samedi**). Si ce créneau est déjà l’off **habituel** du médecin → **matin** du lendemain. Dimanche précédent → lundi via `previous_sunday_guard_doctor`.
