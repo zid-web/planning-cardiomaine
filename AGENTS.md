@@ -16,7 +16,7 @@ required service is the Next.js dev server; the backend is Supabase.
 ### Vues Aujourd’hui / Semaine
 - UI moderne dans `components/today-view.tsx` et `components/week-view.tsx` (montées par `ScheduleApp`).
 - **Notes du jour** (onglet Aujourd’hui) : carte cliquable → modale texte → `saveScheduleToDb` via `updateSchedule` sur la ligne `Notes du jour`.
-- Bouton **Historique** : forcer `text-slate-900` / fond blanc (le variant `outline` seul peut rendre l’icône illisible).
+- Toolbar admin : **Journal** = audit `schedule_history` (qui a changé quoi) ; **Pré-remplir** = propositions Cs/ETT/EE depuis semaines passées (ex-« Historique+ », icône `Wand2`). Pas redondants. Boutons outline : forcer `!text-slate-900` + fond blanc (sinon icônes transparentes).
 
 ### Congés (ligne unique absences)
 - Une seule ligne UI **Congés** (plus de ligne « Vacances »). `normalizeLeaveSchedule` (`lib/vacation-congés-mapper.ts`) : fusion legacy Vacances→Congés, remplissage depuis `doctor_vacations`, puis **retrait des absents de toutes les autres lignes** (y compris `1/2 journée off Matin/Après-midi`).
