@@ -38,7 +38,11 @@ import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolid
 import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
 import { calculateWorkloadStats } from "@/lib/scheduler-algo"
 import { canAssignDoctor, detectConflict } from "@/lib/assignment-validation"
-import { isListedDoctor, normalizeRemplacantLabel } from "@/lib/doctor-code"
+import {
+  getCellDisplayAssignees,
+  isListedDoctor,
+  normalizeRemplacantLabel,
+} from "@/lib/doctor-code"
 import { clearFixedAssigneesOnVacation } from "@/lib/fixed-assignments"
 import { populateCongesRowFromVacations } from "@/lib/vacation-congés-mapper"
 import { cn } from "@/lib/utils"
@@ -282,8 +286,9 @@ export function ScheduleApp({
     let scheduleToUse: ScheduleData
     
     if (!fullSchedule[weekKey]) {
+      // Semaine absente du state : template vide (les éditions passent par updateSchedule
+      // qui écrit fullSchedule[weekKey] — ne pas régénérer après coup).
       const generated = generateWeekSchedule(weekKey, vacations)
-      // Ensure all days in the generated schedule have empty notes for consistency
       DAYS.forEach((day) => {
         if (!generated["Notes du jour"][day]) {
           generated["Notes du jour"][day] = { value: [], type: "empty", status: "validated" }
@@ -291,6 +296,7 @@ export function ScheduleApp({
       })
       scheduleToUse = generated
     } else {
+      // Clone superficiel pour que les patches immuables ne mutent pas le state brut
       scheduleToUse = fullSchedule[weekKey]
     }
 
@@ -395,6 +401,67 @@ export function ScheduleApp({
     setSelectedCell({ row: rowKey, day })
   }
 
+  /** Mise à jour immuable d’une cellule (évite les mutations partagées avec fullSchedule). */
+  const patchSelectedCell = (
+    patch: (cell: CellData) => CellData,
+    opts?: { closeModal?: boolean },
+  ) => {
+    if (!isAdmin || !selectedCell || !schedule) return
+    const { row, day } = selectedCell
+    const prevCell: CellData = schedule[row]?.[day] || {
+      value: [],
+      type: "empty",
+      status: "validated",
+    }
+    const nextCell = patch(prevCell)
+    let newSchedule: ScheduleData = {
+      ...schedule,
+      [row]: {
+        ...(schedule[row] || {}),
+        [day]: nextCell,
+      },
+    }
+
+    // Garde Nuit → 1/2 journée off matin lendemain (initiales listées seulement)
+    const addedListed = nextCell.value.filter(
+      (d) => isListedDoctor(d) && !(prevCell.value || []).includes(d),
+    )
+    if (row.includes("Garde Nuit") && addedListed.length > 0) {
+      const dayIndex = DAYS.indexOf(day)
+      if (
+        dayIndex >= 0 &&
+        dayIndex < DAYS.length - 1 &&
+        day !== "VENDREDI" &&
+        day !== "SAMEDI"
+      ) {
+        const nextDay = DAYS[dayIndex + 1]
+        const offRow = newSchedule["1/2 journée off Matin"] || {}
+        const offCell = offRow[nextDay] || { value: [], type: "empty" as const, status: "validated" as const }
+        const offValues = [...(offCell.value || [])]
+        for (const doctor of addedListed) {
+          if (!offValues.includes(doctor)) offValues.push(doctor)
+        }
+        newSchedule = {
+          ...newSchedule,
+          "1/2 journée off Matin": {
+            ...offRow,
+            [nextDay]: {
+              ...offCell,
+              value: offValues,
+              type: offValues.length > 0 ? "doctor" : "empty",
+            },
+          },
+        }
+      }
+    }
+
+    void updateSchedule(newSchedule)
+    if (opts?.closeModal) {
+      setSelectedCell(null)
+      setRemplacantInput("")
+    }
+  }
+
   const addDoctorToCell = (doctor: string) => {
     if (!isAdmin) return
     if (!selectedCell || !schedule) return
@@ -412,50 +479,28 @@ export function ScheduleApp({
       }
     }
 
-    const newSchedule = { ...schedule }
-    const currentCell = newSchedule[selectedCell.row][selectedCell.day]
-    const currentValues = currentCell.value
-
+    const currentValues = schedule[selectedCell.row]?.[selectedCell.day]?.value || []
     if (currentValues.includes(doctor)) return
-    const newValues = [...currentValues, doctor]
 
     const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
-
-    newSchedule[selectedCell.row][selectedCell.day] = {
-      value: newValues,
-      type: newValues.length > 0 ? "doctor" : "empty",
-      status: newStatus,
-      request:
-        newStatus === "pending"
-          ? {
-              requester: currentUser,
-              status: "pending",
-              timestamp: Date.now(),
-            }
-          : undefined,
-    }
-
-    // Garde logic (uniquement pour les initiales listées)
-    if (selectedCell.row.includes("Garde Nuit") && isListedDoctor(doctor)) {
-      const dayIndex = DAYS.indexOf(selectedCell.day)
-      // dayIndex 4 = Friday, 5 = Saturday
-      if (
-        dayIndex >= 0 &&
-        dayIndex < DAYS.length - 1 &&
-        selectedCell.day !== "VENDREDI" &&
-        selectedCell.day !== "SAMEDI"
-      ) {
-        const nextDay = DAYS[dayIndex + 1]
-        const currentOffDoctors = newSchedule["1/2 journée off Matin"][nextDay].value
-
-        // Only add to OFF if not already there (keep OFF logic unique for now unless requested otherwise)
-        if (!currentOffDoctors.includes(doctor)) {
-          newSchedule["1/2 journée off Matin"][nextDay].value = [...currentOffDoctors, doctor]
-        }
+    patchSelectedCell((cell) => {
+      const newValues = [...(cell.value || []), doctor]
+      return {
+        ...cell,
+        value: newValues,
+        type: newValues.length > 0 ? "doctor" : "empty",
+        status: newStatus,
+        remplacant: cell.remplacant,
+        request:
+          newStatus === "pending"
+            ? {
+                requester: currentUser,
+                status: "pending",
+                timestamp: Date.now(),
+              }
+            : undefined,
       }
-    }
-
-    updateSchedule(newSchedule)
+    })
   }
 
   const addRemplacantToCell = () => {
@@ -469,43 +514,67 @@ export function ScheduleApp({
       )
       return
     }
-    const currentValues = schedule[selectedCell.row][selectedCell.day].value || []
-    if (currentValues.includes(label)) {
+    const cell = schedule[selectedCell.row]?.[selectedCell.day]
+    const currentValues = cell?.value || []
+    if (cell?.remplacant === label || currentValues.includes(label)) {
       toast.message("Ce remplaçant est déjà dans la case")
       return
     }
-    addDoctorToCell(label)
-    setRemplacantInput("")
-    toast.success(`Remplaçant « ${label} » ajouté`)
+
+    const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+    patchSelectedCell(
+      (prev) => {
+        const values = [...(prev.value || [])]
+        if (!values.includes(label)) values.push(label)
+        return {
+          ...prev,
+          value: values,
+          remplacant: label,
+          type: "doctor",
+          status: newStatus,
+          request:
+            newStatus === "pending"
+              ? {
+                  requester: currentUser,
+                  status: "pending",
+                  timestamp: Date.now(),
+                }
+              : undefined,
+        }
+      },
+      { closeModal: true },
+    )
+    toast.success(`Remplaçant « ${label} » ajouté dans la case`)
   }
 
   const removeDoctorFromCell = (indexToRemove: number) => {
     if (!isAdmin || !selectedCell) return
 
-    const newSchedule = { ...schedule }
-    const currentCell = newSchedule[selectedCell.row][selectedCell.day]
-    const currentValues = currentCell.value
-
+    const currentCell = schedule[selectedCell.row]?.[selectedCell.day]
+    const currentValues = currentCell?.value || []
+    const removed = currentValues[indexToRemove]
     const newValues = currentValues.filter((_, index) => index !== indexToRemove)
-
     const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
 
-    newSchedule[selectedCell.row][selectedCell.day] = {
-      value: newValues,
-      type: newValues.length > 0 ? "doctor" : "empty",
-      status: newStatus,
-      request:
-        newStatus === "pending"
-          ? {
-              requester: currentUser,
-              status: "pending",
-              timestamp: Date.now(),
-            }
-          : undefined,
-    }
-
-    updateSchedule(newSchedule)
-    setSelectedCell(null)
+    patchSelectedCell(
+      (cell) => ({
+        ...cell,
+        value: newValues,
+        remplacant:
+          cell.remplacant && removed === cell.remplacant ? undefined : cell.remplacant,
+        type: newValues.length > 0 || (cell.remplacant && removed !== cell.remplacant) ? "doctor" : "empty",
+        status: newStatus,
+        request:
+          newStatus === "pending"
+            ? {
+                requester: currentUser,
+                status: "pending",
+                timestamp: Date.now(),
+              }
+            : undefined,
+      }),
+      { closeModal: true },
+    )
   }
 
   const validateCell = () => {
@@ -1466,6 +1535,7 @@ export function ScheduleApp({
                                     type: "empty",
                                     status: "validated",
                                   }
+                                  const displayAssignees = getCellDisplayAssignees(cellData)
                                   const isSelected = selectedCell?.row === rowKey && selectedCell?.day === day
                                   const isWeekend = day === "SAMEDI" || day === "DIMANCHE"
                                   const isPending =
@@ -1481,7 +1551,7 @@ export function ScheduleApp({
                                     <td
                                       key={`${rowKey}-${day}`}
                                       className={cn(
-                                        "border border-gray-300 p-1 h-[60px] relative group min-w-[85px] text-[11px]",
+                                        "border border-gray-300 p-1 min-h-[60px] h-auto relative group min-w-[85px] text-[11px] align-middle",
                                         cellBlocked
                                           ? "bg-black cursor-not-allowed opacity-40"
                                           : "cursor-pointer hover:bg-gray-50",
@@ -1531,11 +1601,10 @@ export function ScheduleApp({
                                           }
                                         })()}
 
-                                      {/* Existing cell content */}
+                                      {/* Existing cell content (initiales + remplaçant) */}
                                       {!cellBlocked && (
-                                        <div className="flex flex-wrap gap-1 justify-center items-center h-full">
-                                          {/* Check for vacation conflicts */}
-                                          {cellData.value.map((doc: string, i: number) => {
+                                        <div className="flex flex-wrap gap-0.5 justify-center items-center content-center h-full max-h-full overflow-visible">
+                                          {displayAssignees.map((doc: string, i: number) => {
                                             const dayDate = new Date(`${isoWeekStart}T12:00:00`)
                                             dayDate.setDate(dayDate.getDate() + dayIndex)
                                             const dateStr = dayDate.toISOString().split("T")[0]
@@ -1543,10 +1612,10 @@ export function ScheduleApp({
                                             const conflict = listed
                                               ? detectConflict(doc, dateStr, rowKey, vacations)
                                               : { hasConflict: false as const }
-                                            
+
                                             return (
                                               <Badge
-                                                key={i}
+                                                key={`${doc}-${i}`}
                                                 className={`
                                                   ${
                                                     conflict.hasConflict
@@ -1554,7 +1623,7 @@ export function ScheduleApp({
                                                       : listed
                                                         ? DOCTOR_COLORS[doc] || "bg-slate-500"
                                                         : "bg-amber-600"
-                                                  } text-white border-none px-1 py-0 text-[9px] h-5 min-w-[20px] justify-center
+                                                  } text-white border-none px-1 py-0 text-[9px] h-5 max-w-[80px] truncate justify-center
                                                   ${isPending && cellData.request?.requester === doc ? "ring-2 ring-orange-400" : ""}
                                                 `}
                                                 title={
@@ -1634,11 +1703,12 @@ export function ScheduleApp({
             </div>
 
             <div className="mb-4 flex flex-wrap gap-2 min-h-[40px] p-2 bg-slate-50 rounded-lg border border-slate-100">
-              {schedule[selectedCell.row][selectedCell.day].value.length === 0 && (
+              {getCellDisplayAssignees(schedule[selectedCell.row]?.[selectedCell.day]).length === 0 && (
                 <span className="text-slate-400 text-sm italic self-center">Aucun médecin sélectionné</span>
               )}
-              {schedule[selectedCell.row][selectedCell.day].value.map((doc, index) => {
+              {getCellDisplayAssignees(schedule[selectedCell.row]?.[selectedCell.day]).map((doc, index) => {
                 const listed = isListedDoctor(doc)
+                const valueIndex = (schedule[selectedCell.row]?.[selectedCell.day]?.value || []).indexOf(doc)
                 return (
                   <div
                     key={`${doc}-${index}`}
@@ -1648,10 +1718,10 @@ export function ScheduleApp({
                     }`}
                   >
                     {!listed && <span className="text-[10px] font-normal opacity-90">Rpl</span>}
-                    {doc}
-                    {isAdmin && (
+                    <span className="max-w-[160px] truncate">{doc}</span>
+                    {isAdmin && valueIndex >= 0 && (
                       <button
-                        onClick={() => removeDoctorFromCell(index)}
+                        onClick={() => removeDoctorFromCell(valueIndex)}
                         className="ml-1 hover:bg-black/20 rounded-full p-0.5"
                       >
                         <X className="size-3" />

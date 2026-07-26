@@ -1,4 +1,5 @@
 import { DOCTORS } from "@/lib/constants"
+import type { CellData } from "@/lib/types"
 
 /** Initiale / code présent dans la liste officielle des médecins. */
 export function isListedDoctor(code: string): boolean {
@@ -16,4 +17,18 @@ export function normalizeRemplacantLabel(raw: string): string | null {
   // Éviter d’écraser une vraie initiale (ex. saisir "A" → utiliser le bouton A)
   if (isListedDoctor(trimmed)) return null
   return trimmed
+}
+
+/**
+ * Entrées à afficher dans une case : initiales listées + remplaçant (champ dédié
+ * ou libellé libre déjà présent dans `value`).
+ */
+export function getCellDisplayAssignees(cell: CellData | undefined | null): string[] {
+  if (!cell) return []
+  const values = Array.isArray(cell.value) ? cell.value.filter(Boolean) : []
+  const fromField = cell.remplacant?.trim()
+  if (fromField && !values.includes(fromField)) {
+    return [...values, fromField]
+  }
+  return values
 }
