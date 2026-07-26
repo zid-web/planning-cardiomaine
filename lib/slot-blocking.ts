@@ -1,8 +1,9 @@
 /**
  * Règles d’assignation bloquantes (matin / après-midi / garde / ½-off / congés).
  * Exception : cumul Astreinte ATL Matin/Midi + Coro correspondant.
- * Doublon : même médecin 2× dans la **même** case Cs ou ETT (affichage ²).
- * Jamais Cs PSS + Cs Tessée (ni ETT 1 + ETT 2) le même matin/apm.
+ * Doublon Cs : 2× le même médecin dans la **même** case Cs (PSS *ou* Tessée) → ².
+ * Doublon ETT : présent sur **ETT salle 1 et salle 2** le même créneau → ².
+ * Jamais Cs PSS + Cs Tessée le même matin/apm.
  */
 
 import { DAYS } from "@/lib/constants"
@@ -17,20 +18,34 @@ const GARDE_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
 const LFB_ROW = "Hors site - LFB"
 const CDL_ROW = "Hors site - CDL"
 
-/** Cases où un médecin peut être en doublon (2× dans la même cellule). */
-export const DOUBLON_ELIGIBLE_ROWS = new Set([
+/** Doublon Cs = 2× dans la même cellule (2ᵉ clic). */
+export const CS_SAME_CELL_DOUBLON_ROWS = new Set([
   "Matin - Cs PSS",
   "Matin - Cs Tessée",
-  "Matin - ETT salle 1",
-  "Matin - ETT salle 2",
   "Apm - Cs PSS",
   "Apm - Cs Tessée",
-  "Apm - ETT salle 1",
-  "Apm - ETT salle 2",
 ])
 
+export const ETT_DOUBLON_PAIRS: Record<"Matin" | "Apm", [string, string]> = {
+  Matin: ["Matin - ETT salle 1", "Matin - ETT salle 2"],
+  Apm: ["Apm - ETT salle 1", "Apm - ETT salle 2"],
+}
+
+/** @deprecated alias — préférer CS_SAME_CELL_DOUBLON_ROWS */
+export const DOUBLON_ELIGIBLE_ROWS = CS_SAME_CELL_DOUBLON_ROWS
+
 export function isDoublonEligibleRow(rowKey: string): boolean {
-  return DOUBLON_ELIGIBLE_ROWS.has(rowKey)
+  return CS_SAME_CELL_DOUBLON_ROWS.has(rowKey)
+}
+
+export function isEttRow(rowKey: string): boolean {
+  return /ETT salle [12]/.test(rowKey)
+}
+
+function ettPairForRow(rowKey: string): [string, string] | null {
+  if (rowKey.startsWith("Matin - ETT")) return ETT_DOUBLON_PAIRS.Matin
+  if (rowKey.startsWith("Apm - ETT")) return ETT_DOUBLON_PAIRS.Apm
+  return null
 }
 
 /** Classe une ligne planning dans une période de conflit. */
@@ -70,10 +85,18 @@ function isAtlCoroPair(a: string, b: string): boolean {
   )
 }
 
+function isEttDoublonPair(a: string, b: string): boolean {
+  for (const [x, y] of Object.values(ETT_DOUBLON_PAIRS)) {
+    if ((a === x && b === y) || (a === y && b === x)) return true
+  }
+  return false
+}
+
 /** Deux lignes peuvent coexister le même créneau pour le même médecin. */
 export function areCompatibleSamePeriod(rowA: string, rowB: string): boolean {
   if (rowA === rowB) return true
   if (isAtlCoroPair(rowA, rowB)) return true
+  if (isEttDoublonPair(rowA, rowB)) return true
   return false
 }
 
@@ -231,7 +254,7 @@ export function canAssignDoctorToSlot(
       if (areCompatibleSamePeriod(rowKey, otherRow)) continue
       return {
         allowed: false,
-        reason: `${doctorId} est déjà sur « ${otherRow} » — pas deux tâches sur le même créneau (sauf ATL+Coro ou doublon Cs/ETT).`,
+        reason: `${doctorId} est déjà sur « ${otherRow} » — pas deux tâches sur le même créneau (sauf ATL+Coro ou doublon ETT 1+2).`,
       }
     }
   }
@@ -239,15 +262,28 @@ export function canAssignDoctorToSlot(
   return { allowed: true }
 }
 
-/** Doublon = 2× le même médecin dans la même case Cs/ETT → exposant ². */
+/** Doublon Cs (2× même case) ou ETT (salle 1 + salle 2) → exposant ². */
 export function isDoctorDoublonInCell(
   schedule: ScheduleData,
   day: string,
   doctorId: string,
   rowKey: string,
 ): boolean {
-  if (!isDoublonEligibleRow(rowKey)) return false
-  return countDoctorInCell(schedule, rowKey, day, doctorId) >= 2
+  if (!isListedDoctor(doctorId)) return false
+
+  // Cs : 2 occurrences dans la même case
+  if (isDoublonEligibleRow(rowKey)) {
+    return countDoctorInCell(schedule, rowKey, day, doctorId) >= 2
+  }
+
+  // ETT : présent sur les deux salles du même créneau
+  const pair = ettPairForRow(rowKey)
+  if (pair) {
+    const [a, b] = pair
+    return doctorOnRow(schedule, a, day, doctorId) && doctorOnRow(schedule, b, day, doctorId)
+  }
+
+  return false
 }
 
 export function formatDoctorWithDoublon(

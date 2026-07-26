@@ -32,7 +32,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "CH = Astreinte ATL Nuit Lun–Ven (roulement) + ATL Matin/Midi/Nuit weekend (semaines impaires)",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
-  "Blocages créneau : congés, ½-off, 1 tâche/matin|apm (sauf ATL+Coro), LFB/CDL hors garde J/J+1 ; doublon = 2× même case Cs/ETT",
+  "Blocages créneau : congés, ½-off, 1 tâche/matin|apm (sauf ATL+Coro, ETT 1+2), LFB/CDL hors garde J/J+1 ; doublon Cs=2× case, ETT=2 salles",
 ] as const
 
 const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"] as const

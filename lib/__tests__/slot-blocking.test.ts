@@ -18,8 +18,9 @@ function main() {
 
   assert.equal(areCompatibleSamePeriod("Matin - Coro", "Astreintes ATL Matin"), true)
   assert.equal(areCompatibleSamePeriod("Matin - Cs PSS", "Matin - Cs Tessée"), false)
-  assert.equal(areCompatibleSamePeriod("Matin - ETT salle 1", "Matin - ETT salle 2"), false)
+  assert.equal(areCompatibleSamePeriod("Matin - ETT salle 1", "Matin - ETT salle 2"), true)
   assert.equal(isDoublonEligibleRow("Matin - Cs PSS"), true)
+  assert.equal(isDoublonEligibleRow("Matin - ETT salle 1"), false)
   assert.equal(isDoublonEligibleRow("Matin - Coro"), false)
 
   // Congés bloquent
@@ -57,11 +58,21 @@ function main() {
   r = canAssignDoctorToSlot("M", "2026-07-20", "Astreintes ATL Matin", "LUNDI", schedule, [])
   assert.equal(r.allowed, true)
 
-  // Doublon = 2× dans la même case Cs
+  // Doublon Cs = 2× dans la même case
   schedule = generateWeekSchedule(weekKey, [])
   schedule["Matin - Cs PSS"].LUNDI.value = ["B", "B"]
   assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "B", "Matin - Cs PSS"), "B²")
   assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "B", "Matin - Cs Tessée"), "B")
+
+  // Doublon ETT = salle 1 + salle 2 (médecin sans autre activité le matin)
+  schedule = generateWeekSchedule(weekKey, [])
+  schedule["Hors site - IRM"].LUNDI.value = [] // S est seedé IRM lundi
+  schedule["Matin - ETT salle 1"].LUNDI.value = ["S"]
+  r = canAssignDoctorToSlot("S", "2026-07-20", "Matin - ETT salle 2", "LUNDI", schedule, [])
+  assert.equal(r.allowed, true, r.reason)
+  schedule["Matin - ETT salle 2"].LUNDI.value = ["S"]
+  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "S", "Matin - ETT salle 1"), "S²")
+  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "S", "Matin - ETT salle 2"), "S²")
 
   // LFB bloqué jour de garde
   schedule = generateWeekSchedule(weekKey, [])
