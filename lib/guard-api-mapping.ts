@@ -7,28 +7,67 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     ASTREINTE: "Astreintes ATL Matin",
     GARDE: "Garde Matin",
     CORO: "Matin - Coro",
+    RYTHMO: "Matin - Rythmo",
     NCT: "Hors site - NCT",
+    PRE_OP: "Pré-op",
+    VACANCES: "Vacances",
+    CONGE: "Congés",
+    CONGRES: "Congrès",
     DEMI_JOURNEE_LIBRE: "1/2 journée off Matin",
   },
   am: {
     ASTREINTE: "Astreintes ATL Midi",
     GARDE: "Garde Midi",
     CORO: "Apm - Coro",
+    RYTHMO: "Apm - Rythmo",
     REEDUC: "Apm - RÉEDUCATION",
     NCT: "Hors site - NCT",
+    PRE_OP: "Pré-op",
+    VACANCES: "Vacances",
+    CONGE: "Congés",
+    CONGRES: "Congrès",
     DEMI_JOURNEE_LIBRE: "1/2 journée off Après-midi",
   },
   nuit: {
     ASTREINTE: "Astreintes ATL Nuit",
     GARDE: "Garde Nuit",
     NCT: "Hors site - NCT",
+    PRE_OP: "Pré-op",
+    VACANCES: "Vacances",
+    CONGE: "Congés",
+    CONGRES: "Congrès",
   },
   weekend: {
     ASTREINTE: "Garde Matin",
     GARDE: "Garde Matin",
     NCT: "Hors site - NCT",
+    VACANCES: "Vacances",
+    CONGE: "Congés",
+    CONGRES: "Congrès",
   },
 };
+
+/** Lignes que « Générer » peut réécrire (solveur + dérivés section 13bis). */
+export const GENERATOR_OWNED_ROW_KEYS = new Set([
+  "Astreintes ATL Matin",
+  "Astreintes ATL Midi",
+  "Astreintes ATL Nuit",
+  "Garde Matin",
+  "Garde Midi",
+  "Garde Nuit",
+  "Hors site - NCT",
+  "Matin - Coro",
+  "Apm - Coro",
+  "Matin - Rythmo",
+  "Apm - Rythmo",
+  "Apm - RÉEDUCATION",
+  "Pré-op",
+  "1/2 journée off Matin",
+  "1/2 journée off Après-midi",
+  "Vacances",
+  "Congrès",
+  "Congés",
+]);
 
 export type GuardAssignment = {
   date: string;
@@ -138,12 +177,21 @@ export function resolveRowKey(slot: string, activity: string, dayKey: string): s
   const act = (activity || "").toUpperCase().trim();
   const sl = (slot || "").toLowerCase().trim();
 
-  // NCT = ligne unique « Hors site - NCT », quel que soit le créneau renvoyé par Claude
-  // (souvent "matin" à tort → erreur "Combinaison créneau/activité non reconnue : matin / NCT").
+  // Activités « journée entière » (indépendantes du créneau renvoyé par le solveur / Claude)
   if (act === "NCT") return "Hors site - NCT";
+  if (act === "VACANCES") return "Vacances";
+  if (act === "CONGE" || act === "CONGES") return "Congés";
+  if (act === "CONGRES") return "Congrès";
+  if (act === "PRE_OP" || act === "PREOP") return "Pré-op";
 
+  // Weekend : uniquement ASTREINTE/GARDE → ligne Garde Matin (ne pas y envoyer VACANCES etc.)
   if (sl === "weekend") {
-    if (dayKey === "SAMEDI" || dayKey === "DIMANCHE") return "Garde Matin";
+    if (
+      (act === "ASTREINTE" || act === "GARDE") &&
+      (dayKey === "SAMEDI" || dayKey === "DIMANCHE")
+    ) {
+      return "Garde Matin";
+    }
   }
   const mapping = ACTIVITY_TO_ROW[sl];
   if (mapping && mapping[act]) return mapping[act];
@@ -222,6 +270,47 @@ export function mergeAssignmentsIntoSchedule(
     const [rowKey, dayKey] = key.split("||");
     next = setCellDoctors(next, rowKey, dayKey, doctors);
   }
+  return next;
+}
+
+/**
+ * Après « Générer » : réécrit les lignes solveur, préserve les vacations manuelles
+ * (Cs / ETT / EE / hors site…) déjà remplies, et les Notes du jour.
+ */
+export function mergeSolverWeekIntoExisting(
+  existing: ScheduleData | undefined,
+  generated: ScheduleData,
+): ScheduleData {
+  const base: ScheduleData = existing && Object.keys(existing).length > 0 ? { ...existing } : {};
+  const next: ScheduleData = { ...base };
+
+  for (const [rowKey, generatedRow] of Object.entries(generated || {})) {
+    if (!generatedRow) continue;
+
+    if (GENERATOR_OWNED_ROW_KEYS.has(rowKey)) {
+      next[rowKey] = { ...generatedRow };
+      continue;
+    }
+
+    if (rowKey === "Notes du jour") {
+      next[rowKey] = base[rowKey] || generatedRow;
+      continue;
+    }
+
+    // Vacations non-solveur (Cs, ETT, EE, …) : garder les cellules déjà remplies
+    const existingRow = base[rowKey] || {};
+    const mergedRow: ScheduleData[string] = { ...existingRow };
+    for (const day of DAYS) {
+      const existingCell = existingRow[day];
+      const hasExisting =
+        Array.isArray(existingCell?.value) && existingCell.value.length > 0;
+      if (!hasExisting && generatedRow[day]) {
+        mergedRow[day] = generatedRow[day];
+      }
+    }
+    next[rowKey] = mergedRow;
+  }
+
   return next;
 }
 
