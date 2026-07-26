@@ -141,6 +141,8 @@ export function VacationsModal({
 
     try {
       setIsLoading(true)
+      let saved: DoctorVacation | undefined
+
       if (formMode === 'create') {
         const result = await addVacation(
           form.doctorId,
@@ -152,7 +154,10 @@ export function VacationsModal({
           setError(result.error || "Erreur lors de l'ajout du congé")
           return
         }
+        saved = result.data
         setSuccess('Congé ajouté')
+        // Afficher immédiatement le médecin concerné (évite un filtre qui masque l’ajout)
+        setFilterDoctor('all')
       } else if (formMode === 'edit' && editingId) {
         const result = await updateVacation(editingId, form.startDate, form.endDate, {
           doctorId: form.doctorId,
@@ -162,11 +167,21 @@ export function VacationsModal({
           setError(result.error || 'Erreur lors de la modification du congé')
           return
         }
+        saved = result.data
         setSuccess('Congé modifié')
       }
+
+      // Mise à jour optimiste de la liste, puis rechargement serveur
+      if (saved) {
+        setVacations((prev) => {
+          const without = prev.filter((v) => v.id !== saved!.id)
+          return sortVacations([...without, saved!])
+        })
+      }
+
       resetForm()
       await loadVacations()
-      onVacationsUpdated?.()
+      await Promise.resolve(onVacationsUpdated?.())
     } catch (err) {
       setError('Erreur lors de l’enregistrement')
       console.error('[app] Error saving vacation:', err)

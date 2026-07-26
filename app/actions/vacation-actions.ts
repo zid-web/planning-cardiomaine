@@ -1,12 +1,20 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
+import { unstable_noStore as noStore } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { DoctorVacation } from '@/lib/types'
+
+function revalidateCongesViews() {
+  revalidatePath('/protected/planning')
+  revalidatePath('/', 'layout')
+}
 
 /**
  * Récupère toutes les vacances / congés
  */
 export async function getAllVacations(): Promise<DoctorVacation[]> {
+  noStore()
   try {
     const supabase = await createClient()
 
@@ -31,6 +39,7 @@ export async function getAllVacations(): Promise<DoctorVacation[]> {
  * Récupère les vacances d'un médecin
  */
 export async function getDoctorVacationsList(doctorId: string): Promise<DoctorVacation[]> {
+  noStore()
   try {
     const supabase = await createClient()
 
@@ -103,6 +112,7 @@ export async function addVacation(
       return { success: false, error: error.message }
     }
 
+    revalidateCongesViews()
     return { success: true, data }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -125,6 +135,7 @@ export async function deleteVacation(vacationId: string): Promise<{ success: boo
       return { success: false, error: error.message }
     }
 
+    revalidateCongesViews()
     return { success: true }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -178,6 +189,7 @@ export async function updateVacation(
       return { success: false, error: error.message }
     }
 
+    revalidateCongesViews()
     return { success: true, data }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
