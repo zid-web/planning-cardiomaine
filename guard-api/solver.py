@@ -43,6 +43,8 @@ class GenerateWeekRequest(BaseModel):
     congres: List[Vacation] = []      # même structure que vacations : doctor_id, start_date, end_date
     weekend_mode: Literal["CH", "ROTATION"] = "ROTATION"
     last_nct_doctor: Optional[str] = None  # W ou M
+    # Garde/astreinte nuit dimanche semaine précédente → 1/2 off lundi
+    previous_sunday_guard_doctor: Optional[str] = None
     existing_schedule: Optional[Dict[str, List[str]]] = None  # clé "row_key||day_name" -> [doctors]
 
 class Assignment(BaseModel):
@@ -169,12 +171,28 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
     daas_id = next((m.id for m in req.medecins if m.statut == StatutMedecin.DAAS), None)
     d_id = next((m.id for m in req.medecins if m.statut == StatutMedecin.D), None)
 
-    # Demi-journées libres
+    # Demi-journées libres (exclusions solveur + émission DEMI_JOURNEE_LIBRE)
     half_days_off = {
         ("MERCREDI", "am"): {"M", "W", "G", "Z", "H"},
         ("JEUDI", "am"): {"U", "S", "P"},
         ("VENDREDI", "am"): {"O", "A", "K", "R", "T"},
     }
+
+    # Off habituels après-midi (aligné frontend lib/half-day-off.ts) —
+    # utilisés pour choisir le créneau de récupération après garde de nuit.
+    habitual_afternoon_off = {
+        "LUNDI": {"R", "K", "Z"},
+        "MARDI": {"H", "S"},
+        "MERCREDI": {"B", "W", "M", "G"},
+        "JEUDI": {"P", "U"},
+        "VENDREDI": {"O", "K", "A"},
+    }
+
+    def target_off_slot_after_night_guard(doc_id: str, next_day_name: str) -> str:
+        """Par défaut apm lendemain ; matin si apm déjà off habituel."""
+        if doc_id in habitual_afternoon_off.get(next_day_name, set()):
+            return "matin"
+        return "am"
 
     fixed_exclusions = {
         "P": {1},
@@ -387,18 +405,33 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
                 warnings.append(f"FV : créneau {DAY_NAMES_FR[d_idx]} {slot} {act} non disponible")
 
     # --- 7. Règles d'exclusion métier ---
-    # 7.1 AM OFF après garde nuit (lendemain matin)
+    # 7.1 Récupération après garde nuit : pas d'activité sur le créneau cible
+    # du lendemain (apm par défaut, matin si off habituel apm). Pas pour samedi nuit.
     for doc_id in medecins_map:
-        for d_idx in range(6):
+        for d_idx in range(5):  # LUNDI→VENDREDI (pas SAMEDI → dimanche)
             var_nuit_garde = x.get((doc_id, d_idx, "nuit", "GARDE"))
             if var_nuit_garde is None:
                 continue
-            am_next_vars = [v for (doc, d, sl, act), v in x.items() if d == d_idx + 1 and sl == "matin" and doc == doc_id]
-            if am_next_vars:
-                presence_matin = model.NewBoolVar(f"presence_matin_{doc_id}_{d_idx+1}")
-                model.Add(sum(am_next_vars) >= 1).OnlyEnforceIf(presence_matin)
-                model.Add(sum(am_next_vars) == 0).OnlyEnforceIf(presence_matin.Not())
-                model.AddImplication(var_nuit_garde, presence_matin.Not())
+            next_day_name = DAY_NAMES_FR[d_idx + 1]
+            target_slot = target_off_slot_after_night_guard(doc_id, next_day_name)
+            next_vars = [
+                v for (doc, d, sl, act), v in x.items()
+                if d == d_idx + 1 and sl == target_slot and doc == doc_id
+            ]
+            if next_vars:
+                presence = model.NewBoolVar(f"presence_{target_slot}_{doc_id}_{d_idx+1}")
+                model.Add(sum(next_vars) >= 1).OnlyEnforceIf(presence)
+                model.Add(sum(next_vars) == 0).OnlyEnforceIf(presence.Not())
+                model.AddImplication(var_nuit_garde, presence.Not())
+
+    # Dimanche précédent → off lundi (créneau cible)
+    if req.previous_sunday_guard_doctor:
+        sunday_doc = req.previous_sunday_guard_doctor
+        if sunday_doc and sunday_doc != "CH":
+            target_slot = target_off_slot_after_night_guard(sunday_doc, "LUNDI")
+            for (doc, d, sl, act), v in x.items():
+                if doc == sunday_doc and d == 0 and sl == target_slot:
+                    model.Add(v == 0)
 
     # 7.2 Garde nuit => pas d'activité sur AM le même jour
     for doc_id in medecins_map:
@@ -592,6 +625,37 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
                     doctor=doc,
                     note="assigné par le solveur"
                 ))
+
+        # 1/2 journée off récupération après Garde Nuit (apm lendemain, matin si conflit)
+        for (doc, d_idx, slot, activity), var in x.items():
+            if slot != "nuit" or activity != "GARDE":
+                continue
+            if solver.Value(var) != 1:
+                continue
+            if d_idx >= 5:  # samedi / dimanche : pas de récupération in-week (sauf dim→lun via previous)
+                continue
+            next_day_name = DAY_NAMES_FR[d_idx + 1]
+            target_slot = target_off_slot_after_night_guard(doc, next_day_name)
+            assignments.append(Assignment(
+                date=days[d_idx + 1].isoformat(),
+                day_name=next_day_name,
+                slot=target_slot,
+                activity="DEMI_JOURNEE_LIBRE",
+                doctor=doc,
+                note="Repos après garde de nuit",
+            ))
+
+        if req.previous_sunday_guard_doctor and req.previous_sunday_guard_doctor != "CH":
+            sunday_doc = req.previous_sunday_guard_doctor
+            target_slot = target_off_slot_after_night_guard(sunday_doc, "LUNDI")
+            assignments.append(Assignment(
+                date=days[0].isoformat(),
+                day_name="LUNDI",
+                slot=target_slot,
+                activity="DEMI_JOURNEE_LIBRE",
+                doctor=sunday_doc,
+                note="Repos après garde de nuit (dimanche précédent)",
+            ))
 
         # Ajouter les CH pour les nuits structurelles si manquants
         # On vérifie si CH est présent pour les jours où il est attendu

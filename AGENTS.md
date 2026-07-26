@@ -18,6 +18,10 @@ required service is the Next.js dev server; the backend is Supabase.
 - `resolveRowKey` mappe `VACANCES` et `CONGE` → `Congés`. `detectConflict` / `canAssignDoctor` n’appliquent pas le rouge conflit sur la ligne Congés — badges = `DOCTOR_COLORS`.
 - Solveur Render : n’émettre que `CONGE` (déployer `guard-api/solver.py`).
 
+### 1/2 journée off après Garde Nuit
+- Règle (`lib/half-day-off.ts`) : après Garde Nuit → **apm du lendemain** (tous les jours sauf **samedi**). Si ce créneau est déjà l’off **habituel** du médecin → **matin** du lendemain. Dimanche précédent → lundi via `previous_sunday_guard_doctor`.
+- Appliqué à l’édition UI (`placeNightGuardRecoveryOff`), après « Générer » (`applyNightGuardRecoveryOffs`), et dans `guard-api/solver.py` (contrainte + `DEMI_JOURNEE_LIBRE`). Offs habituels = `HABITUAL_HALF_DAYS_OFF` (seed `generateWeekSchedule`).
+
 ### Solver generation entry point (post Claude cleanup — 2026-07-25)
 - **Only** `GuardGenerationButton` → equity-aware Render pipeline (`guard-api-actions` / `guard-generation-actions`). Do **not** reintroduce `generateWeekWithSolver`, `app/actions/solver-api-actions.ts`, `components/solver-generation-button.tsx`, or a second « Générer avec Solveur » button (equity hardcoded to 0 — removed twice after bad merges).
 - **Equity / CellData:** real cells are `{ value: string[], status, type? }` with activity = **row key** (`Astreintes ATL Nuit`, `Garde Matin`, …). Never read `cell.doctor` / `cell.activity` in equity code — that silently zeros all points. Use `lib/equity-tracking.ts` (`computeWeeklyEquity` / `upsertWeeklyEquity`); `saveScheduleToDb` refreshes weekly snapshots.
