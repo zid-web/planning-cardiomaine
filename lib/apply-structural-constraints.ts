@@ -29,6 +29,8 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "NCT calendrier (W/M)",
   "LFB Jeudi rotation B/Z/A",
   "CH = Astreinte ATL Nuit Lun–Ven (roulement) + ATL Matin/Midi/Nuit weekend (semaines impaires)",
+  "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
+  "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
 ] as const
 
 const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"] as const
@@ -36,9 +38,11 @@ const WEEKEND = ["SAMEDI", "DIMANCHE"] as const
 const ATL_ROWS = ["Astreintes ATL Matin", "Astreintes ATL Midi", "Astreintes ATL Nuit"] as const
 
 /**
- * Roulement CH (aligné solveur week_type / generateAstreinteRotation) :
- * - semaine impaire : nuits Lun/Mar/Ven + weekend ATL complet
- * - semaine paire : nuits Mer/Jeu (weekend WOM via Générer)
+ * Roulement CH / WOM (aligné solveur week_type) :
+ * - semaine impaire (week_type=1) : CH = nuits Lun/Mar/Ven + weekend ATL complet ;
+ *   W/O/M = nuits Mer/Jeu
+ * - semaine paire (week_type=2) : CH = nuits Mer/Jeu ;
+ *   W/O/M = nuits Lun/Mar/Ven + weekend ATL complet
  */
 export function isOddIsoWeek(weekKey: string): boolean {
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
@@ -149,13 +153,23 @@ function setValidatedDoctors(
   day: string,
   doctors: string[],
 ): ScheduleData {
+  return setCellDoctors(schedule, rowKey, day, doctors, "validated")
+}
+
+function setCellDoctors(
+  schedule: ScheduleData,
+  rowKey: string,
+  day: string,
+  doctors: string[],
+  status: "validated" | "pending",
+): ScheduleData {
   if (!schedule[rowKey]?.[day]) return schedule
   const cell = schedule[rowKey][day]
   const unique = [...new Set(doctors.filter(Boolean))]
   const same =
     (cell.value || []).length === unique.length &&
     unique.every((d, i) => cell.value?.[i] === d) &&
-    cell.status === "validated"
+    (cell.status || "validated") === status
   if (same) return schedule
   return {
     ...schedule,
@@ -165,10 +179,32 @@ function setValidatedDoctors(
         ...cell,
         value: unique,
         type: unique.length ? "doctor" : "empty",
-        status: "validated",
+        status,
       },
     },
   }
+}
+
+/**
+ * Lun–Ven : Astreintes ATL Matin / Midi suivent Coro matin / Coro apm
+ * (même médecin). Si Coro est vide, l’ATL correspondante est vidée.
+ * Le statut (pending/validated) est repris de la cellule Coro.
+ */
+export function applyAtlFollowsCoroConstraints(schedule: ScheduleData): ScheduleData {
+  let next = schedule
+  for (const day of WEEKDAYS) {
+    const coroMatin = schedule["Matin - Coro"]?.[day]
+    const coroApm = schedule["Apm - Coro"]?.[day]
+    if (coroMatin || schedule["Astreintes ATL Matin"]?.[day]) {
+      const status = (coroMatin?.status || "validated") as "validated" | "pending"
+      next = setCellDoctors(next, "Astreintes ATL Matin", day, coroMatin?.value || [], status)
+    }
+    if (coroApm || schedule["Astreintes ATL Midi"]?.[day]) {
+      const status = (coroApm?.status || "validated") as "validated" | "pending"
+      next = setCellDoctors(next, "Astreintes ATL Midi", day, coroApm?.value || [], status)
+    }
+  }
+  return next
 }
 
 /** NCT calendrier pour la semaine courante. */
@@ -250,29 +286,35 @@ export function applyStructuralConstraints(
   // 2) CH astreintes (nuit semaine + ATL weekend selon roulement)
   next = applyChAstreinteConstraints(next, weekKey)
 
-  // 3) NCT calendrier + LFB
+  // 3) ATL Matin/Midi Lun–Ven = miroir Coro (après strip CH Matin/Midi)
+  next = applyAtlFollowsCoroConstraints(next)
+
+  // 4) NCT calendrier + LFB
   next = applyNctCalendarConstraints(next, weekKey)
   next = applyLfbThursdayRotation(next, weekKey)
 
-  // 4) Demi-journées libres habituelles
+  // 5) Demi-journées libres habituelles
   if (opts.applyHabitualHalfDays !== false) {
     next = applyHabitualHalfDaysOff(next)
   }
 
-  // 5) Récupération ½ off après Garde Nuit (y compris dimanche précédent → lundi)
+  // 6) Récupération ½ off après Garde Nuit (y compris dimanche précédent → lundi)
   if (opts.applyNightRecovery !== false) {
     next = applyNightGuardRecoveryOffs(next, {
       previousSundayGuardDoctor: opts.previousSundayGuardDoctor,
     })
   }
 
-  // 6) Congés + retrait des absents des autres lignes
+  // 7) Congés + retrait des absents des autres lignes
   next = normalizeLeaveSchedule(next, vacations, weekKey)
 
-  // 7) Sécurité : retirer initiales fixes si congés (idempotent avec 1)
+  // 8) Sécurité : retirer initiales fixes si congés (idempotent avec 1)
   if (vacations.length > 0) {
     next = clearFixedAssigneesOnVacation(next, weekKey, vacations)
   }
+
+  // 9) Re-miroir Coro→ATL après strip congés (si Coro a perdu un médecin)
+  next = applyAtlFollowsCoroConstraints(next)
 
   return next
 }

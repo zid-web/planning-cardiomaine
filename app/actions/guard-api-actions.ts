@@ -170,7 +170,7 @@ export async function generateGuardsViaAPI(
   weekStartDate: string,
   vacations: DoctorVacation[],
   weekendMode: "ROTATION" | "CH" = "ROTATION",
-  weekType: 1 | 2 = 1
+  weekType?: 1 | 2,
 ) {
   try {
     // 1. Récupère la liste des médecins depuis Supabase
@@ -182,6 +182,12 @@ export async function generateGuardsViaAPI(
         error: "Aucun médecin trouvé dans la base de données.",
       };
     }
+
+    // Semaine ISO → week_type (1 = impaire, 2 = paire). Ne pas laisser le défaut 1
+    // sinon les semaines paires reçoivent la structure CH/WOM inversée.
+    const wnEarly = getWeekNumber(parseISO(weekStartDate));
+    const resolvedWeekType: 1 | 2 =
+      weekType ?? (wnEarly.week % 2 === 0 ? 2 : 1);
 
     // 2. Récupère le dernier médecin NCT (depuis la base ou une variable)
     const lastNctDoctor = await getLastNctDoctor();
@@ -195,7 +201,7 @@ export async function generateGuardsViaAPI(
     // 4. Construit le payload pour Render
     const payload = {
       week_start_date: weekStartDate,
-      week_type: weekType,
+      week_type: resolvedWeekType,
       weekend_mode: weekendMode,
       last_nct_doctor: lastNctDoctor || doctors[0]?.id || "M",
       previous_sunday_guard_doctor: previousSundayGuardDoctor,

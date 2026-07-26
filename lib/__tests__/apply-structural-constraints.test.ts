@@ -3,6 +3,7 @@
  */
 import assert from "node:assert/strict"
 import {
+  applyAtlFollowsCoroConstraints,
   applyChAstreinteConstraints,
   applyStructuralConstraints,
   schedulesDiffer,
@@ -105,6 +106,21 @@ function main() {
   assert.ok(chSchedule["Astreintes ATL Nuit"].JEUDI.value.includes("CH"))
   assert.ok(!chSchedule["Astreintes ATL Nuit"].LUNDI.value.includes("CH"))
   assert.ok(!chSchedule["Astreintes ATL Matin"].SAMEDI.value.includes("CH"))
+
+  // ATL Matin/Midi Lun–Ven suivent Coro
+  let coroSched = generateWeekSchedule(oddWeek, [])
+  coroSched["Matin - Coro"].LUNDI = { value: ["W"], type: "doctor", status: "pending" }
+  coroSched["Apm - Coro"].LUNDI = { value: ["O"], type: "doctor", status: "pending" }
+  coroSched["Astreintes ATL Matin"].LUNDI = { value: ["CH"], type: "doctor", status: "validated" }
+  coroSched = applyAtlFollowsCoroConstraints(coroSched)
+  assert.deepEqual(coroSched["Astreintes ATL Matin"].LUNDI.value, ["W"])
+  assert.equal(coroSched["Astreintes ATL Matin"].LUNDI.status, "pending")
+  assert.deepEqual(coroSched["Astreintes ATL Midi"].LUNDI.value, ["O"])
+  // Coro vide → ATL vidé
+  coroSched["Matin - Coro"].MARDI = { value: [], type: "empty", status: "validated" }
+  coroSched["Astreintes ATL Matin"].MARDI = { value: ["M"], type: "doctor", status: "pending" }
+  coroSched = applyAtlFollowsCoroConstraints(coroSched)
+  assert.deepEqual(coroSched["Astreintes ATL Matin"].MARDI.value, [])
 
   console.log("✅ apply-structural-constraints tests passed")
 }
