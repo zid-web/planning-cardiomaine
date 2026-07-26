@@ -1929,7 +1929,7 @@ export function ScheduleApp({
               onOpenChange={setPatternFillOpen}
               currentSchedule={schedule}
               onApply={(next, meta) => {
-                void updateSchedule(next, "solver")
+                void updateSchedule(next, "ui")
                 toast.success(
                   `${meta.applied} cellule(s) proposée(s) (pending)${
                     meta.skippedTies ? ` · ${meta.skippedTies} ex-æquo ignoré(s)` : ""
