@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Claude Vision + PDF peut dépasser 10–15s ; Hobby/Pro Vercel max 60s.
+// Fallback uniquement : le client uploade de préférence en direct vers Render
+// (multi-pages Claude Vision ≫ 60s → 504 si on passe par ce proxy).
 export const maxDuration = 60;
 export const runtime = 'nodejs';
 

@@ -21,6 +21,10 @@ import {
   looksLikeNctScheduleText,
   parseNctAssignmentsFromText,
 } from '@/lib/nct-command'
+import {
+  uploadPlanningPdfDirect,
+  uploadPlanningPdfViaProxy,
+} from '@/lib/pdf-upload-client'
 
 interface VoiceAndUploadPanelProps {
   onCommandExecuted?: (result: any) => void
@@ -267,11 +271,11 @@ export function VoiceAndUploadPanel({
     const file = event.target.files?.[0]
     if (!file) return
 
-    // Limite pratique Vercel Hobby/Pro pour le body des Serverless Functions (~4,5 Mo).
-    const maxUploadBytes = 4 * 1024 * 1024
+    // Upload PDF part directement vers Render (plus de limite body Vercel ~4,5 Mo).
+    const maxUploadBytes = 12 * 1024 * 1024
     if (file.size > maxUploadBytes) {
       const msg =
-        "Fichier trop volumineux pour l’upload (max 4 Mo). Compressez le PDF ou photographiez une seule page."
+        "Fichier trop volumineux (max 12 Mo). Compressez le PDF (9 pages scannées pèsent souvent trop)."
       setUploadError(msg)
       toast.error(msg)
       return
@@ -314,7 +318,12 @@ export function VoiceAndUploadPanel({
         return
       }
 
-      setStatus({ type: "loading", message: "Upload et traitement du PDF..." })
+      // Multi-pages Claude Vision ≫ timeout Vercel (504). Upload direct Render.
+      setStatus({
+        type: "loading",
+        message:
+          "Extraction PDF en cours (1–3 min pour un multi-pages)… Ne fermez pas l’onglet.",
+      })
 
       const weekStart = resolveWeekStart()
       const maxAttempts = 2
@@ -329,44 +338,36 @@ export function VoiceAndUploadPanel({
           })
         }
 
-        const formData = new FormData()
-        formData.append("file", file)
-        formData.append("week_start_date", weekStart)
-
-        const response = await fetch("/api/upload-pdf", {
-          method: "POST",
-          body: formData,
-        })
-
-        if (response.status === 413) {
-          throw new Error(
-            "Fichier refusé (413 — trop volumineux). Réduisez le PDF sous 4 Mo puis réessayez.",
-          )
-        }
-
-        let payload: Record<string, unknown> = {}
         try {
-          payload = (await response.json()) as Record<string, unknown>
-        } catch {
-          if (!response.ok) {
-            throw new Error(`Erreur upload PDF (HTTP ${response.status})`)
-          }
-        }
-
-        if (response.ok) {
-          data = payload
+          // 1) Direct Render (évite 504 Gateway Timeout du proxy Vercel)
+          data = await uploadPlanningPdfDirect(file, weekStart)
           break
-        }
+        } catch (directErr: unknown) {
+          const de = directErr as Error & { status?: number; retryable?: boolean }
+          lastError = de.message || lastError
+          console.warn("[upload-pdf] direct Render failed:", lastError)
 
-        const detail = payload.error || payload.detail || payload.message
-        lastError =
-          typeof detail === "string" ? detail : JSON.stringify(detail) || lastError
-        const retryable =
-          payload.retryable === true ||
-          /JSON malformé|Expecting value/i.test(lastError)
-
-        if (!retryable || attempt === maxAttempts) {
-          throw new Error(lastError)
+          // 2) Fallback proxy Next si CORS / réseau ; risque 504 sur multi-pages
+          try {
+            data = await uploadPlanningPdfViaProxy(file, weekStart)
+            break
+          } catch (proxyErr: unknown) {
+            const pe = proxyErr as Error & { status?: number; retryable?: boolean }
+            lastError = pe.message || lastError
+            if (pe.status === 504 || /504|Gateway Timeout/i.test(lastError)) {
+              lastError =
+                "Timeout (504) : l’extraction multi-pages dépasse la limite Vercel. " +
+                "Réessayez — l’upload part normalement vers Render en direct. " +
+                "Si ça continue, utilisez l’alias Production stable (pas une URL preview dpl_…)."
+            }
+            const retryable =
+              de.retryable === true ||
+              pe.retryable === true ||
+              /JSON malformé|Expecting value|504|502|503/i.test(lastError)
+            if (!retryable || attempt === maxAttempts) {
+              throw new Error(lastError)
+            }
+          }
         }
       }
 
