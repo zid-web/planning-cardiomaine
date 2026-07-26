@@ -9,7 +9,11 @@ import {
   weekKeyFromDatesByDay,
   type PdfWeekExtraction,
 } from "@/lib/history-import"
-import { computeRowPatternsFromSchedules } from "@/lib/pattern-analysis"
+import {
+  computeRowPatternsFromSchedules,
+  fillClinicalVacationsFromPatterns,
+  isClinicalVacationRow,
+} from "@/lib/pattern-analysis"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
 
 function main() {
@@ -76,6 +80,24 @@ function main() {
     false,
     "solver rows excluded",
   )
+
+  // Générer doit pouvoir remplir Cs/ETT/EE via les mêmes patterns
+  assert.equal(isClinicalVacationRow("Matin - Cs PSS"), true)
+  assert.equal(isClinicalVacationRow("Apm - ETT salle 2"), true)
+  assert.equal(isClinicalVacationRow("Matin - EE1"), true)
+  assert.equal(isClinicalVacationRow("Apm - Stress"), true)
+  assert.equal(isClinicalVacationRow("Matin - Coro"), false)
+  assert.equal(isClinicalVacationRow("Garde Nuit"), false)
+
+  const target = generateWeekSchedule("2026-W38")
+  s1["Matin - ETT salle 1"].MARDI = { value: ["A"], type: "doctor", status: "validated" }
+  s2["Matin - ETT salle 1"].MARDI = { value: ["A"], type: "doctor", status: "validated" }
+  s3["Matin - ETT salle 1"].MARDI = { value: ["B"], type: "doctor", status: "validated" }
+  const filled = fillClinicalVacationsFromPatterns(target, [s1, s2, s3])
+  assert.ok(filled.applied >= 1)
+  assert.deepEqual(filled.next["Matin - Cs PSS"].LUNDI.value, ["P"])
+  assert.deepEqual(filled.next["Matin - ETT salle 1"].MARDI.value, ["A"])
+  assert.equal(filled.next["Matin - Cs PSS"].LUNDI.status, "pending")
 
   console.log("✅ history-import / pattern-analysis tests passed")
 }
