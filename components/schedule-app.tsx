@@ -43,7 +43,11 @@ import {
   isListedDoctor,
   normalizeRemplacantLabel,
 } from "@/lib/doctor-code"
-import { formatDoctorWithDoublon } from "@/lib/slot-blocking"
+import {
+  countDoctorInCell,
+  formatDoctorWithDoublon,
+  isDoublonEligibleRow,
+} from "@/lib/slot-blocking"
 import {
   applyStructuralConstraints,
   schedulesDiffer,
@@ -483,7 +487,32 @@ export function ScheduleApp({
     if (!isAdmin) return
     if (!selectedCell || !schedule) return
 
-    // Vérifier si le médecin est indisponible (en vacances)
+    const currentValues = schedule[selectedCell.row]?.[selectedCell.day]?.value || []
+    const alreadyCount = currentValues.filter((d) => d === doctor).length
+    const canDoublon = isDoublonEligibleRow(selectedCell.row) && isListedDoctor(doctor)
+
+    // Déjà en doublon (2×) dans cette case
+    if (alreadyCount >= 2) {
+      toast.message(`${doctor} est déjà en doublon sur cette case`)
+      return
+    }
+
+    // 2ᵉ clic sur Cs/ETT = doublon dans la même case (pas de re-validation créneau)
+    if (alreadyCount === 1 && canDoublon) {
+      const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+      patchSelectedCell((cell) => ({
+        ...cell,
+        value: [...(cell.value || []), doctor],
+        type: "doctor",
+        status: newStatus,
+      }))
+      toast.success(`${doctor}² doublon sur ${selectedCell.row}`)
+      return
+    }
+
+    if (alreadyCount >= 1) return
+
+    // Vérifier congés / créneau / exclusions
     const dayIndex = DAYS.indexOf(selectedCell.day)
     if (dayIndex >= 0 && isoWeekStart && isListedDoctor(doctor)) {
       const dayDate = new Date(`${isoWeekStart}T12:00:00`)
@@ -498,9 +527,6 @@ export function ScheduleApp({
         return
       }
     }
-
-    const currentValues = schedule[selectedCell.row]?.[selectedCell.day]?.value || []
-    if (currentValues.includes(doctor)) return
 
     const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
     patchSelectedCell((cell) => {
@@ -1529,7 +1555,7 @@ export function ScheduleApp({
                                       {/* Existing cell content (initiales + remplaçant) */}
                                       {!cellBlocked && (
                                         <div className="flex flex-wrap gap-0.5 justify-center items-center content-center h-full max-h-full overflow-visible">
-                                          {displayAssignees.map((doc: string, i: number) => {
+                                          {[...new Set(displayAssignees)].map((doc: string) => {
                                             const dayDate = new Date(`${isoWeekStart}T12:00:00`)
                                             dayDate.setDate(dayDate.getDate() + dayIndex)
                                             const dateStr = dayDate.toISOString().split("T")[0]
@@ -1537,10 +1563,13 @@ export function ScheduleApp({
                                             const conflict = listed
                                               ? detectConflict(doc, dateStr, rowKey, vacations)
                                               : { hasConflict: false as const }
+                                            const label = listed
+                                              ? formatDoctorWithDoublon(schedule, day, doc, rowKey)
+                                              : doc
 
                                             return (
                                               <Badge
-                                                key={`${doc}-${i}`}
+                                                key={doc}
                                                 className={`
                                                   ${
                                                     conflict.hasConflict
@@ -1554,13 +1583,13 @@ export function ScheduleApp({
                                                 title={
                                                   conflict.message ||
                                                   (listed
-                                                    ? formatDoctorWithDoublon(schedule, day, doc, rowKey)
+                                                    ? label.includes("²")
+                                                      ? `${doc} en doublon (même case)`
+                                                      : doc
                                                     : `Remplaçant : ${doc}`)
                                                 }
                                               >
-                                                {listed
-                                                  ? formatDoctorWithDoublon(schedule, day, doc, rowKey)
-                                                  : doc}
+                                                {label}
                                               </Badge>
                                             )
                                           })}
@@ -1650,41 +1679,78 @@ export function ScheduleApp({
               {getCellDisplayAssignees(schedule[selectedCell.row]?.[selectedCell.day]).length === 0 && (
                 <span className="text-slate-400 text-sm italic self-center">Aucun médecin sélectionné</span>
               )}
-              {getCellDisplayAssignees(schedule[selectedCell.row]?.[selectedCell.day]).map((doc, index) => {
-                const listed = isListedDoctor(doc)
-                const valueIndex = (schedule[selectedCell.row]?.[selectedCell.day]?.value || []).indexOf(doc)
-                return (
-                  <div
-                    key={`${doc}-${index}`}
-                    title={listed ? doc : `Remplaçant : ${doc}`}
-                    className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${
-                      listed ? DOCTOR_COLORS[doc] || "bg-gray-500" : "bg-amber-600"
-                    }`}
-                  >
-                    {!listed && <span className="text-[10px] font-normal opacity-90">Rpl</span>}
-                    <span className="max-w-[160px] truncate">{doc}</span>
-                    {isAdmin && valueIndex >= 0 && (
-                      <button
-                        onClick={() => removeDoctorFromCell(valueIndex)}
-                        className="ml-1 hover:bg-black/20 rounded-full p-0.5"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
+              {[...new Set(getCellDisplayAssignees(schedule[selectedCell.row]?.[selectedCell.day]))].map(
+                (doc) => {
+                  const listed = isListedDoctor(doc)
+                  const values = schedule[selectedCell.row]?.[selectedCell.day]?.value || []
+                  const firstIndex = values.indexOf(doc)
+                  const occ = values.filter((d) => d === doc).length
+                  const label =
+                    listed && occ >= 2 && isDoublonEligibleRow(selectedCell.row) ? `${doc}²` : doc
+                  return (
+                    <div
+                      key={doc}
+                      title={
+                        listed
+                          ? occ >= 2
+                            ? `${doc} en doublon (même case)`
+                            : doc
+                          : `Remplaçant : ${doc}`
+                      }
+                      className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${
+                        listed ? DOCTOR_COLORS[doc] || "bg-gray-500" : "bg-amber-600"
+                      }`}
+                    >
+                      {!listed && <span className="text-[10px] font-normal opacity-90">Rpl</span>}
+                      <span className="max-w-[160px] truncate">{label}</span>
+                      {isAdmin && firstIndex >= 0 && (
+                        <button
+                          onClick={() => {
+                            // Retirer toutes les occurrences (doublon → une action)
+                            if (!selectedCell) return
+                            const cell = schedule[selectedCell.row]?.[selectedCell.day]
+                            const current = cell?.value || []
+                            const newValues = current.filter((d) => d !== doc)
+                            const newStatus =
+                              currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+                            patchSelectedCell((c) => ({
+                              ...c,
+                              value: newValues,
+                              remplacant:
+                                c.remplacant && doc === c.remplacant ? undefined : c.remplacant,
+                              type:
+                                newValues.length > 0 ||
+                                (c.remplacant && doc !== c.remplacant)
+                                  ? "doctor"
+                                  : "empty",
+                              status: newStatus,
+                            }))
+                          }}
+                          className="ml-1 hover:bg-black/20 rounded-full p-0.5"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                  )
+                },
+              )}
             </div>
 
             {isAdmin ? (
               <>
                 <div className="grid grid-cols-4 gap-2 mb-3 max-h-[220px] overflow-y-auto">
                   {DOCTORS.map((doc) => {
-                    const isSelected =
-                      schedule && selectedCell && schedule[selectedCell.row][selectedCell.day].value.includes(doc)
+                    const occ =
+                      schedule && selectedCell
+                        ? countDoctorInCell(schedule, selectedCell.row, selectedCell.day, doc)
+                        : 0
+                    const canPromoteDoublon =
+                      Boolean(selectedCell && isDoublonEligibleRow(selectedCell.row) && occ === 1)
+                    const fullyInCell = occ >= 2 || (occ >= 1 && !canPromoteDoublon)
 
                     let blockReason: string | undefined
-                    if (!isSelected && selectedCell && schedule && isoWeekStart) {
+                    if (occ === 0 && selectedCell && schedule && isoWeekStart) {
                       const dayIndex = DAYS.indexOf(selectedCell.day)
                       if (dayIndex >= 0) {
                         const dayDate = new Date(`${isoWeekStart}T12:00:00`)
@@ -1703,19 +1769,30 @@ export function ScheduleApp({
                       <button
                         key={doc}
                         onClick={() => addDoctorToCell(doc)}
-                        disabled={isSelected || blocked}
-                        title={blockReason || (isSelected ? "Déjà dans la case" : undefined)}
+                        disabled={fullyInCell || blocked}
+                        title={
+                          blockReason ||
+                          (occ >= 2
+                            ? "Déjà en doublon"
+                            : canPromoteDoublon
+                              ? `Cliquer pour doublon ${doc}² (même case)`
+                              : occ >= 1
+                                ? "Déjà dans la case"
+                                : undefined)
+                        }
                         className={`
                       flex h-10 items-center justify-center rounded-lg font-bold transition-all
                       ${
-                        isSelected || blocked
+                        fullyInCell || blocked
                           ? "opacity-30 cursor-not-allowed bg-slate-100 text-slate-400"
-                          : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"
+                          : canPromoteDoublon
+                            ? "bg-sky-50 border border-sky-300 text-sky-900 hover:bg-sky-100 shadow-sm active:scale-95"
+                            : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"
                       }
                     `}
                       >
                         <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
-                        {doc}
+                        {canPromoteDoublon ? `${doc}²` : doc}
                       </button>
                     )
                   })}
