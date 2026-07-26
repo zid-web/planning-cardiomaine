@@ -202,9 +202,10 @@ export function VacationsModal({
         return
       }
       if (editingId === vacationId) resetForm()
+      setVacations((prev) => prev.filter((v) => v.id !== vacationId))
       setSuccess('Congé supprimé')
       await loadVacations()
-      onVacationsUpdated?.()
+      await Promise.resolve(onVacationsUpdated?.())
     } catch (err) {
       setError('Erreur lors de la suppression')
       console.error('[app] Error deleting vacation:', err)
