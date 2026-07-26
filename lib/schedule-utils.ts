@@ -379,73 +379,10 @@ export const generateWeekSchedule = (
         })
       }
 
-      if (currentRotation.saturday1 === "CH") {
-        applyWeekendAtl("SAMEDI", "CH")
-        applyWeekendAtl("DIMANCHE", "CH")
-      } else if (currentRotation.saturday1) {
-        // Semaine paire WOM : conserve l’ancien remplissage Garde pour seed (propositions)
-        const satDate = dayToDateMap["SAMEDI"]
-        const hasFixedSat = constraints2026.fixedAstreintes2026.some((a) => a.date === satDate)
-
-        if (!hasFixedSat) {
-          ;["Matin", "Midi", "Nuit"].forEach((period) => {
-            const gardeKey = `Garde ${period}`
-            if (schedule[gardeKey]?.["SAMEDI"]) {
-              const current = schedule[gardeKey]["SAMEDI"].value
-              if (!current.includes(currentRotation.saturday1!)) {
-                schedule[gardeKey]["SAMEDI"].value = [...current, currentRotation.saturday1!]
-              }
-            }
-          })
-        }
-
-        const sunDate = dayToDateMap["DIMANCHE"]
-        const hasFixedSun = constraints2026.fixedAstreintes2026.some((a) => a.date === sunDate)
-
-        if (!hasFixedSun) {
-          ;["Matin", "Midi", "Nuit"].forEach((period) => {
-            const gardeKey = `Garde ${period}`
-            if (schedule[gardeKey]?.["DIMANCHE"]) {
-              const current = schedule[gardeKey]["DIMANCHE"].value
-              if (!current.includes(currentRotation.saturday1!)) {
-                schedule[gardeKey]["DIMANCHE"].value = [...current, currentRotation.saturday1!]
-              }
-            }
-          })
-        }
-      }
-
-      // 2e médecin weekend (WOM) — pas CH (déjà couvert par applyWeekendAtl)
-      if (currentRotation.saturday2 && currentRotation.saturday2 !== "CH") {
-        const satDate = dayToDateMap["SAMEDI"]
-        const hasFixedSat = constraints2026.fixedAstreintes2026.some((a) => a.date === satDate)
-
-        if (!hasFixedSat) {
-          ;["Midi", "Nuit"].forEach((period) => {
-            const gardeKey = `Garde ${period}`
-            if (schedule[gardeKey]?.["SAMEDI"]) {
-              const current = schedule[gardeKey]["SAMEDI"].value
-              if (!current.includes(currentRotation.saturday2!)) {
-                schedule[gardeKey]["SAMEDI"].value = [...current, currentRotation.saturday2!]
-              }
-            }
-          })
-        }
-
-        const sunDate = dayToDateMap["DIMANCHE"]
-        const hasFixedSun = constraints2026.fixedAstreintes2026.some((a) => a.date === sunDate)
-
-        if (!hasFixedSun) {
-          ;["Matin", "Midi", "Nuit"].forEach((period) => {
-            const astrKey = `Astreintes ATL ${period}`
-            if (schedule[astrKey]?.["DIMANCHE"]) {
-              const current = schedule[astrKey]["DIMANCHE"].value
-              if (!current.includes(currentRotation.saturday2!)) {
-                schedule[astrKey]["DIMANCHE"].value = [...current, currentRotation.saturday2!]
-              }
-            }
-          })
-        }
+      // Weekend ATL Matin/Midi/Nuit : CH (impaire) ou un W/O/M (paire) — 1 médecin / créneau
+      if (currentRotation.saturday1) {
+        applyWeekendAtl("SAMEDI", currentRotation.saturday1)
+        applyWeekendAtl("DIMANCHE", currentRotation.saturday1)
       }
     }
   }

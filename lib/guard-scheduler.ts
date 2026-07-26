@@ -473,38 +473,39 @@ export function generateAstreinteRotation(
     const isEvenWeek = currentWeek % 2 === 0
 
     if (isEvenWeek) {
-      // Semaines PAIRES:
-      // O/M/W: lundi nuit, mardi nuit, vendredi nuit, samedi midi+nuit, dimanche entier
-      // CH: mercredi nuit, jeudi nuit
+      // Semaines PAIRES (week_type=2):
+      // W/O/M: nuits Lun/Mar/Ven (pas de nuits consécutives) + weekend ATL entier
+      // CH: nuits Mer/Jeu
       const user1 = usersOMW[userIndex % 3]
       const user2 = usersOMW[(userIndex + 1) % 3]
+      const user3 = usersOMW[(userIndex + 2) % 3]
 
-      rotation.monday = user1 // O/M/W lundi nuit
-      rotation.tuesday = user1 // O/M/W mardi nuit
-      rotation.wednesday = "CH" // CH mercredi nuit
-      rotation.thursday = "CH" // CH jeudi nuit
-      rotation.friday = user1 // O/M/W vendredi nuit
-      rotation.saturday1 = user1 // O/M/W samedi midi + nuit (garde vendredi = garde samedi)
-      rotation.saturday2 = user2 // 2ème utilisateur samedi midi + nuit
-      rotation.sunday = user1 // O/M/W dimanche entier (celui qui fait vendredi fait dimanche entier)
-      rotation.sundayAstreinte = user2 // 2ème fait astreinte dimanche
+      rotation.monday = user1
+      rotation.tuesday = user2 // ≠ lundi (pas de nuits ATL consécutives Lun–Ven)
+      rotation.wednesday = "CH"
+      rotation.thursday = "CH"
+      rotation.friday = user3 // isolé (Mer/Jeu = CH)
+      rotation.saturday1 = user1 // weekend ATL Matin/Midi/Nuit (solveur affine)
+      rotation.saturday2 = user2
+      rotation.sunday = user1
+      rotation.sundayAstreinte = user2
 
       userIndex++
     } else {
-      // Semaines IMPAIRES:
-      // CH: lundi nuit, mardi nuit, vendredi nuit, samedi midi+nuit, dimanche entier
-      // O/M/W: mercredi nuit, jeudi nuit
+      // Semaines IMPAIRES (week_type=1):
+      // CH: nuits Lun/Mar/Ven + weekend ATL entier
+      // W/O/M: nuits Mer/Jeu (médecins distincts — pas de consécutif)
       const user1 = usersOMW[userIndex % 3]
 
-      rotation.monday = "CH" // CH lundi nuit
-      rotation.tuesday = "CH" // CH mardi nuit
-      rotation.wednesday = user1 // O/M/W mercredi nuit
-      rotation.thursday = usersOMW[(userIndex + 1) % 3] // O/M/W jeudi nuit
-      rotation.friday = "CH" // CH vendredi nuit
-      rotation.saturday1 = "CH" // CH samedi midi + nuit
-      rotation.saturday2 = "CH" // CH samedi
-      rotation.sunday = "CH" // CH dimanche entier
-      rotation.sundayAstreinte = "CH" // CH astreinte dimanche
+      rotation.monday = "CH"
+      rotation.tuesday = "CH"
+      rotation.wednesday = user1
+      rotation.thursday = usersOMW[(userIndex + 1) % 3]
+      rotation.friday = "CH"
+      rotation.saturday1 = "CH"
+      rotation.saturday2 = "CH"
+      rotation.sunday = "CH"
+      rotation.sundayAstreinte = "CH"
 
       userIndex++
     }

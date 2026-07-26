@@ -214,8 +214,13 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
             return
 
         if doc_id == fv_id:
-            if not (d_idx == 0 and slot == "nuit" and activity == "GARDE") and \
-               not (d_idx == 3 and slot == "am" and activity == "CORO"):
+            # FV : Garde Nuit lundi + Coro jeudi apm (+ ATL Midi jeudi = suit Coro)
+            fv_ok = (
+                (d_idx == 0 and slot == "nuit" and activity == "GARDE")
+                or (d_idx == 3 and slot == "am" and activity == "CORO")
+                or (d_idx == 3 and slot == "am" and activity == "ASTREINTE")
+            )
+            if not fv_ok:
                 return
 
         day_name = DAY_NAMES_FR[d_idx]
@@ -391,6 +396,28 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
                 warnings.append(
                     f"{day_nm} {slot} : aucun médecin disponible pour CORO (vacances ou exclu)"
                 )
+
+    # --- 5quater. ATL Matin/Midi Lun–Ven = même médecin que CORO matin/am ---
+    for d_idx in range(5):
+        for slot in ("matin", "am"):
+            for doc_id in medecins_map:
+                var_coro = x.get((doc_id, d_idx, slot, "CORO"))
+                var_astr = x.get((doc_id, d_idx, slot, "ASTREINTE"))
+                if var_coro is not None and var_astr is not None:
+                    model.Add(var_coro == var_astr)
+                elif var_coro is not None and var_astr is None:
+                    # Peut faire CORO mais pas ASTREINTE → interdit (sauf forçage FV déjà couvert)
+                    model.Add(var_coro == 0)
+
+    # --- 5quinquies. Pas de nuits d'astreinte consécutives Lun–Ven pour W/O/M ---
+    # (CH exempt — son roulement impose parfois Lun+Mar ; weekend exempt.)
+    # Dérogation admin : saisies dans existing_schedule (§10) peuvent forcer autrement.
+    for doc in wom_pool:
+        for d_idx in range(4):  # Lun→Ven : paires (0,1)…(3,4) ; pas Ven→Sam
+            v1 = x.get((doc, d_idx, "nuit", "ASTREINTE"))
+            v2 = x.get((doc, d_idx + 1, "nuit", "ASTREINTE"))
+            if v1 is not None and v2 is not None:
+                model.AddBoolOr([v1.Not(), v2.Not()])
 
     # --- 6. Fixes forcés (FV) ---
     if fv_id:

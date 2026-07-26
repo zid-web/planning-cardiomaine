@@ -31,8 +31,12 @@ required service is the Next.js dev server; the backend is Supabase.
 - Appliqué à l’édition UI (`placeNightGuardRecoveryOff`), après « Générer » (`applyNightGuardRecoveryOffs`), et dans `guard-api/solver.py` (contrainte + `DEMI_JOURNEE_LIBRE`). Offs habituels = `HABITUAL_HALF_DAYS_OFF` (seed `generateWeekSchedule`).
 
 ### Contraintes structurelles vs « Générer »
-- **Toujours injectées** (sans Générer) via `applyStructuralConstraints` (`lib/apply-structural-constraints.ts`) : IRM/FV/DAAS/Rythmo/Visite, ½-off habituelles, récupération garde nuit, Congés + strip absents, NCT calendrier, LFB, **CH**. Appliqué à l’affichage + persisté (`source: "constraints"`, debounce).
-- **CH** (`applyChAstreinteConstraints`) : uniquement **Astreintes ATL Nuit** Lun–Ven selon roulement (impaire = Lun/Mar/Ven ; paire = Mer/Jeu) ; weekend **ATL Matin+Midi+Nuit** les semaines **impaires**. Pas de CH sur ATL Matin/Midi en semaine.
+- **Toujours injectées** (sans Générer) via `applyStructuralConstraints` (`lib/apply-structural-constraints.ts`) : IRM/FV/DAAS/Rythmo/Visite, ½-off habituelles, récupération garde nuit, Congés + strip absents, NCT calendrier, LFB, **CH**, **ATL←Coro**. Appliqué à l’affichage + persisté (`source: "constraints"`, debounce).
+- **Astreintes ATL** :
+  - **Lun–Ven Matin/Midi** : même médecin que `Matin - Coro` / `Apm - Coro` (`applyAtlFollowsCoroConstraints` + solveur §5quater).
+  - **Nuits + weekend** (cycle 2 sem., `week_type` 1=impaire / 2=paire) : **impaire** = CH Lun/Mar/Ven nuit + weekend ATL entier ; W/O/M = Mer/Jeu nuit. **paire** = W/O/M Lun/Mar/Ven nuit + weekend ATL ; CH = Mer/Jeu nuit.
+  - **Pas de nuits ATL consécutives Lun–Ven** pour W/O/M (weekend et CH exempts) — solveur §5quinquies ; dérogation = saisie admin / `existing_schedule`.
+  - `generateGuardsViaAPI` dérive `week_type` du n° de semaine ISO (ne plus laisser le défaut 1).
 - **« Générer »** = **propositions** `pending` (gardes/astreintes WOM/Coro/…) à valider admin. Lignes : `GENERATOR_PROPOSAL_ROW_KEYS`.
 - Congés CRUD : **ne pas** `revalidatePath('/protected/planning')` pendant la modale (course / faux positif « message channel closed »). Refresh via `onVacationsUpdated` + `getAllVacations` (`noStore`).
 - Do **not** reintroduce `generateWeekWithSolver` / second bouton solveur.
