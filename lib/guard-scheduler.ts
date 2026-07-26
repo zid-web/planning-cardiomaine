@@ -44,6 +44,25 @@ export interface ScheduleData {
 // FV cannot be assigned for other activities and never counts as an authenticated user
 const GUARD_ELIGIBLE_USERS = ["A", "B", "G", "Z", "H", "S", "O", "M", "W", "U", "P"]
 
+/**
+ * Préférences / pools Garde Nuit par jour (aligné solveur guard-api).
+ * - prefer : choisis en priorité s’ils sont disponibles
+ * - only   : pool exclusif (pas de repli hors liste)
+ */
+export const NIGHT_GUARD_DAY_RULES: Record<
+  string,
+  { prefer?: readonly string[]; only?: readonly string[] }
+> = {
+  LUNDI: { prefer: ["U"] }, // uniquement si FV absent
+  MARDI: { prefer: ["M", "W"] },
+  MERCREDI: { prefer: ["S", "U", "P"] },
+  JEUDI: { prefer: ["O", "G"] },
+  VENDREDI: { only: ["B", "G", "A", "P", "Z", "H", "S"] }, // O/W/M jamais
+}
+
+/** O, W, M ne font jamais de garde vendredi nuit */
+export const NO_FRIDAY_NIGHT_GUARD = ["O", "W", "M"] as const
+
 // External doctor assignments - can be manually assigned by admin but not included in automatic rotations
 const EXTERNAL_DOCTORS = {
   FV: {
@@ -79,6 +98,19 @@ export const NCT_DATES_2026 = [
   { date: "2026-06-18", user: "M" },
   { date: "2026-06-25", user: "W" },
   { date: "2026-07-09", user: "M" },
+  // Aligné guard-api/solver.py NCT_FIXED_SCHEDULE
+  { date: "2026-07-23", user: "M" },
+  { date: "2026-09-10", user: "M" },
+  { date: "2026-09-17", user: "W" },
+  { date: "2026-09-24", user: "M" },
+  { date: "2026-10-01", user: "W" },
+  { date: "2026-10-15", user: "M" },
+  { date: "2026-10-29", user: "W" },
+  { date: "2026-11-05", user: "M" },
+  { date: "2026-11-19", user: "W" },
+  { date: "2026-11-26", user: "M" },
+  { date: "2026-12-03", user: "W" },
+  { date: "2026-12-17", user: "M" },
 ]
 
 export const NCT_DATES_2025_DEC = [
@@ -498,9 +530,20 @@ function toLocalIsoDate(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+/** Calendrier NCT (W/M uniquement) : date ISO → médecin */
+function buildNctDoctorByDate(): Map<string, string> {
+  const map = new Map<string, string>()
+  ;[...NCT_DATES_2025_DEC, ...NCT_DATES_2026].forEach((nct) => {
+    map.set(nct.date, nct.user)
+  })
+  return map
+}
+
 /**
  * Propositions de Garde Nuit sur Lundi→Dimanche.
- * Lundi est exclu (déjà FV) sauf si FV est en vacances ce jour-là.
+ * Lundi exclu (FV) sauf vacances FV → alors préférence U.
+ * Préférences : Mar M/W, Mer S/U/P, Jeu O/G, Ven pool B/G/A/P/Z/H/S.
+ * Jamais de garde la veille d’un NCT pour le médecin NCT (W/M).
  */
 export function generateNightGuardProposals(
   startDate: Date,
@@ -510,71 +553,72 @@ export function generateNightGuardProposals(
 ): GuardProposal[] {
   const proposals: GuardProposal[] = []
   const userGuardCount: Record<string, number> = {}
-  const userAstreinteCount: Record<string, number> = {} // Track astreintes for M, O, W
+  const userAstreinteCount: Record<string, number> = {}
+  const fridayRotationCount: Record<string, number> = {}
 
-  // Initialize counts
+  const fridayPool = NIGHT_GUARD_DAY_RULES.VENDREDI.only || []
+  fridayPool.forEach((user) => {
+    fridayRotationCount[user] = 0
+  })
+
   GUARD_ELIGIBLE_USERS.forEach((user) => {
     userGuardCount[user] = 0
     userAstreinteCount[user] = 0
   })
 
-  // Count existing fixed guards
   constraints.fixedGuards2026.forEach((guard) => {
     if (guard.type === "Garde Nuit" && userGuardCount[guard.user] !== undefined) {
       userGuardCount[guard.user]++
+      if (fridayRotationCount[guard.user] !== undefined) {
+        const d = new Date(`${guard.date}T12:00:00`)
+        if (d.getDay() === 5) fridayRotationCount[guard.user]++
+      }
     }
   })
 
-  // Count existing fixed astreintes for M, O, W (they count in the balance)
   constraints.fixedAstreintes2026.forEach((astreinte) => {
     if (["M", "O", "W"].includes(astreinte.user)) {
       userAstreinteCount[astreinte.user] = (userAstreinteCount[astreinte.user] || 0) + 1
     }
   })
 
-  // Build NCT dates lookup (date -> users with NCT)
-  const nctDateUsers = new Map<string, string[]>()
-  ;[...constraints.fixedGuards2026, ...constraints.fixedAstreintes2026].forEach((nct) => {
-    if (!nctDateUsers.has(nct.date)) nctDateUsers.set(nct.date, [])
-    nctDateUsers.get(nct.date)!.push(nct.user)
-  })
+  // NCT : uniquement W/M (calendrier dédié, pas les fixed guards)
+  const nctDoctorByDate = buildNctDoctorByDate()
 
-  // Track assigned dates to avoid duplicates
   const assignedDates = new Map<string, Set<string>>()
   constraints.fixedGuards2026.forEach((guard) => {
     if (!assignedDates.has(guard.date)) assignedDates.set(guard.date, new Set())
     assignedDates.get(guard.date)!.add(guard.user)
   })
 
-  // Track astreinte dates for M, O, W to avoid guard the day after
   const astreinteDates = new Map<string, Set<string>>()
   constraints.fixedAstreintes2026.forEach((astreinte) => {
     if (!astreinteDates.has(astreinte.date)) astreinteDates.set(astreinte.date, new Set())
     astreinteDates.get(astreinte.date)!.add(astreinte.user)
   })
 
-  const noFridayUsers = new Set(constraints.noFridayUsers || [])
+  const noFridayHard = new Set<string>([
+    ...NO_FRIDAY_NIGHT_GUARD,
+    ...(constraints.noFridayUsers || []),
+  ])
 
-  // Normaliser bornes à minuit local
   const currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
   const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate())
 
   while (currentDate <= end) {
     const dateStr = toLocalIsoDate(currentDate)
-    const dayOfWeek = currentDate.getDay() // 0=Dim … 1=Lun … 6=Sam
+    const dayOfWeek = currentDate.getDay()
     const dayName = ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"][dayOfWeek]
 
     const weekInfo = getWeekNumber(currentDate)
     const weekKey = `${weekInfo.year}-W${String(weekInfo.week).padStart(2, "0")}`
 
-    // Lundi : déjà attribué à FV — pas de proposition, sauf si FV en vacances
     const fvOnVacation = constraints.vacations2026["FV"]?.includes(dateStr) === true
     if (dayOfWeek === 1 && !fvOnVacation) {
       currentDate.setDate(currentDate.getDate() + 1)
       continue
     }
 
-    // Case déjà remplie dans le planning existant → ne pas reproposer
     const existingNight =
       existingSchedule?.get(weekKey)?.["Garde Nuit"]?.[dayName]?.value || []
     if (Array.isArray(existingNight) && existingNight.length > 0) {
@@ -582,38 +626,29 @@ export function generateNightGuardProposals(
       continue
     }
 
-    // Get tomorrow's date for NCT check
     const tomorrow = new Date(currentDate)
     tomorrow.setDate(tomorrow.getDate() + 1)
     const tomorrowStr = toLocalIsoDate(tomorrow)
+    const nctDoctorTomorrow = nctDoctorByDate.get(tomorrowStr) // W ou M ou undefined
 
-    // Get yesterday for astreinte check
     const yesterday = new Date(currentDate)
     yesterday.setDate(yesterday.getDate() - 1)
     const yesterdayStr = toLocalIsoDate(yesterday)
 
-    // Check who already has a guard on this date
     const alreadyAssigned = assignedDates.get(dateStr) || new Set()
+    const dayRules = NIGHT_GUARD_DAY_RULES[dayName]
 
-    // Find available users
-    const availableUsers = GUARD_ELIGIBLE_USERS.filter((user) => {
-      // Already assigned this day
+    let availableUsers = GUARD_ELIGIBLE_USERS.filter((user) => {
       if (alreadyAssigned.has(user)) return false
-
-      // On vacation
       if (constraints.vacations2026[user]?.includes(dateStr)) return false
-
-      // Off-site this day
       if (OFF_SITE_DAYS[user]?.includes(dayName)) return false
 
-      // M/W/O : pas de garde le vendredi
-      if (dayOfWeek === 5 && noFridayUsers.has(user)) return false
+      // Vendredi : O/W/M jamais ; pool exclusif B/G/A/P/Z/H/S
+      if (dayOfWeek === 5 && noFridayHard.has(user)) return false
 
-      // Has NCT tomorrow
-      const tomorrowNCTUsers = nctDateUsers.get(tomorrowStr) || []
-      if (tomorrowNCTUsers.includes(user)) return false
+      // Jamais de garde la veille d’un NCT pour le médecin NCT (W/M uniquement)
+      if (nctDoctorTomorrow && user === nctDoctorTomorrow) return false
 
-      // M, O, W: check if had astreinte yesterday (ATL night)
       if (["M", "O", "W"].includes(user)) {
         const yesterdayAstreintes = astreinteDates.get(yesterdayStr) || new Set()
         if (yesterdayAstreintes.has(user)) return false
@@ -622,17 +657,35 @@ export function generateNightGuardProposals(
       return true
     })
 
+    // Pool exclusif (vendredi)
+    if (dayRules?.only?.length) {
+      availableUsers = availableUsers.filter((u) => dayRules.only!.includes(u))
+    }
+
+    // Préférences souples (lundi U, mardi M/W, …)
+    if (dayRules?.prefer?.length) {
+      const preferred = availableUsers.filter((u) => dayRules.prefer!.includes(u))
+      if (preferred.length > 0) availableUsers = preferred
+    }
+
     if (availableUsers.length > 0) {
-      // Sort by total count (guards + astreintes for M/O/W) for equitable distribution
       availableUsers.sort((a, b) => {
+        // Vendredi : rotation équitable dans le pool
+        if (dayOfWeek === 5) {
+          const fa = fridayRotationCount[a] ?? 0
+          const fb = fridayRotationCount[b] ?? 0
+          if (fa !== fb) return fa - fb
+        }
         const countA = userGuardCount[a] + (["M", "O", "W"].includes(a) ? userAstreinteCount[a] * 0.5 : 0)
         const countB = userGuardCount[b] + (["M", "O", "W"].includes(b) ? userAstreinteCount[b] * 0.5 : 0)
         return countA - countB
       })
 
-      // Assign the user with lowest count
       const assignedUser = availableUsers[0]
       userGuardCount[assignedUser]++
+      if (dayOfWeek === 5 && fridayRotationCount[assignedUser] !== undefined) {
+        fridayRotationCount[assignedUser]++
+      }
 
       if (!assignedDates.has(dateStr)) assignedDates.set(dateStr, new Set())
       assignedDates.get(dateStr)!.add(assignedUser)

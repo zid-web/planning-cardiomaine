@@ -73,6 +73,16 @@ CORO_ALLOWED = {"W", "M", "O", "FV"}                 # seuls éligibles pour COR
 RYTHMO_ALLOWED = {"A", "U", "P"}                     # seuls éligibles pour RYTHMO
 NCT_ALLOWED = {"M", "W"}                             # seuls éligibles pour NCT
 
+# Garde Nuit — préférences / pools (aligné lib/guard-scheduler.ts)
+# Index jour : 0=LUNDI … 4=VENDREDI
+NIGHT_GARDE_PREFER = {
+    0: {"U"},           # Lundi si FV absent
+    1: {"M", "W"},      # Mardi
+    2: {"S", "U", "P"}, # Mercredi
+    3: {"O", "G"},      # Jeudi
+}
+NIGHT_GARDE_FRIDAY_ONLY = {"B", "G", "A", "P", "Z", "H", "S"}  # O/W/M jamais vendredi nuit
+
 # Calendrier NCT déjà planifié à l'avance (prime sur le calcul d'équité/alternance
 # pour les jeudis concernés). Clé = date ISO du jeudi, valeur = code médecin.
 # Liste à compléter au fur et à mesure (communiquée par l'utilisateur).
@@ -208,6 +218,18 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
         if activity == "NCT" and (doc_id not in NCT_ALLOWED or d_idx != 3):
             return
 
+        # Vendredi nuit : uniquement B/G/A/P/Z/H/S (O, W, M exclus)
+        if activity == "GARDE" and slot == "nuit" and d_idx == 4:
+            if doc_id not in NIGHT_GARDE_FRIDAY_ONLY:
+                return
+
+        # Veille de NCT (mercredi si NCT jeudi) : pas de GARDE ni ASTREINTE nuit pour W/M concernés
+        if slot == "nuit" and activity in ("GARDE", "ASTREINTE") and d_idx == 2:
+            thursday_iso_local = days[3].isoformat()
+            nct_doc = NCT_FIXED_SCHEDULE.get(thursday_iso_local)
+            if nct_doc and doc_id == nct_doc:
+                return
+
         statut = medecins_map[doc_id].statut
         if statut == StatutMedecin.CH:
             return
@@ -315,12 +337,15 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
             if var_nct is not None:
                 model.Add(var_nct == 0)
 
-        # NCT interdit si astreinte nuit la veille (mercredi)
+        # NCT interdit si garde OU astreinte nuit la veille (mercredi) — NCT = W/M uniquement
         for doc in nct_pool:
             var_nct = x.get((doc, 3, "nuit", "NCT"))
             var_astreinte_mercredi = x.get((doc, 2, "nuit", "ASTREINTE"))
+            var_garde_mercredi = x.get((doc, 2, "nuit", "GARDE"))
             if var_nct is not None and var_astreinte_mercredi is not None:
                 model.AddImplication(var_nct, var_astreinte_mercredi.Not())
+            if var_nct is not None and var_garde_mercredi is not None:
+                model.AddImplication(var_nct, var_garde_mercredi.Not())
 
     # --- 5bis. REEDUC (obligatoire, 1 médecin exactement, Lundi/Mercredi/Vendredi am) ---
     for d_idx, day_nm in enumerate(DAY_NAMES_FR):
@@ -514,11 +539,22 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
                     if var is not None:
                         model.Add(var == 0)
 
-    # --- 11. Équité (objectif) ---
+    # --- 11. Équité (objectif) + préférences Garde Nuit ---
     points = {doc: 0 for doc in astreinte_coro_ids}
     for (doc, d_idx, slot, activity), var in x.items():
         if doc in astreinte_coro_ids:
             points[doc] += var
+
+    # Soft : pénaliser une Garde Nuit hors pool préféré du jour
+    non_preferred_night_garde = []
+    for d_idx, prefs in NIGHT_GARDE_PREFER.items():
+        for doc_id in medecins_map:
+            var = x.get((doc_id, d_idx, "nuit", "GARDE"))
+            if var is None:
+                continue
+            if doc_id not in prefs:
+                non_preferred_night_garde.append(var)
+    pref_penalty = sum(non_preferred_night_garde) if non_preferred_night_garde else 0
 
     # Points de weekend (si WOM en weekend, on ajoute les points)
     if req.weekend_mode == "ROTATION":
@@ -528,13 +564,14 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
     if "M" in points and "W" in points:
         model.Add(points["M"] == points["W"])
 
+    # Équité WOM prioritaire ; préférences garde nuit en second critère
     if "O" in points and "M" in points:
         dev_O = model.NewIntVar(0, 10, "dev_O")
         model.Add(dev_O >= points["O"] - points["M"])
         model.Add(dev_O >= points["M"] - points["O"])
-        model.Minimize(dev_O)
+        model.Minimize(dev_O * 100 + pref_penalty)
     else:
-        model.Minimize(sum(points.values()))
+        model.Minimize(sum(points.values()) * 100 + pref_penalty)
 
     # --- 12. Résolution ---
     solver = cp_model.CpSolver()
