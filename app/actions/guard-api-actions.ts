@@ -11,6 +11,7 @@ import {
 } from "@/lib/equity-tracking";
 import { applyFixedClinicalAssignments } from "@/lib/fixed-assignments";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
+import { fillClinicalVacationsFromPatterns } from "@/lib/pattern-analysis";
 
 // Configuration
 const GUARD_API_URL =
@@ -242,10 +243,46 @@ export async function generateGuardsViaAPI(
 
     const data = await response.json();
 
-    // 6. Convertit la réponse en format ScheduleData (règles fixes + assignments solveur)
+    // 6. Convertit la réponse : assignments solveur + règles fixes (IRM/FV/DAAS/…)
+    // weekStartDate est le lundi ISO (yyyy-MM-dd) passé par GuardGenerationButton.
     const wn = getWeekNumber(parseISO(weekStartDate));
     const weekKey = `${wn.year}-W${String(wn.week).padStart(2, "0")}`;
-    const scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations);
+    let scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations);
+
+    // 7. Vacations cliniques Cs/ETT/EE : même analyse de fréquence qu’Historique+,
+    // appliquée automatiquement sur les cellules encore vides (statut pending).
+    let patternFill = { applied: 0, skippedTies: 0, weeksScanned: 0 };
+    try {
+      const supabase = await createClient();
+      const { data: histRows, error: histError } = await supabase
+        .from("schedules")
+        .select("week_key, schedule_data")
+        .neq("week_key", "full_schedule")
+        .neq("week_key", weekKey)
+        .order("week_key", { ascending: false })
+        .limit(12);
+
+      if (!histError && histRows?.length) {
+        const historical = histRows
+          .map((r) => r.schedule_data as ScheduleData)
+          .filter((s) => s && typeof s === "object");
+        const filled = fillClinicalVacationsFromPatterns(scheduleData, historical, {
+          acceptTies: false,
+          status: "pending",
+        });
+        scheduleData = filled.next;
+        patternFill = {
+          applied: filled.applied,
+          skippedTies: filled.skippedTies,
+          weeksScanned: historical.length,
+        };
+      }
+    } catch (patternError) {
+      console.warn(
+        "[generateGuardsViaAPI] Remplissage Cs/ETT/EE depuis l’historique ignoré:",
+        patternError,
+      );
+    }
 
     return {
       success: true,
@@ -253,6 +290,7 @@ export async function generateGuardsViaAPI(
       // Alias attendu par GuardGenerationButton / ScheduleApp
       schedule: scheduleData,
       warnings: Array.isArray(data?.warnings) ? data.warnings : [],
+      patternFill,
       raw: data,
     };
   } catch (error) {

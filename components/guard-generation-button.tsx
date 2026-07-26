@@ -39,14 +39,25 @@ export function GuardGenerationButton({
       }
 
       if (result.schedule) {
+        const pf = result.patternFill
+        const patternNote =
+          pf && pf.applied > 0
+            ? ` · ${pf.applied} vacation(s) Cs/ETT/EE depuis l’historique`
+            : ''
+
         // Afficher les warnings s'il y en a
         if (result.warnings && result.warnings.length > 0) {
-          toast.warning('Alertes de génération:\n' + result.warnings.join('\n'), {
-            id: 'guard-generation',
-            duration: 5000,
-          })
+          toast.warning(
+            `Alertes de génération${patternNote}:\n` + result.warnings.join('\n'),
+            {
+              id: 'guard-generation',
+              duration: 5000,
+            },
+          )
         } else {
-          toast.success('Planning généré avec succès!', { id: 'guard-generation' })
+          toast.success(`Planning généré avec succès${patternNote}`, {
+            id: 'guard-generation',
+          })
         }
 
         // Appeler la callback avec les résultats
@@ -66,7 +77,7 @@ export function GuardGenerationButton({
       disabled={disabled || isLoading}
       size="sm"
       className={`h-7 gap-1 bg-gradient-to-r from-blue-600 to-blue-700 px-2 text-[11px] hover:from-blue-700 hover:to-blue-800 ${className}`}
-      title="Génère le planning via l'API d'optimisation (moteur avancé)"
+      title="Génère gardes/astreintes/Coro (solveur) + vacations Cs/ETT/EE (historique)"
     >
       {isLoading ? (
         <>

@@ -1,0 +1,26 @@
+--- a/solver.py
++++ b/solver.py
+@@ -325,6 +325,23 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
+         else:
+             warnings.append(f"{day_nm} : aucun médecin disponible pour REEDUC (vacances ou exclu)")
+ 
++    # --- 5ter. CORO (vacations matin + soir, obligatoire Lundi–Vendredi) ---
++    # Sans cette contrainte le solveur laisse CORO vide : l'objectif d'équité
++    # minimise le nombre d'assignations WOM, et CORO n'était que « au plus 1 ».
++    for d_idx in range(5):  # Lundi → Vendredi
++        day_nm = DAY_NAMES_FR[d_idx]
++        for slot in ("matin", "am"):
++            coro_vars = [
++                v for (doc, d, sl, act), v in x.items()
++                if d == d_idx and sl == slot and act == "CORO"
++            ]
++            if coro_vars:
++                model.Add(sum(coro_vars) == 1)
++            else:
++                warnings.append(
++                    f"{day_nm} {slot} : aucun médecin disponible pour CORO (vacances ou exclu)"
++                )
++
+     # --- 6. Fixes forcés (FV) ---
+     if fv_id:
+         for d_idx, slot, act, forced_val in [

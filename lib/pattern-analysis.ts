@@ -14,6 +14,14 @@ export type PatternProposal = {
 }
 
 /**
+ * Vacations cliniques matin/soir (Cs, ETT, EE, Stress) — hors Coro/Rythmo (solveur).
+ * Utilisé par « Générer » et aligné sur la section Vacations du planning.
+ */
+export function isClinicalVacationRow(rowKey: string): boolean {
+  return /^(Matin|Apm) - (Cs |ETT |EE\d|Stress$)/.test(rowKey)
+}
+
+/**
  * Pour chaque (row_key, day_name) hors solveur/RYTHMO, calcule le(s) médecin(s)
  * le(s) plus fréquent(s). En cas d'ex-æquo, renvoie tous les leaders.
  */
@@ -114,4 +122,25 @@ export function applyPatternProposals(
     applied += 1
   }
   return { next, applied, skippedTies }
+}
+
+/**
+ * Remplit les cellules vides Cs/ETT/EE/Stress à partir des fréquences historiques
+ * (même logique qu’Historique+, sans confirmation UI — pour le bouton Générer).
+ */
+export function fillClinicalVacationsFromPatterns(
+  schedule: ScheduleData,
+  historicalSchedules: ScheduleData[],
+  opts?: { acceptTies?: boolean; status?: "pending" | "validated" },
+): { next: ScheduleData; applied: number; skippedTies: number } {
+  if (!historicalSchedules.length) {
+    return { next: schedule, applied: 0, skippedTies: 0 }
+  }
+  const patterns = computeRowPatternsFromSchedules(historicalSchedules, {
+    onlyEmptyIn: schedule,
+  }).filter((p) => isClinicalVacationRow(p.row_key))
+  return applyPatternProposals(schedule, patterns, {
+    acceptTies: opts?.acceptTies === true,
+    status: opts?.status || "pending",
+  })
 }
