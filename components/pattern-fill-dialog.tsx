@@ -72,10 +72,10 @@ export function PatternFillDialog({ open, onOpenChange, currentSchedule, onApply
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto border-slate-200 bg-white text-slate-900 shadow-2xl">
         <DialogHeader>
-          <DialogTitle>Compléter avec l’historique</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-slate-900">Pré-remplir depuis l’historique</DialogTitle>
+          <DialogDescription className="text-slate-600">
             Propositions basées sur la fréquence observée ({weeksScanned} semaine(s)) pour les
             activités hors solveur (Cs, ETT, EE, hors site…). Les cellules déjà remplies et les
             lignes Astreinte/Garde/NCT/Coro/Rythmo sont exclues. Statut « pending » jusqu’à
@@ -84,52 +84,68 @@ export function PatternFillDialog({ open, onOpenChange, currentSchedule, onApply
         </DialogHeader>
 
         {pending && patterns.length === 0 ? (
-          <div className="flex items-center gap-2 py-6 text-sm text-slate-600">
-            <Loader2 className="h-4 w-4 animate-spin" />
+          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-6 text-sm font-medium text-slate-800">
+            <Loader2 className="h-4 w-4 animate-spin text-slate-900" strokeWidth={2.25} />
             Analyse de l’historique…
           </div>
         ) : (
           <>
-            <div className="mb-2 text-xs text-slate-600">
+            <div className="mb-2 text-xs font-medium text-slate-700">
               {actionable.length} proposition(s) applicables
               {ties > 0 ? ` · ${ties} ex-æquo` : ""}
             </div>
             {ties > 0 && (
-              <label className="mb-2 flex items-center gap-2 text-xs text-slate-700">
+              <label className="mb-2 flex items-center gap-2 text-xs font-medium text-slate-800">
                 <input
                   type="checkbox"
                   checked={acceptTies}
                   onChange={(e) => setAcceptTies(e.target.checked)}
+                  className="accent-slate-800"
                 />
                 Inclure les ex-æquo (plusieurs médecins dans la cellule)
               </label>
             )}
-            <ul className="max-h-64 space-y-1 overflow-y-auto text-xs">
-              {(acceptTies ? patterns : patterns.filter((p) => !p.tie)).slice(0, 80).map((p) => (
-                <li
-                  key={`${p.row_key}-${p.day_name}`}
-                  className="flex justify-between gap-2 rounded border border-slate-100 px-2 py-1"
-                >
-                  <span className="truncate text-slate-700">
-                    {p.row_key} · {p.day_name.slice(0, 3)}
-                  </span>
-                  <span className="shrink-0 font-medium text-slate-900">
-                    {p.doctors.join("/")}
-                    <span className="ml-1 font-normal text-slate-400">
-                      ({p.count}/{p.observations})
-                    </span>
-                  </span>
+            <ul className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs">
+              {actionable.length === 0 ? (
+                <li className="px-2 py-6 text-center text-slate-600">
+                  Aucune proposition pour les cellules vides de cette semaine.
                 </li>
-              ))}
+              ) : (
+                (acceptTies ? patterns : patterns.filter((p) => !p.tie)).slice(0, 80).map((p) => (
+                  <li
+                    key={`${p.row_key}-${p.day_name}`}
+                    className="flex justify-between gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5"
+                  >
+                    <span className="truncate font-medium text-slate-800">
+                      {p.row_key} · {p.day_name.slice(0, 3)}
+                    </span>
+                    <span className="shrink-0 font-semibold text-slate-900">
+                      {p.doctors.join("/")}
+                      <span className="ml-1 font-normal text-slate-500">
+                        ({p.count}/{p.observations})
+                      </span>
+                    </span>
+                  </li>
+                ))
+              )}
             </ul>
           </>
         )}
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={pending}
+            className="border-slate-300 bg-white !text-slate-900 hover:bg-slate-100"
+          >
             Annuler
           </Button>
-          <Button onClick={confirm} disabled={pending || actionable.length === 0}>
+          <Button
+            onClick={confirm}
+            disabled={pending || actionable.length === 0}
+            className="bg-slate-900 text-white hover:bg-slate-800"
+          >
             Appliquer {actionable.length} proposition(s)
           </Button>
         </DialogFooter>
