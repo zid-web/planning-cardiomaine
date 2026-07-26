@@ -24,6 +24,8 @@ import {
 
 interface VoiceAndUploadPanelProps {
   onCommandExecuted?: (result: any) => void
+  /** PDF multi-semaines : ouvre la revue d'import historique (admin) */
+  onHistoryWeeksExtracted?: (weeks: unknown[]) => void
   isOpen?: boolean
   /** Monday of the current week (YYYY-MM-DD) */
   weekStartDate?: string
@@ -37,6 +39,7 @@ interface VoiceAndUploadPanelProps {
 
 export function VoiceAndUploadPanel({
   onCommandExecuted,
+  onHistoryWeeksExtracted,
   isOpen = true,
   weekStartDate: initialWeekStartDate,
   weekNumber,
@@ -372,6 +375,17 @@ export function VoiceAndUploadPanel({
       }
 
       setUploadedFileName(file.name)
+
+      const weeks = Array.isArray(data.weeks) ? data.weeks : []
+      if (weeks.length > 1 && onHistoryWeeksExtracted) {
+        const successMessage = `PDF multi-semaines : ${weeks.length} pages extraites — revue requise`
+        setStatus({ type: "success", message: successMessage })
+        toast.success(successMessage)
+        onHistoryWeeksExtracted(weeks)
+        setTimeout(() => setStatus({ type: "idle", message: "" }), 3000)
+        return
+      }
+
       const warnCount = Array.isArray(data.warnings) ? data.warnings.length : 0
       const successMessage =
         warnCount > 0
@@ -394,7 +408,7 @@ export function VoiceAndUploadPanel({
         fileInputRef.current.value = ""
       }
     }
-  }, [onCommandExecuted, resolveWeekStart])
+  }, [onCommandExecuted, onHistoryWeeksExtracted, resolveWeekStart])
 
   const copyToClipboard = useCallback(() => {
     if (editedTranscript) {
