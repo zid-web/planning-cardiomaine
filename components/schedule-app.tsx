@@ -43,7 +43,11 @@ import {
   isListedDoctor,
   normalizeRemplacantLabel,
 } from "@/lib/doctor-code"
-import { formatDoctorWithDoublon } from "@/lib/slot-blocking"
+import {
+  countDoctorInCell,
+  formatDoctorWithDoublon,
+  isDoublonEligibleRow,
+} from "@/lib/slot-blocking"
 import {
   applyStructuralConstraints,
   schedulesDiffer,
@@ -483,7 +487,32 @@ export function ScheduleApp({
     if (!isAdmin) return
     if (!selectedCell || !schedule) return
 
-    // Vérifier si le médecin est indisponible (en vacances)
+    const currentValues = schedule[selectedCell.row]?.[selectedCell.day]?.value || []
+    const alreadyCount = currentValues.filter((d) => d === doctor).length
+    const canDoublon = isDoublonEligibleRow(selectedCell.row) && isListedDoctor(doctor)
+
+    // Déjà en doublon (2×) dans cette case
+    if (alreadyCount >= 2) {
+      toast.message(`${doctor} est déjà en doublon sur cette case`)
+      return
+    }
+
+    // 2ᵉ clic sur Cs/ETT = doublon dans la même case (pas de re-validation créneau)
+    if (alreadyCount === 1 && canDoublon) {
+      const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+      patchSelectedCell((cell) => ({
+        ...cell,
+        value: [...(cell.value || []), doctor],
+        type: "doctor",
+        status: newStatus,
+      }))
+      toast.success(`${doctor}² doublon sur ${selectedCell.row}`)
+      return
+    }
+
+    if (alreadyCount >= 1) return
+
+    // Vérifier congés / créneau / exclusions
     const dayIndex = DAYS.indexOf(selectedCell.day)
     if (dayIndex >= 0 && isoWeekStart && isListedDoctor(doctor)) {
       const dayDate = new Date(`${isoWeekStart}T12:00:00`)
@@ -498,9 +527,6 @@ export function ScheduleApp({
         return
       }
     }
-
-    const currentValues = schedule[selectedCell.row]?.[selectedCell.day]?.value || []
-    if (currentValues.includes(doctor)) return
 
     const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
     patchSelectedCell((cell) => {
@@ -1529,7 +1555,7 @@ export function ScheduleApp({
                                       {/* Existing cell content (initiales + remplaçant) */}
                                       {!cellBlocked && (
                                         <div className="flex flex-wrap gap-0.5 justify-center items-center content-center h-full max-h-full overflow-visible">
-                                          {displayAssignees.map((doc: string, i: number) => {
+                                          {[...new Set(displayAssignees)].map((doc: string) => {
                                             const dayDate = new Date(`${isoWeekStart}T12:00:00`)
                                             dayDate.setDate(dayDate.getDate() + dayIndex)
                                             const dateStr = dayDate.toISOString().split("T")[0]
@@ -1537,10 +1563,13 @@ export function ScheduleApp({
                                             const conflict = listed
                                               ? detectConflict(doc, dateStr, rowKey, vacations)
                                               : { hasConflict: false as const }
+                                            const label = listed
+                                              ? formatDoctorWithDoublon(schedule, day, doc, rowKey)
+                                              : doc
 
                                             return (
                                               <Badge
-                                                key={`${doc}-${i}`}
+                                                key={doc}
                                                 className={`
                                                   ${
                                                     conflict.hasConflict
@@ -1554,13 +1583,13 @@ export function ScheduleApp({
                                                 title={
                                                   conflict.message ||
                                                   (listed
-                                                    ? formatDoctorWithDoublon(schedule, day, doc, rowKey)
+                                                    ? label.includes("²")
+                                                      ? `${doc} en doublon (même case)`
+                                                      : doc
                                                     : `Remplaçant : ${doc}`)
                                                 }
                                               >
-                                                {listed
-                                                  ? formatDoctorWithDoublon(schedule, day, doc, rowKey)
-                                                  : doc}
+                                                {label}
                                               </Badge>
                                             )
                                           })}
@@ -1680,11 +1709,16 @@ export function ScheduleApp({
               <>
                 <div className="grid grid-cols-4 gap-2 mb-3 max-h-[220px] overflow-y-auto">
                   {DOCTORS.map((doc) => {
-                    const isSelected =
-                      schedule && selectedCell && schedule[selectedCell.row][selectedCell.day].value.includes(doc)
+                    const occ =
+                      schedule && selectedCell
+                        ? countDoctorInCell(schedule, selectedCell.row, selectedCell.day, doc)
+                        : 0
+                    const canPromoteDoublon =
+                      Boolean(selectedCell && isDoublonEligibleRow(selectedCell.row) && occ === 1)
+                    const fullyInCell = occ >= 2 || (occ >= 1 && !canPromoteDoublon)
 
                     let blockReason: string | undefined
-                    if (!isSelected && selectedCell && schedule && isoWeekStart) {
+                    if (occ === 0 && selectedCell && schedule && isoWeekStart) {
                       const dayIndex = DAYS.indexOf(selectedCell.day)
                       if (dayIndex >= 0) {
                         const dayDate = new Date(`${isoWeekStart}T12:00:00`)
@@ -1703,19 +1737,30 @@ export function ScheduleApp({
                       <button
                         key={doc}
                         onClick={() => addDoctorToCell(doc)}
-                        disabled={isSelected || blocked}
-                        title={blockReason || (isSelected ? "Déjà dans la case" : undefined)}
+                        disabled={fullyInCell || blocked}
+                        title={
+                          blockReason ||
+                          (occ >= 2
+                            ? "Déjà en doublon"
+                            : canPromoteDoublon
+                              ? `Cliquer pour doublon ${doc}² (même case)`
+                              : occ >= 1
+                                ? "Déjà dans la case"
+                                : undefined)
+                        }
                         className={`
                       flex h-10 items-center justify-center rounded-lg font-bold transition-all
                       ${
-                        isSelected || blocked
+                        fullyInCell || blocked
                           ? "opacity-30 cursor-not-allowed bg-slate-100 text-slate-400"
-                          : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"
+                          : canPromoteDoublon
+                            ? "bg-sky-50 border border-sky-300 text-sky-900 hover:bg-sky-100 shadow-sm active:scale-95"
+                            : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"
                       }
                     `}
                       >
                         <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
-                        {doc}
+                        {canPromoteDoublon ? `${doc}²` : doc}
                       </button>
                     )
                   })}

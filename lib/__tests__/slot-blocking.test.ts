@@ -8,6 +8,7 @@ import {
   canAssignDoctorToSlot,
   formatDoctorWithDoublon,
   applySlotBlockingStrips,
+  isDoublonEligibleRow,
 } from "@/lib/slot-blocking"
 import type { DoctorVacation } from "@/lib/types"
 
@@ -16,9 +17,10 @@ function main() {
   let schedule = generateWeekSchedule(weekKey, [])
 
   assert.equal(areCompatibleSamePeriod("Matin - Coro", "Astreintes ATL Matin"), true)
-  assert.equal(areCompatibleSamePeriod("Matin - Cs PSS", "Matin - Cs Tessée"), true)
-  assert.equal(areCompatibleSamePeriod("Matin - ETT salle 1", "Matin - ETT salle 2"), true)
-  assert.equal(areCompatibleSamePeriod("Matin - Cs PSS", "Matin - Coro"), false)
+  assert.equal(areCompatibleSamePeriod("Matin - Cs PSS", "Matin - Cs Tessée"), false)
+  assert.equal(areCompatibleSamePeriod("Matin - ETT salle 1", "Matin - ETT salle 2"), false)
+  assert.equal(isDoublonEligibleRow("Matin - Cs PSS"), true)
+  assert.equal(isDoublonEligibleRow("Matin - Coro"), false)
 
   // Congés bloquent
   const vacations: DoctorVacation[] = [
@@ -46,25 +48,26 @@ function main() {
   schedule["Matin - Cs PSS"].LUNDI.value = ["M"]
   r = canAssignDoctorToSlot("M", "2026-07-20", "Matin - Rythmo", "LUNDI", schedule, [])
   assert.equal(r.allowed, false)
+  // Cs PSS ≠ Cs Tessée même matin
+  r = canAssignDoctorToSlot("M", "2026-07-20", "Matin - Cs Tessée", "LUNDI", schedule, [])
+  assert.equal(r.allowed, false)
+
   schedule["Matin - Coro"].LUNDI.value = ["M"]
   schedule["Matin - Cs PSS"].LUNDI.value = []
   r = canAssignDoctorToSlot("M", "2026-07-20", "Astreintes ATL Matin", "LUNDI", schedule, [])
   assert.equal(r.allowed, true)
 
-  // Doublon Cs OK + affichage ²
+  // Doublon = 2× dans la même case Cs
   schedule = generateWeekSchedule(weekKey, [])
-  schedule["Matin - Cs PSS"].LUNDI.value = ["B"]
-  r = canAssignDoctorToSlot("B", "2026-07-20", "Matin - Cs Tessée", "LUNDI", schedule, [])
-  assert.equal(r.allowed, true)
-  schedule["Matin - Cs Tessée"].LUNDI.value = ["B"]
+  schedule["Matin - Cs PSS"].LUNDI.value = ["B", "B"]
   assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "B", "Matin - Cs PSS"), "B²")
+  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "B", "Matin - Cs Tessée"), "B")
 
   // LFB bloqué jour de garde
   schedule = generateWeekSchedule(weekKey, [])
   schedule["Garde Matin"].MARDI.value = ["G"]
   r = canAssignDoctorToSlot("G", "2026-07-21", "Hors site - LFB", "MARDI", schedule, [])
   assert.equal(r.allowed, false)
-  // Lendemain
   r = canAssignDoctorToSlot("G", "2026-07-22", "Hors site - CDL", "MERCREDI", schedule, [])
   assert.equal(r.allowed, false)
 

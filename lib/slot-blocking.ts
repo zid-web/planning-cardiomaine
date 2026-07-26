@@ -1,7 +1,8 @@
 /**
  * Règles d’assignation bloquantes (matin / après-midi / garde / ½-off / congés).
  * Exception : cumul Astreinte ATL Matin/Midi + Coro correspondant.
- * Doublons autorisés : Cs PSS+Tessée, ETT salle 1+2 (affichage ²).
+ * Doublon : même médecin 2× dans la **même** case Cs ou ETT (affichage ²).
+ * Jamais Cs PSS + Cs Tessée (ni ETT 1 + ETT 2) le même matin/apm.
  */
 
 import { DAYS } from "@/lib/constants"
@@ -16,14 +17,20 @@ const GARDE_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
 const LFB_ROW = "Hors site - LFB"
 const CDL_ROW = "Hors site - CDL"
 
-export const CS_DOUBLON_PAIRS: Record<"Matin" | "Apm", [string, string]> = {
-  Matin: ["Matin - Cs PSS", "Matin - Cs Tessée"],
-  Apm: ["Apm - Cs PSS", "Apm - Cs Tessée"],
-}
+/** Cases où un médecin peut être en doublon (2× dans la même cellule). */
+export const DOUBLON_ELIGIBLE_ROWS = new Set([
+  "Matin - Cs PSS",
+  "Matin - Cs Tessée",
+  "Matin - ETT salle 1",
+  "Matin - ETT salle 2",
+  "Apm - Cs PSS",
+  "Apm - Cs Tessée",
+  "Apm - ETT salle 1",
+  "Apm - ETT salle 2",
+])
 
-export const ETT_DOUBLON_PAIRS: Record<"Matin" | "Apm", [string, string]> = {
-  Matin: ["Matin - ETT salle 1", "Matin - ETT salle 2"],
-  Apm: ["Apm - ETT salle 1", "Apm - ETT salle 2"],
+export function isDoublonEligibleRow(rowKey: string): boolean {
+  return DOUBLON_ELIGIBLE_ROWS.has(rowKey)
 }
 
 /** Classe une ligne planning dans une période de conflit. */
@@ -63,27 +70,21 @@ function isAtlCoroPair(a: string, b: string): boolean {
   )
 }
 
-function isCsDoublonPair(a: string, b: string): boolean {
-  for (const [x, y] of Object.values(CS_DOUBLON_PAIRS)) {
-    if ((a === x && b === y) || (a === y && b === x)) return true
-  }
-  return false
-}
-
-function isEttDoublonPair(a: string, b: string): boolean {
-  for (const [x, y] of Object.values(ETT_DOUBLON_PAIRS)) {
-    if ((a === x && b === y) || (a === y && b === x)) return true
-  }
-  return false
-}
-
 /** Deux lignes peuvent coexister le même créneau pour le même médecin. */
 export function areCompatibleSamePeriod(rowA: string, rowB: string): boolean {
   if (rowA === rowB) return true
   if (isAtlCoroPair(rowA, rowB)) return true
-  if (isCsDoublonPair(rowA, rowB)) return true
-  if (isEttDoublonPair(rowA, rowB)) return true
   return false
+}
+
+/** Nombre d’occurrences d’un médecin dans une cellule (doublon = 2). */
+export function countDoctorInCell(
+  schedule: ScheduleData,
+  rowKey: string,
+  day: string,
+  doctorId: string,
+): number {
+  return (schedule[rowKey]?.[day]?.value || []).filter((d) => d === doctorId).length
 }
 
 function doctorOnRow(schedule: ScheduleData, rowKey: string, day: string, doctorId: string): boolean {
@@ -238,41 +239,15 @@ export function canAssignDoctorToSlot(
   return { allowed: true }
 }
 
-export type DoublonKind = "Cs" | "ETT" | null
-
-/** Doublon Cs ou ETT (deux salles) → exposant ² à l’affichage. */
-export function getDoublonKind(
+/** Doublon = 2× le même médecin dans la même case Cs/ETT → exposant ². */
+export function isDoctorDoublonInCell(
   schedule: ScheduleData,
   day: string,
   doctorId: string,
   rowKey: string,
-): DoublonKind {
-  if (!isListedDoctor(doctorId)) return null
-  const half: "Matin" | "Apm" | null = rowKey.startsWith("Matin -")
-    ? "Matin"
-    : rowKey.startsWith("Apm -")
-      ? "Apm"
-      : null
-  if (!half) return null
-
-  const [csA, csB] = CS_DOUBLON_PAIRS[half]
-  if (
-    (rowKey === csA || rowKey === csB) &&
-    doctorOnRow(schedule, csA, day, doctorId) &&
-    doctorOnRow(schedule, csB, day, doctorId)
-  ) {
-    return "Cs"
-  }
-
-  const [e1, e2] = ETT_DOUBLON_PAIRS[half]
-  if (
-    (rowKey === e1 || rowKey === e2) &&
-    doctorOnRow(schedule, e1, day, doctorId) &&
-    doctorOnRow(schedule, e2, day, doctorId)
-  ) {
-    return "ETT"
-  }
-  return null
+): boolean {
+  if (!isDoublonEligibleRow(rowKey)) return false
+  return countDoctorInCell(schedule, rowKey, day, doctorId) >= 2
 }
 
 export function formatDoctorWithDoublon(
@@ -281,7 +256,7 @@ export function formatDoctorWithDoublon(
   doctorId: string,
   rowKey: string,
 ): string {
-  return getDoublonKind(schedule, day, doctorId, rowKey) ? `${doctorId}²` : doctorId
+  return isDoctorDoublonInCell(schedule, day, doctorId, rowKey) ? `${doctorId}²` : doctorId
 }
 
 /**
