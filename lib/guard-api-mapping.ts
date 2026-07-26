@@ -47,26 +47,26 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
   },
 };
 
-/** Lignes que « Générer » peut réécrire (solveur + dérivés section 13bis). */
-export const GENERATOR_OWNED_ROW_KEYS = new Set([
+/**
+ * Lignes que « Générer » peut proposer (équité / répartition).
+ * Les contraintes structurelles (Congés, ½-off, Rythmo fixe, NCT calendrier, IRM…)
+ * sont injectées hors Générer via `applyStructuralConstraints`.
+ */
+export const GENERATOR_PROPOSAL_ROW_KEYS = new Set([
   "Astreintes ATL Matin",
   "Astreintes ATL Midi",
   "Astreintes ATL Nuit",
   "Garde Matin",
   "Garde Midi",
   "Garde Nuit",
-  "Hors site - NCT",
   "Matin - Coro",
   "Apm - Coro",
-  "Matin - Rythmo",
-  "Apm - Rythmo",
   "Apm - RÉEDUCATION",
   "Pré-op",
-  "1/2 journée off Matin",
-  "1/2 journée off Après-midi",
-  "Congrès",
-  "Congés",
 ]);
+
+/** @deprecated alias — préférer GENERATOR_PROPOSAL_ROW_KEYS */
+export const GENERATOR_OWNED_ROW_KEYS = GENERATOR_PROPOSAL_ROW_KEYS;
 
 export type GuardAssignment = {
   date: string;
@@ -202,6 +202,7 @@ function setCellDoctors(
   rowKey: string,
   dayKey: string,
   doctors: string[],
+  opts?: { forceStatus?: "pending" | "validated" },
 ): ScheduleData {
   if (!schedule[rowKey]?.[dayKey]) return schedule;
   const cell = schedule[rowKey][dayKey];
@@ -214,7 +215,7 @@ function setCellDoctors(
         ...cell,
         value: unique,
         type: unique.length ? "doctor" : "empty",
-        status: cell.status || "pending",
+        status: opts?.forceStatus || cell.status || "pending",
       } as CellData,
     },
   };
@@ -246,11 +247,15 @@ export function applyParsedCommandToSchedule(
 
 /**
  * Fusionne les assignments Render dans le planning (ne touche que les cellules mappées).
+ * Par défaut force `pending` (propositions Générer à valider par un admin).
  */
 export function mergeAssignmentsIntoSchedule(
   schedule: ScheduleData,
   assignments: GuardAssignment[],
+  opts?: { forcePending?: boolean; proposalRowsOnly?: boolean },
 ): ScheduleData {
+  const forcePending = opts?.forcePending !== false;
+  const proposalRowsOnly = opts?.proposalRowsOnly !== false;
   let next = schedule;
   const grouped = new Map<string, string[]>();
 
@@ -259,6 +264,12 @@ export function mergeAssignmentsIntoSchedule(
     if (!DAYS.includes(dayKey)) continue;
     const rowKey = resolveRowKey(assign.slot, assign.activity, dayKey);
     if (!rowKey) continue;
+    // Congés / ½-off / NCT / Rythmo structurels : ignorés ici (injecteur structurel)
+    if (proposalRowsOnly && !GENERATOR_PROPOSAL_ROW_KEYS.has(rowKey)) continue;
+    // Notes dérivées solveur (récupération, etc.) hors propositions
+    const note = (assign.note || "").toLowerCase();
+    if (note.includes("demi-journée libre") || note.includes("règle fixe")) continue;
+    if (note.includes("saisie vacances") || note.includes("congé")) continue;
     const key = `${rowKey}||${dayKey}`;
     const list = grouped.get(key) || [];
     if (assign.doctor && !list.includes(assign.doctor)) list.push(assign.doctor);
@@ -267,14 +278,16 @@ export function mergeAssignmentsIntoSchedule(
 
   for (const [key, doctors] of grouped) {
     const [rowKey, dayKey] = key.split("||");
-    next = setCellDoctors(next, rowKey, dayKey, doctors);
+    next = setCellDoctors(next, rowKey, dayKey, doctors, {
+      forceStatus: forcePending ? "pending" : undefined,
+    });
   }
   return next;
 }
 
 /**
- * Après « Générer » : réécrit les lignes solveur, préserve les vacations manuelles
- * (Cs / ETT / EE / hors site…) déjà remplies, et les Notes du jour.
+ * Après « Générer » : fusionne les **propositions** (pending) sur les lignes d’équité,
+ * préserve le reste (contraintes structurelles, Cs/ETT manuels, Notes).
  */
 export function mergeSolverWeekIntoExisting(
   existing: ScheduleData | undefined,
@@ -286,17 +299,32 @@ export function mergeSolverWeekIntoExisting(
   for (const [rowKey, generatedRow] of Object.entries(generated || {})) {
     if (!generatedRow) continue;
 
-    if (GENERATOR_OWNED_ROW_KEYS.has(rowKey)) {
-      next[rowKey] = { ...generatedRow };
-      continue;
-    }
-
     if (rowKey === "Notes du jour") {
       next[rowKey] = base[rowKey] || generatedRow;
       continue;
     }
 
-    // Vacations non-solveur (Cs, ETT, EE, …) : garder les cellules déjà remplies
+    if (GENERATOR_PROPOSAL_ROW_KEYS.has(rowKey)) {
+      const existingRow = base[rowKey] || {};
+      const mergedRow: ScheduleData[string] = { ...existingRow };
+      for (const day of DAYS) {
+        const genCell = generatedRow[day];
+        if (!genCell) continue;
+        const genVals = Array.isArray(genCell.value) ? genCell.value : [];
+        if (!genVals.length) continue;
+        // Proposition solveur / pattern : pending (admin valide ensuite)
+        mergedRow[day] = {
+          ...genCell,
+          value: [...genVals],
+          type: "doctor",
+          status: genCell.status === "validated" ? "validated" : "pending",
+        };
+      }
+      next[rowKey] = mergedRow;
+      continue;
+    }
+
+    // Vacations cliniques / hors site structurels : ne remplir que cellules vides
     const existingRow = base[rowKey] || {};
     const mergedRow: ScheduleData[string] = { ...existingRow };
     for (const day of DAYS) {
@@ -304,7 +332,11 @@ export function mergeSolverWeekIntoExisting(
       const hasExisting =
         Array.isArray(existingCell?.value) && existingCell.value.length > 0;
       if (!hasExisting && generatedRow[day]) {
-        mergedRow[day] = generatedRow[day];
+        const gen = generatedRow[day];
+        mergedRow[day] = {
+          ...gen,
+          status: gen.status === "validated" ? "validated" : "pending",
+        };
       }
     }
     next[rowKey] = mergedRow;

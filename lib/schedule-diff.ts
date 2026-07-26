@@ -16,6 +16,7 @@ export type ScheduleSaveSource =
   | "solver"
   | "change_request"
   | "system"
+  | "constraints"
 
 function valuesEqual(a: string[], b: string[]) {
   if (a.length !== b.length) return false
