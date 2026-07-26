@@ -84,10 +84,10 @@ export function HistoryImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto border-slate-200 bg-white text-slate-900 shadow-2xl">
         <DialogHeader>
-          <DialogTitle>Importer l’historique PDF</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-slate-900">Importer l’historique PDF</DialogTitle>
+          <DialogDescription className="text-slate-600">
             {weeks.length} semaine(s) détectée(s). Vérifiez avant import — seules les cellules
             OCR « high » sont proposées ; les cellules déjà remplies ne seront pas écrasées.
           </DialogDescription>
