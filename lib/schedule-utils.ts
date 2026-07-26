@@ -1,5 +1,6 @@
 import { DAYS } from "./constants"
 import { applyFixedClinicalAssignments } from "./fixed-assignments"
+import { applyHabitualHalfDaysOff } from "./half-day-off"
 import type { CellData, DoctorVacation, ScheduleData } from "./types"
 import { constraints2026, generateAstreinteRotation, NCT_DATES_2026, NCT_DATES_2025_DEC } from "./guard-scheduler"
 
@@ -114,7 +115,7 @@ export const generateWeekSchedule = (
   weekKey: string,
   vacations: DoctorVacation[] = [],
 ): ScheduleData => {
-  const schedule: ScheduleData = {
+  let schedule: ScheduleData = {
     // Astreintes ATL
     "Astreintes ATL Matin": createEmptyRow(),
     "Astreintes ATL Midi": createEmptyRow(),
@@ -221,46 +222,8 @@ export const generateWeekSchedule = (
     // Just ensuring we don't auto-fill it incorrectly. Currently no auto-fill rule exists for PSSL, so it stays empty.
   }
 
-  // Lundi matin: R, K
-  if (schedule["1/2 journée off Matin"] && schedule["1/2 journée off Matin"]["LUNDI"]) {
-    schedule["1/2 journée off Matin"]["LUNDI"].value = ["R", "K"]
-  }
-  // Lundi après-midi: R, K, Z
-  if (schedule["1/2 journée off Après-midi"] && schedule["1/2 journée off Après-midi"]["LUNDI"]) {
-    schedule["1/2 journée off Après-midi"]["LUNDI"].value = ["R", "K", "Z"]
-  }
-
-  // Mardi matin: H, S
-  if (schedule["1/2 journée off Matin"] && schedule["1/2 journée off Matin"]["MARDI"]) {
-    schedule["1/2 journée off Matin"]["MARDI"].value = ["H", "S"]
-  }
-  // Mardi après-midi: H, S
-  if (schedule["1/2 journée off Après-midi"] && schedule["1/2 journée off Après-midi"]["MARDI"]) {
-    schedule["1/2 journée off Après-midi"]["MARDI"].value = ["H", "S"]
-  }
-
-  // Mercredi après-midi: B, W, M, G
-  if (schedule["1/2 journée off Après-midi"] && schedule["1/2 journée off Après-midi"]["MERCREDI"]) {
-    schedule["1/2 journée off Après-midi"]["MERCREDI"].value = ["B", "W", "M", "G"]
-  }
-
-  // Jeudi après-midi: P, U
-  if (schedule["1/2 journée off Après-midi"] && schedule["1/2 journée off Après-midi"]["JEUDI"]) {
-    schedule["1/2 journée off Après-midi"]["JEUDI"].value = ["P", "U"]
-  }
-
-  // Vendredi après-midi: O, K, A
-  if (schedule["1/2 journée off Après-midi"] && schedule["1/2 journée off Après-midi"]["VENDREDI"]) {
-    schedule["1/2 journée off Après-midi"]["VENDREDI"].value = ["O", "K", "A"]
-  }
-
-  // K off Friday morning to complete "tous les vendredis off"
-  if (schedule["1/2 journée off Matin"] && schedule["1/2 journée off Matin"]["VENDREDI"]) {
-    const current = schedule["1/2 journée off Matin"]["VENDREDI"].value
-    if (!current.includes("K")) {
-      schedule["1/2 journée off Matin"]["VENDREDI"].value = [...current, "K"]
-    }
-  }
+  // Demi-journées libres habituelles (source unique : lib/half-day-off.ts)
+  schedule = applyHabitualHalfDaysOff(schedule)
 
   const allowedRows = [
     "Astreintes ATL Matin",

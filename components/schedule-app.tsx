@@ -45,6 +45,7 @@ import {
 } from "@/lib/doctor-code"
 import { clearFixedAssigneesOnVacation } from "@/lib/fixed-assignments"
 import { normalizeLeaveSchedule } from "@/lib/vacation-congés-mapper"
+import { placeNightGuardRecoveryOff } from "@/lib/half-day-off"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import {
@@ -420,36 +421,13 @@ export function ScheduleApp({
       },
     }
 
-    // Garde Nuit → 1/2 journée off matin lendemain (initiales listées seulement)
+    // Garde Nuit → 1/2 off apm lendemain (matin si off habituel apm) ; pas le samedi
     const addedListed = nextCell.value.filter(
       (d) => isListedDoctor(d) && !(prevCell.value || []).includes(d),
     )
     if (row.includes("Garde Nuit") && addedListed.length > 0) {
-      const dayIndex = DAYS.indexOf(day)
-      if (
-        dayIndex >= 0 &&
-        dayIndex < DAYS.length - 1 &&
-        day !== "VENDREDI" &&
-        day !== "SAMEDI"
-      ) {
-        const nextDay = DAYS[dayIndex + 1]
-        const offRow = newSchedule["1/2 journée off Matin"] || {}
-        const offCell = offRow[nextDay] || { value: [], type: "empty" as const, status: "validated" as const }
-        const offValues = [...(offCell.value || [])]
-        for (const doctor of addedListed) {
-          if (!offValues.includes(doctor)) offValues.push(doctor)
-        }
-        newSchedule = {
-          ...newSchedule,
-          "1/2 journée off Matin": {
-            ...offRow,
-            [nextDay]: {
-              ...offCell,
-              value: offValues,
-              type: offValues.length > 0 ? "doctor" : "empty",
-            },
-          },
-        }
+      for (const doctor of addedListed) {
+        newSchedule = placeNightGuardRecoveryOff(newSchedule, day, doctor)
       }
     }
 

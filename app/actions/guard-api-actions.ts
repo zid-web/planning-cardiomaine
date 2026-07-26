@@ -11,6 +11,7 @@ import {
 } from "@/lib/equity-tracking";
 import { applyFixedClinicalAssignments } from "@/lib/fixed-assignments";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
+import { applyNightGuardRecoveryOffs } from "@/lib/half-day-off";
 import { fillClinicalVacationsFromPatterns } from "@/lib/pattern-analysis";
 
 // Configuration
@@ -247,7 +248,9 @@ export async function generateGuardsViaAPI(
     // weekStartDate est le lundi ISO (yyyy-MM-dd) passé par GuardGenerationButton.
     const wn = getWeekNumber(parseISO(weekStartDate));
     const weekKey = `${wn.year}-W${String(wn.week).padStart(2, "0")}`;
-    let scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations);
+    let scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations, {
+      previousSundayGuardDoctor,
+    });
 
     // 7. Vacations cliniques Cs/ETT/EE : même analyse de fréquence qu’Historique+,
     // appliquée automatiquement sur les cellules encore vides (statut pending).
@@ -351,15 +354,18 @@ function convertAPIResponseToSchedule(
   },
   weekKey = "generated",
   vacations: DoctorVacation[] = [],
+  opts?: { previousSundayGuardDoctor?: string | null },
 ): ScheduleData {
   const base = generateWeekSchedule(weekKey, vacations);
   if (!response?.assignments?.length) {
     console.warn("Réponse Render sans assignments :", response);
-    return base;
+    return applyNightGuardRecoveryOffs(base, opts);
   }
   // Solveur d'abord, puis règles fixes (FV lundi/jeudi, IRM, DAAS, Rythmo, Visite)
   const merged = mergeAssignmentsIntoSchedule(base, response.assignments);
-  return applyFixedClinicalAssignments(merged, weekKey, vacations);
+  const withFixed = applyFixedClinicalAssignments(merged, weekKey, vacations);
+  // Récupération 1/2 off après Garde Nuit (apm lendemain, matin si off habituel apm)
+  return applyNightGuardRecoveryOffs(withFixed, opts);
 }
 
 // Export pour compatibilité avec l'ancien code
