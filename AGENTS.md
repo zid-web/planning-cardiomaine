@@ -17,7 +17,7 @@ required service is the Next.js dev server; the backend is Supabase.
 - UI moderne dans `components/today-view.tsx` et `components/week-view.tsx` (montées par `ScheduleApp`).
 - **Notes du jour** (onglet Aujourd’hui) : carte cliquable → modale texte → `saveScheduleToDb` via `updateSchedule` sur la ligne `Notes du jour`.
 - Toolbar admin : **Journal** = audit `schedule_history` (qui a changé quoi) ; **Pré-remplir** = propositions Cs/ETT/EE depuis semaines passées (ex-« Historique+ », icône `Wand2`). Pas redondants. Boutons outline : forcer `!text-slate-900` + fond blanc (sinon icônes transparentes).
-- **Dialogs shadcn** : `DialogContent` doit utiliser `bg-white text-slate-900` (pas `bg-background`) — les tokens CSS HSL sans `hsl()` sont invalides en Tailwind v4 → modale transparente / texte illisible (Pré-remplir, Stats, etc.).
+- **Couleurs / modales** : dans `app/globals.css`, les tokens doivent être des couleurs CSS complètes (`hsl(...)`), pas des triplets HSL nus — sinon `bg-card` / `bg-background` → transparent (Notes du jour, Pré-remplir, Cards). Dialogs/Cards/Textarea : préférer `bg-white text-slate-900` en secours.
 
 ### Congés (ligne unique absences)
 - Une seule ligne UI **Congés** (plus de ligne « Vacances »). `normalizeLeaveSchedule` (`lib/vacation-congés-mapper.ts`) : fusion legacy Vacances→Congés, remplissage depuis `doctor_vacations`, puis **retrait des absents de toutes les autres lignes** (y compris `1/2 journée off Matin/Après-midi`).

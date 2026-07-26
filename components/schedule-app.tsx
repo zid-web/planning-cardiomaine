@@ -1411,12 +1411,13 @@ export function ScheduleApp({
                                     key={day}
                                     className="table-cell-default p-1 text-center border-r last:border-r-0 h-10"
                                   >
-                                    <div
+                                    <button
+                                      type="button"
                                       onClick={() => handleNoteClick(day)}
-                                      className="flex h-full w-full cursor-pointer items-center justify-center rounded-md text-[10px] text-slate-600 hover:bg-yellow-100 px-1 truncate"
+                                      className="flex h-full w-full cursor-pointer items-center justify-center truncate rounded-md bg-yellow-100/80 px-1 text-[10px] font-medium text-slate-800 ring-1 ring-yellow-200 hover:bg-yellow-200"
                                     >
                                       {rowData[day]?.value[0] || "+ Note"}
-                                    </div>
+                                    </button>
                                   </td>
                                 ))}
                               </tr>
@@ -2052,33 +2053,34 @@ export function ScheduleApp({
       {/* Note Modal */}
       {noteModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
           onClick={() => setNoteModalOpen(false)}
         >
           <Card
-            className="relative w-full max-w-md overflow-hidden rounded-t-3xl border-slate-200 shadow-2xl sm:rounded-2xl"
+            className="relative w-full max-w-md overflow-hidden rounded-t-3xl border border-slate-200 bg-white py-0 text-slate-900 shadow-2xl sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="border-b border-slate-100 bg-gradient-to-r from-sky-50 to-white px-5 py-4">
+            <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 to-white px-5 py-4">
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute right-2 top-2 text-slate-500 hover:text-slate-900"
+                className="absolute right-2 top-2 !text-slate-700 hover:bg-slate-100 hover:!text-slate-900"
                 onClick={() => setNoteModalOpen(false)}
+                aria-label="Fermer"
               >
                 <X className="h-4 w-4" />
               </Button>
-              <CardTitle className="flex items-center gap-2 text-base text-slate-900">
-                <span className="flex size-9 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-sky-100 text-sky-800 ring-1 ring-sky-200">
                   <MessageSquare className="h-4 w-4" />
                 </span>
                 Note — {noteDay}
               </CardTitle>
-              <p className="mt-1 text-xs text-slate-500">Texte libre visible sur le planning de la semaine</p>
+              <p className="mt-1 text-xs text-slate-600">Texte libre visible sur le planning de la semaine</p>
             </div>
-            <CardContent className="space-y-4 p-5">
+            <CardContent className="space-y-4 bg-white p-5">
               <div className="space-y-2">
-                <Label htmlFor="day-note-input" className="text-slate-700">
+                <Label htmlFor="day-note-input" className="font-medium text-slate-800">
                   Contenu
                 </Label>
                 <Textarea
@@ -2086,7 +2088,7 @@ export function ScheduleApp({
                   value={currentNote}
                   onChange={(e) => setCurrentNote(e.target.value)}
                   placeholder="Consigne, rappel, information pour l’équipe…"
-                  className="min-h-[140px] resize-y border-slate-200 text-sm text-slate-800"
+                  className="min-h-[140px] resize-y border-slate-300 bg-white text-sm text-slate-900 placeholder:text-slate-400"
                   autoFocus
                 />
               </div>
@@ -2094,7 +2096,7 @@ export function ScheduleApp({
                 <Button
                   type="button"
                   variant="outline"
-                  className="border-slate-300 text-slate-700"
+                  className="border-slate-300 bg-white !text-slate-900 hover:bg-slate-100"
                   onClick={() => {
                     setCurrentNote("")
                   }}
