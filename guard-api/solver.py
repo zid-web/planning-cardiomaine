@@ -652,8 +652,8 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
         warnings.append("Aucune solution trouvée par le solveur")
 
     # --- 13bis. Lignes dérivées (non optimisées par le solveur) ---
-    # Vacances : reflète directement req.vacations pour les jours de la semaine en cours.
-    # Congé : contenu systématiquement identique à Vacances (retranscription automatique).
+    # Congés (ligne unique UI) : reflète req.vacations pour les jours de la semaine.
+    # (VACANCES historique mappe aussi vers Congés côté Next.js.)
     for v in req.vacations:
         v_start = date.fromisoformat(v.start_date)
         v_end = date.fromisoformat(v.end_date)
@@ -661,13 +661,8 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
             if v_start <= day <= v_end:
                 assignments.append(Assignment(
                     date=day.isoformat(), day_name=DAY_NAMES_FR[d_idx],
-                    slot="weekend" if d_idx >= 5 else "matin", activity="VACANCES",
-                    doctor=v.doctor_id, note="Saisie vacances"
-                ))
-                assignments.append(Assignment(
-                    date=day.isoformat(), day_name=DAY_NAMES_FR[d_idx],
                     slot="weekend" if d_idx >= 5 else "matin", activity="CONGE",
-                    doctor=v.doctor_id, note="Retranscrit automatiquement depuis Vacances"
+                    doctor=v.doctor_id, note="Saisie vacances / congés"
                 ))
 
     # Congrès : même logique que vacances, à partir de req.congres.

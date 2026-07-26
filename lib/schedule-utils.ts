@@ -162,7 +162,6 @@ export const generateWeekSchedule = (
     "Pré-op": createEmptyRow(),
     "1/2 journée off Matin": createEmptyRow(),
     "1/2 journée off Après-midi": createEmptyRow(),
-    Vacances: createEmptyRow(),
     Congrès: createEmptyRow(),
     Congés: createEmptyRow(),
 
@@ -352,10 +351,10 @@ export const generateWeekSchedule = (
     Object.entries(constraints2026.vacations2026).forEach(([user, dates]) => {
       dates.forEach((dateStr) => {
         const dayName = Object.keys(dayToDateMap).find((day) => dayToDateMap[day] === dateStr)
-        if (dayName && schedule["Vacances"]) {
-          const currentValue = schedule["Vacances"][dayName]?.value || []
+        if (dayName && schedule["Congés"]) {
+          const currentValue = schedule["Congés"][dayName]?.value || []
           if (!currentValue.includes(user)) {
-            schedule["Vacances"][dayName].value = [...currentValue, user]
+            schedule["Congés"][dayName].value = [...currentValue, user]
           }
         }
       })

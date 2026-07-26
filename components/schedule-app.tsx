@@ -44,7 +44,7 @@ import {
   normalizeRemplacantLabel,
 } from "@/lib/doctor-code"
 import { clearFixedAssigneesOnVacation } from "@/lib/fixed-assignments"
-import { populateCongesRowFromVacations } from "@/lib/vacation-congés-mapper"
+import { normalizeLeaveSchedule } from "@/lib/vacation-congés-mapper"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import {
@@ -254,13 +254,11 @@ export function ScheduleApp({
       fullSchedule[currentWeekKey],
       schedule,
     )
-    if (vacations.length > 0) {
-      mergedWeekSchedule = populateCongesRowFromVacations(
-        mergedWeekSchedule,
-        vacations,
-        currentWeekKey,
-      )
-    }
+    mergedWeekSchedule = normalizeLeaveSchedule(
+      mergedWeekSchedule,
+      vacations,
+      currentWeekKey,
+    )
 
     const updatedFullSchedule = { ...fullSchedule, [currentWeekKey]: mergedWeekSchedule }
     setFullSchedule(updatedFullSchedule)
@@ -300,9 +298,9 @@ export function ScheduleApp({
       scheduleToUse = fullSchedule[weekKey]
     }
 
-    // RÈGLE ABSOLUE: Remplir automatiquement la ligne "Congés" avec les médecins en vacances
+    // RÈGLE ABSOLUE: une seule ligne Congés ; absents retirés des autres lignes
+    scheduleToUse = normalizeLeaveSchedule(scheduleToUse, vacations, weekKey)
     if (vacations.length > 0) {
-      scheduleToUse = populateCongesRowFromVacations(scheduleToUse, vacations, weekKey)
       scheduleToUse = clearFixedAssigneesOnVacation(scheduleToUse, weekKey, vacations)
     }
 
