@@ -29,8 +29,10 @@ required service is the Next.js dev server; the backend is Supabase.
 - Appliqué à l’édition UI (`placeNightGuardRecoveryOff`), après « Générer » (`applyNightGuardRecoveryOffs`), et dans `guard-api/solver.py` (contrainte + `DEMI_JOURNEE_LIBRE`). Offs habituels = `HABITUAL_HALF_DAYS_OFF` (seed `generateWeekSchedule`).
 
 ### Contraintes structurelles vs « Générer »
-- **Toujours injectées** (sans Générer) via `applyStructuralConstraints` (`lib/apply-structural-constraints.ts`) : IRM/FV/DAAS/Rythmo/Visite, ½-off habituelles, récupération garde nuit, Congés + strip absents, NCT calendrier, LFB. Appliqué à l’affichage + persisté (`source: "constraints"`).
-- **« Générer »** (`GuardGenerationButton`) = **propositions** d’équité (gardes/astreintes/Coro/Pré-op/Rééduc + Cs/ETT/EE patterns) en statut **`pending`**, à valider par un **admin**. Ne réécrit plus Congés / ½-off / Rythmo / NCT. Lignes : `GENERATOR_PROPOSAL_ROW_KEYS`.
+- **Toujours injectées** (sans Générer) via `applyStructuralConstraints` (`lib/apply-structural-constraints.ts`) : IRM/FV/DAAS/Rythmo/Visite, ½-off habituelles, récupération garde nuit, Congés + strip absents, NCT calendrier, LFB, **CH**. Appliqué à l’affichage + persisté (`source: "constraints"`, debounce).
+- **CH** (`applyChAstreinteConstraints`) : uniquement **Astreintes ATL Nuit** Lun–Ven selon roulement (impaire = Lun/Mar/Ven ; paire = Mer/Jeu) ; weekend **ATL Matin+Midi+Nuit** les semaines **impaires**. Pas de CH sur ATL Matin/Midi en semaine.
+- **« Générer »** = **propositions** `pending` (gardes/astreintes WOM/Coro/…) à valider admin. Lignes : `GENERATOR_PROPOSAL_ROW_KEYS`.
+- Congés CRUD : **ne pas** `revalidatePath('/protected/planning')` pendant la modale (course / faux positif « message channel closed »). Refresh via `onVacationsUpdated` + `getAllVacations` (`noStore`).
 - Do **not** reintroduce `generateWeekWithSolver` / second bouton solveur.
 - **Equity / CellData:** `{ value: string[], status, type? }` + row key. Use `lib/equity-tracking.ts`.
 

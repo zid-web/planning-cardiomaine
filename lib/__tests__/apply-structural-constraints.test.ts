@@ -3,6 +3,7 @@
  */
 import assert from "node:assert/strict"
 import {
+  applyChAstreinteConstraints,
   applyStructuralConstraints,
   schedulesDiffer,
 } from "@/lib/apply-structural-constraints"
@@ -79,6 +80,31 @@ function main() {
 
   assert.equal(schedulesDiffer(base, base), false)
   assert.equal(schedulesDiffer(base, applyStructuralConstraints(structuredClone(base), weekKey, [])), false)
+
+  // CH : semaine impaire (W30 = 30 pair → Mer/Jeu nuit ; weekend sans CH)
+  // W31 = impair → Lun/Mar/Ven nuit + weekend ATL
+  const oddWeek = "2026-W31"
+  let chSchedule = generateWeekSchedule(oddWeek, [])
+  // Pollue volontairement Matin/Midi avec CH
+  chSchedule["Astreintes ATL Matin"].LUNDI.value = ["CH"]
+  chSchedule["Astreintes ATL Midi"].LUNDI.value = ["CH"]
+  chSchedule = applyChAstreinteConstraints(chSchedule, oddWeek)
+  assert.ok(!chSchedule["Astreintes ATL Matin"].LUNDI.value.includes("CH"))
+  assert.ok(!chSchedule["Astreintes ATL Midi"].LUNDI.value.includes("CH"))
+  assert.ok(chSchedule["Astreintes ATL Nuit"].LUNDI.value.includes("CH"))
+  assert.ok(chSchedule["Astreintes ATL Nuit"].MARDI.value.includes("CH"))
+  assert.ok(chSchedule["Astreintes ATL Nuit"].VENDREDI.value.includes("CH"))
+  assert.ok(!chSchedule["Astreintes ATL Nuit"].MERCREDI.value.includes("CH"))
+  assert.ok(chSchedule["Astreintes ATL Matin"].SAMEDI.value.includes("CH"))
+  assert.ok(chSchedule["Astreintes ATL Midi"].DIMANCHE.value.includes("CH"))
+  assert.ok(chSchedule["Astreintes ATL Nuit"].DIMANCHE.value.includes("CH"))
+
+  const evenWeek = "2026-W30"
+  chSchedule = applyChAstreinteConstraints(generateWeekSchedule(evenWeek, []), evenWeek)
+  assert.ok(chSchedule["Astreintes ATL Nuit"].MERCREDI.value.includes("CH"))
+  assert.ok(chSchedule["Astreintes ATL Nuit"].JEUDI.value.includes("CH"))
+  assert.ok(!chSchedule["Astreintes ATL Nuit"].LUNDI.value.includes("CH"))
+  assert.ok(!chSchedule["Astreintes ATL Matin"].SAMEDI.value.includes("CH"))
 
   console.log("✅ apply-structural-constraints tests passed")
 }
