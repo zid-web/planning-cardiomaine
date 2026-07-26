@@ -341,43 +341,49 @@ export const generateWeekSchedule = (
         return constraints2026.fixedAstreintes2026.some((a) => a.date === dateStr && a.user === user)
       }
 
-      const applyAstreinteIfNotFixed = (dayName: string, user: string | undefined) => {
+      // Lun–Ven : uniquement Astreinte ATL **Nuit** (CH ou WOM selon roulement)
+      const applyWeekdayNightAstreinte = (dayName: string, user: string | undefined) => {
         if (!user) return
-
         const dateStr = dayToDateMap[dayName]
-        // Check if there's already a fixed astreinte for this date
         const hasFixed = constraints2026.fixedAstreintes2026.some((a) => a.date === dateStr)
-
-        if (!hasFixed) {
-          ;["Matin", "Midi", "Nuit"].forEach((period) => {
-            const rowKey = `Astreintes ATL ${period}`
-            if (schedule[rowKey]?.[dayName]) {
-              const current = schedule[rowKey][dayName].value
-              if (!current.includes(user)) {
-                schedule[rowKey][dayName].value = [...current, user]
-              }
-            }
-          })
+        if (hasFixed) return
+        const rowKey = "Astreintes ATL Nuit"
+        if (schedule[rowKey]?.[dayName]) {
+          const current = schedule[rowKey][dayName].value
+          if (!current.includes(user)) {
+            schedule[rowKey][dayName].value = [...current, user]
+          }
         }
       }
 
-      // Apply Monday astreinte
-      applyAstreinteIfNotFixed("LUNDI", currentRotation.monday)
+      applyWeekdayNightAstreinte("LUNDI", currentRotation.monday)
+      applyWeekdayNightAstreinte("MARDI", currentRotation.tuesday)
+      applyWeekdayNightAstreinte("MERCREDI", currentRotation.wednesday)
+      applyWeekdayNightAstreinte("JEUDI", currentRotation.thursday)
+      applyWeekdayNightAstreinte("VENDREDI", currentRotation.friday)
 
-      // Apply Tuesday astreinte
-      applyAstreinteIfNotFixed("MARDI", currentRotation.tuesday)
+      // Weekend : Astreinte ATL Matin/Midi/Nuit (CH les semaines impaires)
+      const applyWeekendAtl = (dayName: "SAMEDI" | "DIMANCHE", user: string | undefined) => {
+        if (!user) return
+        const dateStr = dayToDateMap[dayName]
+        const hasFixed = constraints2026.fixedAstreintes2026.some((a) => a.date === dateStr)
+        if (hasFixed) return
+        ;["Matin", "Midi", "Nuit"].forEach((period) => {
+          const rowKey = `Astreintes ATL ${period}`
+          if (schedule[rowKey]?.[dayName]) {
+            const current = schedule[rowKey][dayName].value
+            if (!current.includes(user)) {
+              schedule[rowKey][dayName].value = [...current, user]
+            }
+          }
+        })
+      }
 
-      // Apply Wednesday astreinte
-      applyAstreinteIfNotFixed("MERCREDI", currentRotation.wednesday)
-
-      // Apply Thursday astreinte (CH in even weeks)
-      applyAstreinteIfNotFixed("JEUDI", currentRotation.thursday)
-
-      // Apply Friday astreinte
-      applyAstreinteIfNotFixed("VENDREDI", currentRotation.friday)
-
-      // Apply weekend rotation
-      if (currentRotation.saturday1) {
+      if (currentRotation.saturday1 === "CH") {
+        applyWeekendAtl("SAMEDI", "CH")
+        applyWeekendAtl("DIMANCHE", "CH")
+      } else if (currentRotation.saturday1) {
+        // Semaine paire WOM : conserve l’ancien remplissage Garde pour seed (propositions)
         const satDate = dayToDateMap["SAMEDI"]
         const hasFixedSat = constraints2026.fixedAstreintes2026.some((a) => a.date === satDate)
 
@@ -409,7 +415,8 @@ export const generateWeekSchedule = (
         }
       }
 
-      if (currentRotation.saturday2) {
+      // 2e médecin weekend (WOM) — pas CH (déjà couvert par applyWeekendAtl)
+      if (currentRotation.saturday2 && currentRotation.saturday2 !== "CH") {
         const satDate = dayToDateMap["SAMEDI"]
         const hasFixedSat = constraints2026.fixedAstreintes2026.some((a) => a.date === satDate)
 

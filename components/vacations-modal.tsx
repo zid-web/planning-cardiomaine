@@ -180,8 +180,17 @@ export function VacationsModal({
       }
 
       resetForm()
-      await loadVacations()
-      await Promise.resolve(onVacationsUpdated?.())
+      try {
+        await loadVacations()
+      } catch (reloadErr) {
+        console.warn('[app] Reload liste congés après save:', reloadErr)
+      }
+      try {
+        await Promise.resolve(onVacationsUpdated?.())
+      } catch (parentErr) {
+        // Ne pas faire échouer l’ajout si le refresh planning parent échoue
+        console.warn('[app] onVacationsUpdated après save:', parentErr)
+      }
     } catch (err) {
       setError('Erreur lors de l’enregistrement')
       console.error('[app] Error saving vacation:', err)
@@ -204,8 +213,16 @@ export function VacationsModal({
       if (editingId === vacationId) resetForm()
       setVacations((prev) => prev.filter((v) => v.id !== vacationId))
       setSuccess('Congé supprimé')
-      await loadVacations()
-      await Promise.resolve(onVacationsUpdated?.())
+      try {
+        await loadVacations()
+      } catch (reloadErr) {
+        console.warn('[app] Reload liste congés après delete:', reloadErr)
+      }
+      try {
+        await Promise.resolve(onVacationsUpdated?.())
+      } catch (parentErr) {
+        console.warn('[app] onVacationsUpdated après delete:', parentErr)
+      }
     } catch (err) {
       setError('Erreur lors de la suppression')
       console.error('[app] Error deleting vacation:', err)
