@@ -12,9 +12,11 @@ import {
   History,
   Home,
   List,
+  Loader2,
   MessageSquare,
   Mic,
   UserCog,
+  Wand2,
   Wifi,
   WifiOff,
   X,
@@ -1191,45 +1193,50 @@ export function ScheduleApp({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-800 hover:bg-slate-100 hover:text-slate-900"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => setPatternFillOpen(true)}
-                          title="Pré-remplir Cs/ETT/EE/hors site selon l’historique (revue avant écriture)"
+                          title="Pré-remplir Cs/ETT/EE/hors site selon les semaines passées (revue avant écriture)"
                         >
-                          <BarChart3 className="mr-1 h-3.5 w-3.5 text-slate-700" />
-                          <span className="hidden sm:inline">Historique+</span>
+                          <Wand2 className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
+                          <span className="hidden sm:inline">Pré-remplir</span>
                         </Button>
 
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-800 hover:bg-slate-100 hover:text-slate-900"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => void exportWeekPdf()}
                           disabled={isExportingPdf}
                           title="Exporter la semaine en PDF"
                         >
-                          <FileDown className="mr-1 h-3.5 w-3.5 text-slate-700" />
+                          <FileDown className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden md:inline">{isExportingPdf ? "…" : "PDF"}</span>
                         </Button>
 
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 border-slate-300 bg-white px-2.5 text-[11px] font-semibold text-slate-900 shadow-sm hover:bg-slate-900 hover:text-white"
+                          className="h-7 border-slate-300 bg-white px-2.5 text-[11px] font-semibold !text-slate-900 shadow-sm hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => void openHistoryPanel()}
-                          title="Historique des modifications"
+                          title="Journal des modifications de la semaine (qui a changé quoi)"
+                          disabled={historyLoading}
                         >
-                          <History className="mr-1 h-3.5 w-3.5 shrink-0" />
-                          <span className="inline">Historique</span>
+                          {historyLoading ? (
+                            <Loader2 className="mr-1 h-3.5 w-3.5 shrink-0 animate-spin !text-slate-900" strokeWidth={2.25} />
+                          ) : (
+                            <History className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
+                          )}
+                          <span className="inline">Journal</span>
                         </Button>
 
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => router.push("/protected/admin/requests")}
                           title="Tableau de bord des demandes"
                         >
-                          <Bell className="mr-1 h-3.5 w-3.5" />
+                          <Bell className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden lg:inline">Demandes</span>
                           {pendingRequests.length > 0 && (
                             <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
@@ -1241,22 +1248,22 @@ export function ScheduleApp({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => router.push("/protected/admin/users")}
                           title="Gestion des comptes"
                         >
-                          <UserCog className="mr-1 h-3.5 w-3.5" />
+                          <UserCog className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden xl:inline">Comptes</span>
                         </Button>
 
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => router.push("/protected/admin/feedback")}
                           title="Feedback utilisateurs"
                         >
-                          <MessageSquare className="mr-1 h-3.5 w-3.5" />
+                          <MessageSquare className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden xl:inline">Feedback</span>
                         </Button>
 
@@ -1266,7 +1273,7 @@ export function ScheduleApp({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 px-2 text-[11px]"
+                            className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                             onClick={() => setShowProposals(!showProposals)}
                           >
                             {showProposals ? "Masquer" : "Afficher"} Prop.
@@ -1276,11 +1283,11 @@ export function ScheduleApp({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => setShowWorkloadStats(!showWorkloadStats)}
                           title="Statistiques de charge"
                         >
-                          <BarChart3 className="mr-1 h-3.5 w-3.5" />
+                          <BarChart3 className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden lg:inline">
                             {showWorkloadStats ? "Masquer" : "Stats"}
                           </span>
@@ -1830,17 +1837,28 @@ export function ScheduleApp({
           >
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-slate-900">Historique des modifications</h3>
-                <p className="text-xs text-slate-500">{weekKey} · 50 derniers changements</p>
+                <h3 className="font-bold text-slate-900">Journal des modifications</h3>
+                <p className="text-xs text-slate-600">
+                  {weekKey} · 50 derniers changements de cellules (audit)
+                </p>
               </div>
-              <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-gray-100 rounded-full">
+              <button
+                onClick={() => setShowHistory(false)}
+                className="rounded-full p-2 text-slate-700 hover:bg-gray-100"
+                aria-label="Fermer"
+              >
                 <X className="size-5" />
               </button>
             </div>
             {historyLoading ? (
-              <p className="py-8 text-center text-sm text-slate-500">Chargement…</p>
+              <div className="flex flex-col items-center justify-center gap-2 py-10 text-slate-700">
+                <Loader2 className="h-6 w-6 animate-spin text-slate-800" strokeWidth={2.25} />
+                <p className="text-sm font-medium">Chargement du journal…</p>
+              </div>
             ) : historyRows.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-500">Aucun historique pour cette semaine.</p>
+              <p className="py-8 text-center text-sm text-slate-600">
+                Aucune modification enregistrée pour cette semaine.
+              </p>
             ) : (
               <ul className="space-y-2">
                 {historyRows.map((row) => (
