@@ -11,6 +11,7 @@ import {
 } from "@/lib/half-day-off"
 import { NCT_DATES_2025_DEC, NCT_DATES_2026 } from "@/lib/guard-scheduler"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
+import { applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { normalizeLeaveSchedule } from "@/lib/vacation-congés-mapper"
 
 /**
@@ -31,6 +32,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "CH = Astreinte ATL Nuit Lun–Ven (roulement) + ATL Matin/Midi/Nuit weekend (semaines impaires)",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
+  "Blocages créneau : congés, ½-off, 1 tâche/matin|apm (sauf ATL+Coro, doublon Cs/ETT), LFB/CDL hors garde J/J+1",
 ] as const
 
 const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"] as const
@@ -313,7 +315,10 @@ export function applyStructuralConstraints(
     next = clearFixedAssigneesOnVacation(next, weekKey, vacations)
   }
 
-  // 9) Re-miroir Coro→ATL après strip congés (si Coro a perdu un médecin)
+  // 9) Strips bloquants (½-off, exclusion créneau, LFB/CDL vs garde)
+  next = applySlotBlockingStrips(next)
+
+  // 10) Re-miroir Coro→ATL après strips (si Coro a perdu un médecin)
   next = applyAtlFollowsCoroConstraints(next)
 
   return next

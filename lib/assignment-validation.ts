@@ -1,5 +1,6 @@
 import { isListedDoctor } from '@/lib/doctor-code'
-import { DoctorVacation } from '@/lib/types'
+import { canAssignDoctorToSlot } from '@/lib/slot-blocking'
+import { DoctorVacation, ScheduleData } from '@/lib/types'
 import { parseISO, isAfter, isBefore } from 'date-fns'
 
 /**
@@ -28,14 +29,14 @@ export function isDoctorUnavailable(
 }
 
 /**
- * Vérifie si une assignation est autorisée
- * Retourne {allowed: boolean, reason?: string}
+ * Vérifie si une assignation est autorisée (congés + règles de créneau si schedule fourni).
  */
 export function canAssignDoctor(
   doctorId: string,
   dateStr: string,
   activity: string,
-  vacations: DoctorVacation[]
+  vacations: DoctorVacation[],
+  opts?: { schedule?: ScheduleData; day?: string },
 ): {
   allowed: boolean
   reason?: string
@@ -45,8 +46,18 @@ export function canAssignDoctor(
     return { allowed: true }
   }
 
+  if (opts?.schedule && opts.day) {
+    return canAssignDoctorToSlot(
+      doctorId,
+      dateStr,
+      activity,
+      opts.day,
+      opts.schedule,
+      vacations,
+    )
+  }
+
   if (isDoctorUnavailable(doctorId, dateStr, vacations)) {
-    // Trouver la vacation pour afficher les dates exactes
     const vacation = vacations.find(
       (v) =>
         v.doctor_id === doctorId &&
