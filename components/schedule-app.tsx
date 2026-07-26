@@ -8,14 +8,12 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Edit3,
   FileDown,
   History,
   Home,
   List,
   MessageSquare,
   Mic,
-  UserCircle,
   UserCog,
   Wifi,
   WifiOff,
@@ -59,6 +57,8 @@ import { getAllVacations } from "@/app/actions/vacation-actions"
 import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
+import { TodayView } from "@/components/today-view"
+import { WeekView } from "@/components/week-view"
 import { DoctorVacation } from "@/lib/types"
 
 const VoiceAndUploadPanel = lazy(() =>
@@ -777,23 +777,37 @@ export function ScheduleApp({
   )
 
   const handleNoteClick = (day: string) => {
+    // Global : admin seulement ; Aujourd'hui / Semaine : tout utilisateur authentifié
     if (activeTab === "all" && !isAdmin) return
 
     setNoteDay(day)
-    setCurrentNote(schedule["Notes du jour"][day]?.value[0] || "")
+    setCurrentNote(schedule["Notes du jour"]?.[day]?.value?.[0] || "")
     setNoteModalOpen(true)
   }
 
   const saveNote = () => {
-    const newSchedule = { ...schedule }
-    newSchedule["Notes du jour"][noteDay] = {
-      value: [currentNote],
-      type: "empty",
-      status: "validated",
+    const trimmed = currentNote.trim()
+    const prevCell = schedule["Notes du jour"]?.[noteDay] || {
+      value: [],
+      type: "empty" as const,
+      status: "validated" as const,
+    }
+    const newSchedule: ScheduleData = {
+      ...schedule,
+      "Notes du jour": {
+        ...(schedule["Notes du jour"] || {}),
+        [noteDay]: {
+          ...prevCell,
+          value: trimmed ? [trimmed] : [],
+          type: trimmed ? "empty" : "empty",
+          status: "validated",
+        },
+      },
     }
 
-    updateSchedule(newSchedule)
+    void updateSchedule(newSchedule)
     setNoteModalOpen(false)
+    toast.success(trimmed ? "Note enregistrée" : "Note effacée")
   }
 
   const nextWeek = () => {
@@ -1128,35 +1142,35 @@ export function ScheduleApp({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-800 hover:bg-slate-100 hover:text-slate-900"
                           onClick={() => setPatternFillOpen(true)}
                           title="Pré-remplir Cs/ETT/EE/hors site selon l’historique (revue avant écriture)"
                         >
-                          <BarChart3 className="mr-1 h-3.5 w-3.5" />
-                          <span className="hidden lg:inline">Historique+</span>
+                          <BarChart3 className="mr-1 h-3.5 w-3.5 text-slate-700" />
+                          <span className="hidden sm:inline">Historique+</span>
                         </Button>
 
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold text-slate-800 hover:bg-slate-100 hover:text-slate-900"
                           onClick={() => void exportWeekPdf()}
                           disabled={isExportingPdf}
                           title="Exporter la semaine en PDF"
                         >
-                          <FileDown className="mr-1 h-3.5 w-3.5" />
+                          <FileDown className="mr-1 h-3.5 w-3.5 text-slate-700" />
                           <span className="hidden md:inline">{isExportingPdf ? "…" : "PDF"}</span>
                         </Button>
 
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 px-2 text-[11px]"
+                          className="h-7 border-slate-300 bg-white px-2.5 text-[11px] font-semibold text-slate-900 shadow-sm hover:bg-slate-900 hover:text-white"
                           onClick={() => void openHistoryPanel()}
                           title="Historique des modifications"
                         >
-                          <History className="mr-1 h-3.5 w-3.5" />
-                          <span className="hidden lg:inline">Historique</span>
+                          <History className="mr-1 h-3.5 w-3.5 shrink-0" />
+                          <span className="inline">Historique</span>
                         </Button>
 
                         <Button
@@ -1239,160 +1253,32 @@ export function ScheduleApp({
 
             {/* TODAY VIEW */}
             {activeTab === "today" && (
-              <div className="mx-auto w-full max-w-[400px] space-y-4 px-1 sm:px-3">
-                <div className="flex flex-wrap justify-center gap-1 pb-2 scrollbar-none">
-                  {DAYS.map((day, idx) => {
-                    const isSelected = idx === currentDayIndex
-                    const date = weekDates[idx].split("/")[0]
-                    return (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => goToDay(idx)}
-                        className={`
-                          flex min-h-11 min-w-[44px] flex-1 flex-col items-center justify-center rounded-xl border p-2 transition-all sm:min-w-[60px] sm:flex-none
-                          ${isSelected ? "border-blue-600 bg-blue-600 text-white shadow-md" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300"}
-                        `}
-                      >
-                        <span className="text-[10px] font-medium uppercase opacity-80">{day.slice(0, 3)}</span>
-                        <span className="text-base font-bold md:text-lg">{date}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-
-                <div className="flex items-center justify-between rounded-2xl bg-blue-600 p-4 text-white shadow-lg shadow-blue-200 md:p-6">
-                  <div>
-                    <p className="text-sm text-blue-100">Aujourd&apos;hui</p>
-                    <h3 className="text-xl font-bold md:text-2xl">{DAYS[currentDayIndex]}</h3>
-                    <p className="text-sm text-blue-100">{weekDates[currentDayIndex]}</p>
-                  </div>
-                  <Calendar className="size-7 text-blue-200 md:size-8" />
-                </div>
-
-                <div className="rounded-xl border bg-white p-3 shadow-sm md:p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-900 md:text-base">
-                      <MessageSquare className="size-4 text-blue-500" />
-                      Notes du jour
-                    </h4>
-                    <Button variant="ghost" size="sm" onClick={() => handleNoteClick(DAYS[currentDayIndex])}>
-                      <Edit3 className="size-4 text-slate-400" />
-                    </Button>
-                  </div>
-                  <div className="min-h-[60px] rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
-                    {schedule["Notes du jour"][DAYS[currentDayIndex]]?.value[0] || "Aucune note pour aujourd'hui..."}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="px-1 text-sm font-semibold text-slate-900 md:text-base">Mon Planning</h4>
-                  {getAllTasksForDay(DAYS[currentDayIndex]).filter((task) => task.doctors.includes(doctorCode)).length >
-                  0 ? (
-                    getAllTasksForDay(DAYS[currentDayIndex])
-                      .filter((task) => task.doctors.includes(doctorCode))
-                      .map((task, idx) => {
-                        const isMorning = task.activity.includes("Matin")
-                        const isAfternoonOrEvening =
-                          task.activity.includes("Apm") ||
-                          task.activity.includes("Après-midi") ||
-                          task.activity.includes("Soir") ||
-                          task.activity.includes("Nuit")
-
-                        let colorClasses = "border-l-slate-300"
-                        if (task.doctors.includes(doctorCode)) {
-                          if (isMorning) {
-                            colorClasses = "border-l-blue-500 bg-blue-50/30"
-                          } else if (isAfternoonOrEvening) {
-                            colorClasses = "border-l-yellow-500 bg-yellow-50/30"
-                          } else {
-                            // Fallback for tasks without explicit time
-                            colorClasses = "border-l-blue-500 bg-blue-50/30"
-                          }
-                        }
-
-                        return (
-                          <Card
-                            key={idx}
-                            className={`flex items-center gap-2 border-l-4 p-2 transition-all hover:shadow-md md:gap-4 md:p-4 ${colorClasses}`}
-                          >
-                            <div className="rounded-full bg-slate-100 p-1.5 text-lg md:p-2 md:text-xl">
-                              {/* @ts-ignore */}
-                              {ACTIVITY_ICONS[
-                                Object.keys(ACTIVITY_ICONS).find((k) => task.activity.includes(k)) || ""
-                              ] || "•"}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="text-sm font-medium text-slate-900 md:text-base">
-                                {task.activity
-                                  .replace("Matin - ", "")
-                                  .replace("Apm - ", "")
-                                  .replace("Hors site - ", "")}
-                              </p>
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {task.doctors.map((doc, i) => (
-                                  <Badge
-                                    key={i}
-                                    className={`${DOCTOR_COLORS[doc] || "bg-slate-500"} border-none px-1.5 py-0 text-[10px] text-white`}
-                                  >
-                                    {doc}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                          </Card>
-                        )
-                      })
-                  ) : (
-                    <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 py-12 text-center">
-                      <div className="mb-2 rounded-full bg-slate-100 p-3">
-                        <UserCircle className="size-6 text-slate-400" />
-                      </div>
-                      <p className="text-sm text-slate-500">Aucune activité prévue pour vous ce jour</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <TodayView
+                days={DAYS}
+                weekDates={weekDates}
+                currentDayIndex={currentDayIndex}
+                doctorCode={doctorCode}
+                dayNote={schedule["Notes du jour"]?.[DAYS[currentDayIndex]]?.value?.[0] || ""}
+                tasks={getAllTasksForDay(DAYS[currentDayIndex])}
+                onSelectDay={goToDay}
+                onEditNote={() => handleNoteClick(DAYS[currentDayIndex])}
+              />
             )}
 
             {/* WEEK VIEW */}
             {activeTab === "week" && (
-              <div className="mx-auto w-full max-w-[400px] space-y-6 px-1 sm:px-3">
-                <h3 className="text-lg font-bold text-slate-900 md:text-xl">Ma Semaine {currentWeekInfo.week}</h3>
-                {DAYS.map((day, idx) => {
-                  const tasks = getUserTasks(day)
-                  const isToday = idx === currentDayIndex
-
-                  return (
-                    <div key={day} className="relative pl-4 md:pl-6">
-                      {/* Timeline line */}
-                      <div className="absolute bottom-0 left-1.5 top-0 w-0.5 bg-slate-200 md:left-2" />
-                      <div
-                        className={`absolute left-0 top-0 size-3 rounded-full border-2 border-white md:size-4 ${isToday ? "bg-blue-600" : "bg-slate-300"}`}
-                      />
-
-                      <div className="mb-6">
-                        <div className="mb-2 flex items-baseline justify-between gap-2">
-                          <h4 className={`text-sm font-bold md:text-base ${isToday ? "text-blue-600" : "text-slate-700"}`}>{day}</h4>
-                          <span className="text-xs text-slate-400">{weekDates[idx].split("/")[0]}</span>
-                        </div>
-
-                        {tasks.length > 0 ? (
-                          <div className="space-y-2">
-                            {tasks.map((task, tIdx) => (
-                              <Card key={tIdx} className="p-2 text-xs shadow-sm md:p-3 md:text-sm">
-                                {task}
-                              </Card>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs italic text-slate-400">Repos / Pas d&apos;affectation</p>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              <WeekView
+                days={DAYS}
+                weekDates={weekDates}
+                weekNumber={currentWeekInfo.week}
+                currentDayIndex={currentDayIndex}
+                doctorCode={doctorCode}
+                getUserTasks={getUserTasks}
+                onSelectDay={(idx) => {
+                  goToDay(idx)
+                  setActiveTab("today")
+                }}
+              />
             )}
 
             {/* GLOBAL VIEW */}
@@ -1632,32 +1518,47 @@ export function ScheduleApp({
       </div>
 
       {/* Bottom Navigation — above FABs so Global stays tappable on mobile */}
-      <nav className="safe-area-pb relative z-[95] shrink-0 border-t bg-white p-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+      <nav className="safe-area-pb relative z-[95] shrink-0 border-t border-slate-200 bg-white/95 p-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur">
         <div className="mx-auto grid max-w-lg grid-cols-3 items-stretch gap-1">
           <Button
             variant={activeTab === "today" ? "default" : "ghost"}
-            className="flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2"
+            className={cn(
+              "flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2",
+              activeTab === "today"
+                ? "bg-slate-900 text-white hover:bg-slate-800"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+            )}
             onClick={() => setActiveTab("today")}
           >
             <Home className="size-5" />
-            <span className="text-[10px]">Aujourd&apos;hui</span>
+            <span className="text-[10px] font-semibold">Aujourd&apos;hui</span>
           </Button>
           <Button
             variant={activeTab === "week" ? "default" : "ghost"}
-            className="flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2"
+            className={cn(
+              "flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2",
+              activeTab === "week"
+                ? "bg-slate-900 text-white hover:bg-slate-800"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+            )}
             onClick={() => setActiveTab("week")}
           >
             <Calendar className="size-5" />
-            <span className="text-[10px]">Semaine</span>
+            <span className="text-[10px] font-semibold">Semaine</span>
           </Button>
           <Button
             variant={activeTab === "all" ? "default" : "ghost"}
-            className="flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2"
+            className={cn(
+              "flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2",
+              activeTab === "all"
+                ? "bg-slate-900 text-white hover:bg-slate-800"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+            )}
             data-testid="nav-global"
             onClick={() => setActiveTab("all")}
           >
             <List className="size-5" />
-            <span className="text-[10px]">Global</span>
+            <span className="text-[10px] font-semibold">Global</span>
           </Button>
         </div>
       </nav>
@@ -1888,29 +1789,29 @@ export function ScheduleApp({
               </button>
             </div>
             {historyLoading ? (
-              <p className="py-8 text-center text-sm text-slate-400">Chargement…</p>
+              <p className="py-8 text-center text-sm text-slate-500">Chargement…</p>
             ) : historyRows.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">Aucun historique pour cette semaine.</p>
+              <p className="py-8 text-center text-sm text-slate-500">Aucun historique pour cette semaine.</p>
             ) : (
               <ul className="space-y-2">
                 {historyRows.map((row) => (
-                  <li key={row.id} className="rounded-lg border border-slate-200 p-3 text-sm">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="font-medium text-slate-800">
-                          {row.row_key} — {row.day_name}
-                        </div>
-                        <div className="mt-0.5 text-xs text-slate-500">
-                          {(row.old_value || []).join(",") || "vide"} →{" "}
-                          <span className="font-semibold text-teal-700">
-                            {(row.new_value || []).join(",") || "vide"}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-[10px] text-slate-400">
-                          {row.changed_by || "?"} · {row.source || "ui"} ·{" "}
-                          {new Date(row.changed_at).toLocaleString("fr-FR")}
-                        </div>
-                      </div>
+                  <li
+                    key={row.id}
+                    className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-sm shadow-sm"
+                  >
+                    <div className="font-semibold text-slate-900">
+                      {row.row_key} — {row.day_name}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-700">
+                      <span className="text-slate-500">{(row.old_value || []).join(", ") || "vide"}</span>
+                      {" → "}
+                      <span className="font-semibold text-teal-800">
+                        {(row.new_value || []).join(", ") || "vide"}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 text-[11px] font-medium text-slate-500">
+                      {row.changed_by || "?"} · {row.source || "ui"} ·{" "}
+                      {new Date(row.changed_at).toLocaleString("fr-FR")}
                     </div>
                   </li>
                 ))}
@@ -2083,35 +1984,64 @@ export function ScheduleApp({
 
       {/* Note Modal */}
       {noteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 p-4 backdrop-blur-sm">
-          <Card className="w-full max-w-md relative">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 top-2"
-              onClick={() => setNoteModalOpen(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Edit3 className="h-5 w-5 text-blue-600" />
-                Note pour {noteDay}
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={() => setNoteModalOpen(false)}
+        >
+          <Card
+            className="relative w-full max-w-md overflow-hidden rounded-t-3xl border-slate-200 shadow-2xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-slate-100 bg-gradient-to-r from-sky-50 to-white px-5 py-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-2 top-2 text-slate-500 hover:text-slate-900"
+                onClick={() => setNoteModalOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+              <CardTitle className="flex items-center gap-2 text-base text-slate-900">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
+                  <MessageSquare className="h-4 w-4" />
+                </span>
+                Note — {noteDay}
               </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              <p className="mt-1 text-xs text-slate-500">Texte libre visible sur le planning de la semaine</p>
+            </div>
+            <CardContent className="space-y-4 p-5">
               <div className="space-y-2">
-                <Label>Contenu de la note</Label>
+                <Label htmlFor="day-note-input" className="text-slate-700">
+                  Contenu
+                </Label>
                 <Textarea
+                  id="day-note-input"
                   value={currentNote}
                   onChange={(e) => setCurrentNote(e.target.value)}
-                  placeholder="Écrivez votre note ici..."
-                  className="min-h-[100px]"
+                  placeholder="Consigne, rappel, information pour l’équipe…"
+                  className="min-h-[140px] resize-y border-slate-200 text-sm text-slate-800"
+                  autoFocus
                 />
               </div>
-              <Button className="w-full" onClick={saveNote}>
-                Enregistrer
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-slate-300 text-slate-700"
+                  onClick={() => {
+                    setCurrentNote("")
+                  }}
+                >
+                  Effacer
+                </Button>
+                <Button
+                  type="button"
+                  className="flex-1 bg-slate-900 text-white hover:bg-slate-800"
+                  onClick={saveNote}
+                >
+                  Enregistrer
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
