@@ -13,6 +13,11 @@ required service is the Next.js dev server; the backend is Supabase.
 - Règles fixes centralisées dans `lib/fixed-assignments.ts` (`applyFixedClinicalAssignments`) : **IRM = S** (Lundi + Vendredi), **FV** Garde Nuit Lundi + Coro Jeudi apm, **DAAS** = `Apm - EE2` Lundi, **Rythmo A** Lundi/Jeudi apm, **Visite** = rotation `U → A → B`. Hors vacances (FV inclus). Appliqué via `generateWeekSchedule(weekKey, vacations)` ; `clearFixedAssigneesOnVacation` retire les initiales fixes si congés.
 - **Remplaçant texte libre** : dans la modale d’affectation admin, champ « Remplaçant » → ajoute un libellé dans `cell.value` (badge ambre). Utiliser `isListedDoctor` / `normalizeRemplacantLabel` (`lib/doctor-code.ts`) — hors équité / hors contrôle vacances.
 
+### Vues Aujourd’hui / Semaine
+- UI moderne dans `components/today-view.tsx` et `components/week-view.tsx` (montées par `ScheduleApp`).
+- **Notes du jour** (onglet Aujourd’hui) : carte cliquable → modale texte → `saveScheduleToDb` via `updateSchedule` sur la ligne `Notes du jour`.
+- Bouton **Historique** : forcer `text-slate-900` / fond blanc (le variant `outline` seul peut rendre l’icône illisible).
+
 ### Congés (ligne unique absences)
 - Une seule ligne UI **Congés** (plus de ligne « Vacances »). `normalizeLeaveSchedule` (`lib/vacation-congés-mapper.ts`) : fusion legacy Vacances→Congés, remplissage depuis `doctor_vacations`, puis **retrait des absents de toutes les autres lignes** (y compris `1/2 journée off Matin/Après-midi`).
 - `resolveRowKey` mappe `VACANCES` et `CONGE` → `Congés`. `detectConflict` / `canAssignDoctor` n’appliquent pas le rouge conflit sur la ligne Congés — badges = `DOCTOR_COLORS`.
