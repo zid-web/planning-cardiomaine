@@ -40,6 +40,11 @@ export function canAssignDoctor(
   allowed: boolean
   reason?: string
 } {
+  // La ligne Congés est l’emplacement prévu pour un médecin en vacances
+  if (activity === 'Congés' || activity === 'Vacances') {
+    return { allowed: true }
+  }
+
   if (isDoctorUnavailable(doctorId, dateStr, vacations)) {
     // Trouver la vacation pour afficher les dates exactes
     const vacation = vacations.find(
@@ -66,7 +71,8 @@ export function canAssignDoctor(
 }
 
 /**
- * Détecte les conflits: un médecin assigné mais en vacances ce jour
+ * Détecte les conflits: un médecin assigné mais en vacances ce jour.
+ * La ligne Congés (et l’ancienne Vacances) est l’emplacement attendu — pas un conflit.
  */
 export function detectConflict(
   doctorId: string,
@@ -77,6 +83,10 @@ export function detectConflict(
   hasConflict: boolean
   message?: string
 } {
+  if (activity === 'Congés' || activity === 'Vacances') {
+    return { hasConflict: false }
+  }
+
   if (isDoctorUnavailable(doctorId, dateStr, vacations)) {
     return {
       hasConflict: true,
@@ -101,5 +111,4 @@ export const UNAVAILABILITY_AFFECTS_ACTIVITIES = [
   'Astreinte Weekend',
   'NCT', // Non-cardiac time (jeudi)
   'Coro Après-midi',
-  'Congés', // Vacations
 ]

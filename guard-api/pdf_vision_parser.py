@@ -31,7 +31,7 @@ EXPECTED_ROWS = [
     "Apm - EE1", "Apm - EE2", "Apm - Rythmo", "Apm - Coro",
     "Entrées PSS", "Pré-op",
     "1/2 journée off Matin", "1/2 journée off Après-midi",
-    "Vacances", "Congrès", "Congés", "Notes du jour",
+    "Congrès", "Congés", "Notes du jour",
 ]
 
 DAYS_FR = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]

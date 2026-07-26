@@ -21,9 +21,10 @@ export const FREQUENCY_EXCLUDED_ROW_KEYS = new Set([
   "Matin - Rythmo",
   "Apm - Rythmo",
   "Notes du jour",
-  "Vacances",
   "Congrès",
   "Congés",
+  // Ancienne ligne (PDFs / historiques) — hors analyse de fréquence
+  "Vacances",
 ])
 
 export type PdfExtractedCell = {
@@ -88,8 +89,11 @@ export function scheduleFromPdfExtraction(
   let low = 0
 
   for (const row of raw?.rows || []) {
-    const rowKey = row.matched_row_key
-    if (!rowKey || !schedule[rowKey]) continue
+    const rawKey = row.matched_row_key
+    if (!rawKey) continue
+    const rowKey =
+      rawKey === "Vacances" || rawKey === "Congé" || rawKey === "Conge" ? "Congés" : rawKey
+    if (!schedule[rowKey]) continue
 
     for (const cell of row.cells || []) {
       const day = (cell.day_name || "").toUpperCase()
@@ -101,8 +105,16 @@ export function scheduleFromPdfExtraction(
       }
       const doctors = (cell.doctors || []).filter(Boolean)
       if (!doctors.length) continue
+      // Congés : fusionner si Vacances + Congés OCR du même jour
+      let value = [...doctors]
+      if (rowKey === "Congés") {
+        const existing = schedule[rowKey][day]?.value || []
+        for (const doc of existing) {
+          if (!value.includes(doc)) value.push(doc)
+        }
+      }
       schedule[rowKey][day] = {
-        value: [...doctors],
+        value,
         type: "doctor",
         status: "validated",
       }

@@ -2,6 +2,8 @@ export type CellData = {
   value: string[]
   type?: "doctor" | "shift" | "location" | "procedure" | "empty"
   status: "validated" | "pending"
+  /** Nom libre d’un remplaçant (admin), affiché en plus des initiales dans `value`. */
+  remplacant?: string
   request?: {
     requester: string
     status: "pending" | "validated"

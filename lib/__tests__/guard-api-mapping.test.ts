@@ -12,8 +12,8 @@ import type { ScheduleData } from "@/lib/types"
 
 function main() {
   // Vacations / congés / pré-op / rythmo doivent mapper (sinon Générer les ignore)
-  assert.equal(resolveRowKey("matin", "VACANCES", "LUNDI"), "Vacances")
-  assert.equal(resolveRowKey("weekend", "VACANCES", "SAMEDI"), "Vacances")
+  assert.equal(resolveRowKey("matin", "VACANCES", "LUNDI"), "Congés")
+  assert.equal(resolveRowKey("weekend", "VACANCES", "SAMEDI"), "Congés")
   assert.equal(resolveRowKey("matin", "CONGE", "LUNDI"), "Congés")
   assert.equal(resolveRowKey("am", "CONGRES", "MERCREDI"), "Congrès")
   assert.equal(resolveRowKey("am", "PRE_OP", "LUNDI"), "Pré-op")
@@ -68,8 +68,8 @@ function main() {
 
   assert.deepEqual(merged["Matin - Coro"].LUNDI.value, ["W"])
   assert.deepEqual(merged["Apm - Coro"].LUNDI.value, ["M"])
-  assert.deepEqual(merged["Vacances"].LUNDI.value, ["Z"])
   assert.deepEqual(merged["Congés"].LUNDI.value, ["Z"])
+  assert.equal(merged["Vacances"], undefined)
   assert.deepEqual(merged["Pré-op"].LUNDI.value, ["A"])
 
   // Merge Générer : préserve Cs déjà rempli, réécrit Coro

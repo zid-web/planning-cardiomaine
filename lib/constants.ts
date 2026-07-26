@@ -281,7 +281,7 @@ export const DOCTOR_COLORS: { [key: string]: string } = {
   T: "bg-emerald-700",
 }
 
-// Couleur spéciale pour la ligne Congés (gris neutre)
+// Ancien gris neutre Congés — les badges Congés utilisent désormais DOCTOR_COLORS
 export const CONGES_BADGE_COLOR = "bg-gray-500 opacity-75"
 
 export const ACTIVITY_ICONS: { [key: string]: string } = {

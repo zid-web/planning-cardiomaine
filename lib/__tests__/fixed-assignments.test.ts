@@ -7,7 +7,11 @@ import {
   clearFixedAssigneesOnVacation,
   VISITE_ROTATION,
 } from "@/lib/fixed-assignments"
-import { normalizeRemplacantLabel, isListedDoctor } from "@/lib/doctor-code"
+import {
+  getCellDisplayAssignees,
+  normalizeRemplacantLabel,
+  isListedDoctor,
+} from "@/lib/doctor-code"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
 import type { DoctorVacation } from "@/lib/types"
 
@@ -63,6 +67,25 @@ function main() {
   assert.equal(normalizeRemplacantLabel("  Dr Martin  "), "Dr Martin")
   assert.equal(normalizeRemplacantLabel("A"), null)
   assert.equal(normalizeRemplacantLabel(""), null)
+
+  assert.deepEqual(
+    getCellDisplayAssignees({
+      value: ["W"],
+      remplacant: "Dr Martin",
+      status: "validated",
+      type: "doctor",
+    }),
+    ["W", "Dr Martin"],
+  )
+  assert.deepEqual(
+    getCellDisplayAssignees({
+      value: ["W", "Dr Martin"],
+      remplacant: "Dr Martin",
+      status: "validated",
+      type: "doctor",
+    }),
+    ["W", "Dr Martin"],
+  )
 
   console.log("✅ fixed-assignments + remplacant tests passed")
 }

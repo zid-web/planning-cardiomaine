@@ -6,9 +6,17 @@ Next.js 16 (App Router, React 19) + Supabase app ("Cardiomaine Planning", a Fren
 medical shift-scheduling tool). Package manager is **bun** (`bun.lock`). The single
 required service is the Next.js dev server; the backend is Supabase.
 
+### Garde Nuit proposals / preferences
+- `generateNightGuardProposals` (`lib/guard-scheduler.ts`) : Mar–Dim (+ Lun si FV vacances). Préférences : Lun→U, Mar→M/W, Mer→S/U/P, Jeu→O/G, Ven→rotation B/G/A/P/Z/H/S (O/W/M exclus). Pas de garde la veille d’un NCT pour le médecin NCT (W/M, calendrier `NCT_DATES_2026`). Miroir soft/hard dans `guard-api/solver.py` (`NIGHT_GARDE_*`).
+
 ### Fixed clinical assignments & remplacant
 - Règles fixes centralisées dans `lib/fixed-assignments.ts` (`applyFixedClinicalAssignments`) : **IRM = S** (Lundi + Vendredi), **FV** Garde Nuit Lundi + Coro Jeudi apm, **DAAS** = `Apm - EE2` Lundi, **Rythmo A** Lundi/Jeudi apm, **Visite** = rotation `U → A → B`. Hors vacances (FV inclus). Appliqué via `generateWeekSchedule(weekKey, vacations)` ; `clearFixedAssigneesOnVacation` retire les initiales fixes si congés.
 - **Remplaçant texte libre** : dans la modale d’affectation admin, champ « Remplaçant » → ajoute un libellé dans `cell.value` (badge ambre). Utiliser `isListedDoctor` / `normalizeRemplacantLabel` (`lib/doctor-code.ts`) — hors équité / hors contrôle vacances.
+
+### Congés (ligne unique absences)
+- Une seule ligne UI **Congés** (plus de ligne « Vacances »). `normalizeLeaveSchedule` (`lib/vacation-congés-mapper.ts`) : fusion legacy Vacances→Congés, remplissage depuis `doctor_vacations`, puis **retrait des absents de toutes les autres lignes** (y compris `1/2 journée off Matin/Après-midi`).
+- `resolveRowKey` mappe `VACANCES` et `CONGE` → `Congés`. `detectConflict` / `canAssignDoctor` n’appliquent pas le rouge conflit sur la ligne Congés — badges = `DOCTOR_COLORS`.
+- Solveur Render : n’émettre que `CONGE` (déployer `guard-api/solver.py`).
 
 ### Solver generation entry point (post Claude cleanup — 2026-07-25)
 - **Only** `GuardGenerationButton` → equity-aware Render pipeline (`guard-api-actions` / `guard-generation-actions`). Do **not** reintroduce `generateWeekWithSolver`, `app/actions/solver-api-actions.ts`, `components/solver-generation-button.tsx`, or a second « Générer avec Solveur » button (equity hardcoded to 0 — removed twice after bad merges).

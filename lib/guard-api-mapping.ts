@@ -10,7 +10,7 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     RYTHMO: "Matin - Rythmo",
     NCT: "Hors site - NCT",
     PRE_OP: "Pré-op",
-    VACANCES: "Vacances",
+    VACANCES: "Congés",
     CONGE: "Congés",
     CONGRES: "Congrès",
     DEMI_JOURNEE_LIBRE: "1/2 journée off Matin",
@@ -23,7 +23,7 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     REEDUC: "Apm - RÉEDUCATION",
     NCT: "Hors site - NCT",
     PRE_OP: "Pré-op",
-    VACANCES: "Vacances",
+    VACANCES: "Congés",
     CONGE: "Congés",
     CONGRES: "Congrès",
     DEMI_JOURNEE_LIBRE: "1/2 journée off Après-midi",
@@ -33,7 +33,7 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     GARDE: "Garde Nuit",
     NCT: "Hors site - NCT",
     PRE_OP: "Pré-op",
-    VACANCES: "Vacances",
+    VACANCES: "Congés",
     CONGE: "Congés",
     CONGRES: "Congrès",
   },
@@ -41,7 +41,7 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     ASTREINTE: "Garde Matin",
     GARDE: "Garde Matin",
     NCT: "Hors site - NCT",
-    VACANCES: "Vacances",
+    VACANCES: "Congés",
     CONGE: "Congés",
     CONGRES: "Congrès",
   },
@@ -64,7 +64,6 @@ export const GENERATOR_OWNED_ROW_KEYS = new Set([
   "Pré-op",
   "1/2 journée off Matin",
   "1/2 journée off Après-midi",
-  "Vacances",
   "Congrès",
   "Congés",
 ]);
@@ -179,8 +178,8 @@ export function resolveRowKey(slot: string, activity: string, dayKey: string): s
 
   // Activités « journée entière » (indépendantes du créneau renvoyé par le solveur / Claude)
   if (act === "NCT") return "Hors site - NCT";
-  if (act === "VACANCES") return "Vacances";
-  if (act === "CONGE" || act === "CONGES") return "Congés";
+  // Vacances + Congé → une seule ligne UI « Congés »
+  if (act === "VACANCES" || act === "CONGE" || act === "CONGES") return "Congés";
   if (act === "CONGRES") return "Congrès";
   if (act === "PRE_OP" || act === "PREOP") return "Pré-op";
 
@@ -323,6 +322,11 @@ type PdfExtractedRow = {
 /**
  * Applique l'extraction PDF (raw_extraction.rows) sur le planning UI.
  */
+function normalizeImportedRowKey(rowKey: string): string {
+  if (rowKey === "Vacances" || rowKey === "Congé" || rowKey === "Conge") return "Congés";
+  return rowKey;
+}
+
 export function applyPdfExtractionToSchedule(
   schedule: ScheduleData,
   rows: PdfExtractedRow[] | undefined,
@@ -330,8 +334,10 @@ export function applyPdfExtractionToSchedule(
   if (!rows?.length) return schedule;
   let next = schedule;
   for (const row of rows) {
-    const rowKey = row.matched_row_key || row.row_label;
-    if (!rowKey || !next[rowKey]) continue;
+    const rawKey = row.matched_row_key || row.row_label;
+    if (!rawKey) continue;
+    const rowKey = normalizeImportedRowKey(rawKey);
+    if (!next[rowKey]) continue;
     for (const cell of row.cells || []) {
       const dayKey = (cell.day_name || "").toUpperCase();
       if (!DAYS.includes(dayKey)) continue;
@@ -366,8 +372,9 @@ export function applyMappedExistingSchedule(
       rowKey = key.slice(0, idx);
       dayKey = key.slice(idx + sep.length).toUpperCase();
     }
-    if (!DAYS.includes(dayKey) || !next[rowKey]) continue;
-    next = setCellDoctors(next, rowKey, dayKey, doctors || []);
+    const normalizedRowKey = normalizeImportedRowKey(rowKey);
+    if (!DAYS.includes(dayKey) || !next[normalizedRowKey]) continue;
+    next = setCellDoctors(next, normalizedRowKey, dayKey, doctors || []);
     applied += 1;
   }
   return applied > 0 ? next : schedule;
