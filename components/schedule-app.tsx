@@ -301,7 +301,6 @@ export function ScheduleApp({
 
   // Persiste les contraintes quand la semaine ou les congés changent (debounce, sans toast)
   const constraintsPersistGenRef = React.useRef(0)
-  const lastConstraintsPersistRef = React.useRef<string>("")
   const weekLoaded = Boolean(fullSchedule[weekKey])
   const vacationsSig = useMemo(
     () =>
@@ -329,11 +328,6 @@ export function ScheduleApp({
           })
           const injected = applyStructuralConstraints(base, weekKey, vacations)
           if (!schedulesDiffer(fullSchedule[weekKey], injected)) return
-
-          const fingerprint = `${weekKey}|${vacationsSig}`
-          if (lastConstraintsPersistRef.current === fingerprint) return
-          lastConstraintsPersistRef.current = fingerprint
-
           if (gen !== constraintsPersistGenRef.current) return
           setFullSchedule((prev) => ({ ...prev, [weekKey]: injected }))
           await saveScheduleToDb(weekKey, injected, currentUser || "system", {
@@ -348,7 +342,7 @@ export function ScheduleApp({
     return () => {
       window.clearTimeout(timer)
     }
-    // Intentionally NOT depending on fullSchedule[weekKey] object identity (évite courses)
+    // Pas de dépendance à l’identité de fullSchedule[weekKey] (évite courses à l’ajout congés)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekKey, vacationsSig, weekLoaded, currentUser])
 
