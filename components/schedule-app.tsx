@@ -41,8 +41,10 @@ import {
   isListedDoctor,
   normalizeRemplacantLabel,
 } from "@/lib/doctor-code"
-import { clearFixedAssigneesOnVacation } from "@/lib/fixed-assignments"
-import { normalizeLeaveSchedule } from "@/lib/vacation-congés-mapper"
+import {
+  applyStructuralConstraints,
+  schedulesDiffer,
+} from "@/lib/apply-structural-constraints"
 import { placeNightGuardRecoveryOff } from "@/lib/half-day-off"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -245,20 +247,18 @@ export function ScheduleApp({
     }
   }, [supabase, isAdmin, currentUser, setFullSchedule])
 
-  // Gère le résultat de la génération via API — persiste en base (patch Claude)
+  // Gère le résultat de « Générer » : propositions pending + contraintes structurelles validées
   const handleGenerationComplete = async (schedule: ScheduleData, warnings: string[]) => {
     const currentWeekKey = formatWeekKey(currentDate)
 
-    // Réécrit les lignes solveur (dont vacations Coro matin/soir) sans effacer
-    // les Cs/ETT/EE déjà saisis manuellement ou via Historique+.
     let mergedWeekSchedule = mergeSolverWeekIntoExisting(
       fullSchedule[currentWeekKey],
       schedule,
     )
-    mergedWeekSchedule = normalizeLeaveSchedule(
+    mergedWeekSchedule = applyStructuralConstraints(
       mergedWeekSchedule,
-      vacations,
       currentWeekKey,
+      vacations,
     )
 
     const updatedFullSchedule = { ...fullSchedule, [currentWeekKey]: mergedWeekSchedule }
@@ -269,24 +269,22 @@ export function ScheduleApp({
         source: "solver",
       })
     } catch (error) {
-      toast.error("Le planning a été généré mais la sauvegarde a échoué. Réessayez.")
+      toast.error("Les propositions ont été générées mais la sauvegarde a échoué. Réessayez.")
       console.error("[schedule-app] Échec de sauvegarde après génération:", error)
       return
     }
 
     setGeneratedScheduleWarnings(warnings)
     toast.success(
-      `Planning généré et sauvegardé avec ${Object.values(schedule).flat().length} assignations`,
+      "Propositions générées (en attente de validation admin). Les contraintes fixes sont déjà appliquées.",
     )
   }
 
-  // Ensure schedule exists for this week
+  // Planning affiché = données + contraintes structurelles (sans passer par Générer)
   const schedule = useMemo(() => {
     let scheduleToUse: ScheduleData
-    
+
     if (!fullSchedule[weekKey]) {
-      // Semaine absente du state : template vide (les éditions passent par updateSchedule
-      // qui écrit fullSchedule[weekKey] — ne pas régénérer après coup).
       const generated = generateWeekSchedule(weekKey, vacations)
       DAYS.forEach((day) => {
         if (!generated["Notes du jour"][day]) {
@@ -295,18 +293,54 @@ export function ScheduleApp({
       })
       scheduleToUse = generated
     } else {
-      // Clone superficiel pour que les patches immuables ne mutent pas le state brut
       scheduleToUse = fullSchedule[weekKey]
     }
 
-    // RÈGLE ABSOLUE: une seule ligne Congés ; absents retirés des autres lignes
-    scheduleToUse = normalizeLeaveSchedule(scheduleToUse, vacations, weekKey)
-    if (vacations.length > 0) {
-      scheduleToUse = clearFixedAssigneesOnVacation(scheduleToUse, weekKey, vacations)
-    }
-
-    return scheduleToUse
+    return applyStructuralConstraints(scheduleToUse, weekKey, vacations)
   }, [fullSchedule, weekKey, vacations])
+
+  // Persiste l’injection des contraintes dès qu’elles modifient la semaine (sans toast)
+  const lastConstraintsPersistRef = React.useRef<string>("")
+  useEffect(() => {
+    let cancelled = false
+    const persist = async () => {
+      const base = fullSchedule[weekKey]
+        ? structuredClone(fullSchedule[weekKey])
+        : generateWeekSchedule(weekKey, vacations)
+      DAYS.forEach((day) => {
+        if (!base["Notes du jour"]?.[day]) {
+          if (!base["Notes du jour"]) base["Notes du jour"] = {}
+          base["Notes du jour"][day] = { value: [], type: "empty", status: "validated" }
+        }
+      })
+      const injected = applyStructuralConstraints(base, weekKey, vacations)
+      if (!schedulesDiffer(fullSchedule[weekKey], injected)) return
+
+      // Empreinte stable pour éviter une boucle setState ↔ effect
+      const fingerprint = `${weekKey}|${vacations.map((v) => `${v.doctor_id}:${v.start_date}:${v.end_date}`).join(",")}|${DAYS.map((d) =>
+        Object.keys(injected)
+          .map((row) => `${row}:${d}:${(injected[row]?.[d]?.value || []).join("/")}`)
+          .join(";"),
+      ).join("#")}`
+      if (lastConstraintsPersistRef.current === fingerprint) return
+      lastConstraintsPersistRef.current = fingerprint
+
+      if (cancelled) return
+      setFullSchedule((prev) => ({ ...prev, [weekKey]: injected }))
+      try {
+        await saveScheduleToDb(weekKey, injected, currentUser || "system", {
+          source: "constraints",
+        })
+      } catch (error) {
+        console.warn("[schedule-app] Persistance contraintes structurelles ignorée:", error)
+      }
+    }
+    void persist()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekKey, vacations, fullSchedule[weekKey], currentUser])
 
   const workloadStats = useMemo(() => calculateWorkloadStats(schedule), [schedule])
 
@@ -554,16 +588,27 @@ export function ScheduleApp({
   }
 
   const validateCell = () => {
-    if (!selectedCell || (currentUser !== "M" && currentUser !== "Z")) return
+    // Tout admin peut valider une proposition « Générer » (pending)
+    if (!selectedCell || !isAdmin) return
 
-    const newSchedule = { ...schedule }
-    newSchedule[selectedCell.row][selectedCell.day].status = "validated"
-    if (newSchedule[selectedCell.row][selectedCell.day].request) {
-      newSchedule[selectedCell.row][selectedCell.day].request = undefined
+    const { row, day } = selectedCell
+    const cell = schedule[row]?.[day]
+    if (!cell) return
+    const newSchedule: ScheduleData = {
+      ...schedule,
+      [row]: {
+        ...schedule[row],
+        [day]: {
+          ...cell,
+          status: "validated",
+          request: undefined,
+        },
+      },
     }
 
-    updateSchedule(newSchedule)
+    void updateSchedule(newSchedule)
     setSelectedCell(null)
+    toast.success("Proposition validée")
   }
 
   const pendingRequests = useMemo(
@@ -1673,7 +1718,7 @@ export function ScheduleApp({
             )}
 
             <div className="flex flex-col gap-2">
-              {isAdmin && (currentUser === "M" || currentUser === "Z") && (
+              {isAdmin && (
                 <Button
                   className={`w-full ${
                     schedule[selectedCell.row][selectedCell.day].status === "pending"

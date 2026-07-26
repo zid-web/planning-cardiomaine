@@ -28,10 +28,11 @@ required service is the Next.js dev server; the backend is Supabase.
 - Règle (`lib/half-day-off.ts`) : après Garde Nuit → **apm du lendemain** (tous les jours sauf **samedi**). Si ce créneau est déjà l’off **habituel** du médecin → **matin** du lendemain. Dimanche précédent → lundi via `previous_sunday_guard_doctor`.
 - Appliqué à l’édition UI (`placeNightGuardRecoveryOff`), après « Générer » (`applyNightGuardRecoveryOffs`), et dans `guard-api/solver.py` (contrainte + `DEMI_JOURNEE_LIBRE`). Offs habituels = `HABITUAL_HALF_DAYS_OFF` (seed `generateWeekSchedule`).
 
-### Solver generation entry point (post Claude cleanup — 2026-07-25)
-- **Only** `GuardGenerationButton` → equity-aware Render pipeline (`guard-api-actions` / `guard-generation-actions`). Do **not** reintroduce `generateWeekWithSolver`, `app/actions/solver-api-actions.ts`, `components/solver-generation-button.tsx`, or a second « Générer avec Solveur » button (equity hardcoded to 0 — removed twice after bad merges).
-- **Equity / CellData:** real cells are `{ value: string[], status, type? }` with activity = **row key** (`Astreintes ATL Nuit`, `Garde Matin`, …). Never read `cell.doctor` / `cell.activity` in equity code — that silently zeros all points. Use `lib/equity-tracking.ts` (`computeWeeklyEquity` / `upsertWeeklyEquity`); `saveScheduleToDb` refreshes weekly snapshots.
-- Freeze on `schedule-app.tsx` / `solver-api-actions.ts` is **lifted** after that cleanup is on `main`.
+### Contraintes structurelles vs « Générer »
+- **Toujours injectées** (sans Générer) via `applyStructuralConstraints` (`lib/apply-structural-constraints.ts`) : IRM/FV/DAAS/Rythmo/Visite, ½-off habituelles, récupération garde nuit, Congés + strip absents, NCT calendrier, LFB. Appliqué à l’affichage + persisté (`source: "constraints"`).
+- **« Générer »** (`GuardGenerationButton`) = **propositions** d’équité (gardes/astreintes/Coro/Pré-op/Rééduc + Cs/ETT/EE patterns) en statut **`pending`**, à valider par un **admin**. Ne réécrit plus Congés / ½-off / Rythmo / NCT. Lignes : `GENERATOR_PROPOSAL_ROW_KEYS`.
+- Do **not** reintroduce `generateWeekWithSolver` / second bouton solveur.
+- **Equity / CellData:** `{ value: string[], status, type? }` + row key. Use `lib/equity-tracking.ts`.
 
 ### Run / build / lint
 - Dev server: `bun run dev` → http://localhost:3000 (this is the app; use dev, not `build`/`start`).

@@ -9,9 +9,8 @@ import {
   getCumulativeEquityFromTable,
   type EquityCounts,
 } from "@/lib/equity-tracking";
-import { applyFixedClinicalAssignments } from "@/lib/fixed-assignments";
+import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
-import { applyNightGuardRecoveryOffs } from "@/lib/half-day-off";
 import { fillClinicalVacationsFromPatterns } from "@/lib/pattern-analysis";
 
 // Configuration
@@ -273,7 +272,9 @@ export async function generateGuardsViaAPI(
           acceptTies: false,
           status: "pending",
         });
-        scheduleData = filled.next;
+        scheduleData = applyStructuralConstraints(filled.next, weekKey, vacations, {
+          previousSundayGuardDoctor,
+        });
         patternFill = {
           applied: filled.applied,
           skippedTies: filled.skippedTies,
@@ -344,9 +345,9 @@ async function getCongres(): Promise<{ doctor_id: string; start_date: string; en
 }
 
 /**
- * Convertit la réponse Render (assignments) en vrai ScheduleData UI
- * (`row → day → { value: string[] }`), via le mapping ACTIVITY_TO_ROW.
- * `weekKey` + `vacations` appliquent IRM/FV/DAAS/Rythmo/Visite (hors congés).
+ * Convertit la réponse Render en ScheduleData UI.
+ * - Propositions solveur (gardes/astreintes/Coro…) → **pending**
+ * - Contraintes structurelles ré-injectées en **validated** (hors rôle de Générer)
  */
 function convertAPIResponseToSchedule(
   response: {
@@ -354,18 +355,29 @@ function convertAPIResponseToSchedule(
   },
   weekKey = "generated",
   vacations: DoctorVacation[] = [],
-  opts?: { previousSundayGuardDoctor?: string | null },
+  opts?: {
+    previousSundayGuardDoctor?: string | null
+    existingSchedule?: ScheduleData
+  },
 ): ScheduleData {
-  const base = generateWeekSchedule(weekKey, vacations);
-  if (!response?.assignments?.length) {
+  const base =
+    opts?.existingSchedule && Object.keys(opts.existingSchedule).length > 0
+      ? structuredClone(opts.existingSchedule)
+      : generateWeekSchedule(weekKey, vacations);
+
+  let next = base;
+  if (response?.assignments?.length) {
+    next = mergeAssignmentsIntoSchedule(base, response.assignments, {
+      forcePending: true,
+      proposalRowsOnly: true,
+    });
+  } else {
     console.warn("Réponse Render sans assignments :", response);
-    return applyNightGuardRecoveryOffs(base, opts);
   }
-  // Solveur d'abord, puis règles fixes (FV lundi/jeudi, IRM, DAAS, Rythmo, Visite)
-  const merged = mergeAssignmentsIntoSchedule(base, response.assignments);
-  const withFixed = applyFixedClinicalAssignments(merged, weekKey, vacations);
-  // Récupération 1/2 off après Garde Nuit (apm lendemain, matin si off habituel apm)
-  return applyNightGuardRecoveryOffs(withFixed, opts);
+
+  return applyStructuralConstraints(next, weekKey, vacations, {
+    previousSundayGuardDoctor: opts?.previousSundayGuardDoctor,
+  });
 }
 
 // Export pour compatibilité avec l'ancien code

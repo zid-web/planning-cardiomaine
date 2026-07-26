@@ -66,26 +66,29 @@ function main() {
     },
   ])
 
+  // Coro / Pré-op = propositions pending ; Congés structurels ignorés par le merge Générer
   assert.deepEqual(merged["Matin - Coro"].LUNDI.value, ["W"])
+  assert.equal(merged["Matin - Coro"].LUNDI.status, "pending")
   assert.deepEqual(merged["Apm - Coro"].LUNDI.value, ["M"])
-  assert.deepEqual(merged["Congés"].LUNDI.value, ["Z"])
-  assert.equal(merged["Vacances"], undefined)
+  assert.equal(merged["Apm - Coro"].LUNDI.status, "pending")
+  assert.ok(!merged["Congés"].LUNDI.value.includes("Z"), "Congés hors propositions Générer")
   assert.deepEqual(merged["Pré-op"].LUNDI.value, ["A"])
+  assert.equal(merged["Pré-op"].LUNDI.status, "pending")
 
-  // Merge Générer : préserve Cs déjà rempli, réécrit Coro
+  // Merge Générer : préserve Cs déjà rempli, propose Coro en pending
   const existing: ScheduleData = generateWeekSchedule("2026-W30")
   existing["Matin - Cs PSS"].LUNDI.value = ["B"]
-  existing["Matin - Coro"].LUNDI.value = ["O"] // ancienne valeur à remplacer
+  existing["Matin - Coro"].LUNDI.value = ["O"]
 
   const generated: ScheduleData = generateWeekSchedule("2026-W30")
-  generated["Matin - Coro"].LUNDI.value = ["W"]
-  generated["Apm - Coro"].LUNDI.value = ["M"]
-  // généré laisse Cs vide
+  generated["Matin - Coro"].LUNDI = { value: ["W"], type: "doctor", status: "pending" }
+  generated["Apm - Coro"].LUNDI = { value: ["M"], type: "doctor", status: "pending" }
   generated["Matin - Cs PSS"].LUNDI.value = []
 
   const after = mergeSolverWeekIntoExisting(existing, generated)
   assert.deepEqual(after["Matin - Cs PSS"].LUNDI.value, ["B"], "Cs manuel préservé")
-  assert.deepEqual(after["Matin - Coro"].LUNDI.value, ["W"], "Coro réécrit par le solveur")
+  assert.deepEqual(after["Matin - Coro"].LUNDI.value, ["W"], "Coro proposé par le solveur")
+  assert.equal(after["Matin - Coro"].LUNDI.status, "pending")
   assert.deepEqual(after["Apm - Coro"].LUNDI.value, ["M"])
 
   console.log("✅ guard-api-mapping vacation/coro tests passed")

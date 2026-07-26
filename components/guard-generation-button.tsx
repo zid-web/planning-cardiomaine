@@ -55,7 +55,7 @@ export function GuardGenerationButton({
             },
           )
         } else {
-          toast.success(`Planning généré avec succès${patternNote}`, {
+          toast.success(`Propositions générées (à valider)${patternNote}`, {
             id: 'guard-generation',
           })
         }
@@ -77,7 +77,7 @@ export function GuardGenerationButton({
       disabled={disabled || isLoading}
       size="sm"
       className={`h-7 gap-1 bg-gradient-to-r from-blue-600 to-blue-700 px-2 text-[11px] hover:from-blue-700 hover:to-blue-800 ${className}`}
-      title="Génère gardes/astreintes/Coro (solveur) + vacations Cs/ETT/EE (historique)"
+      title="Propose gardes/astreintes/Coro (pending, à valider) + Cs/ETT/EE historiques — les contraintes fixes sont déjà dans le planning"
     >
       {isLoading ? (
         <>
