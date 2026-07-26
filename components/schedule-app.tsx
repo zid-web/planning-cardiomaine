@@ -1679,30 +1679,62 @@ export function ScheduleApp({
               {getCellDisplayAssignees(schedule[selectedCell.row]?.[selectedCell.day]).length === 0 && (
                 <span className="text-slate-400 text-sm italic self-center">Aucun médecin sélectionné</span>
               )}
-              {getCellDisplayAssignees(schedule[selectedCell.row]?.[selectedCell.day]).map((doc, index) => {
-                const listed = isListedDoctor(doc)
-                const valueIndex = (schedule[selectedCell.row]?.[selectedCell.day]?.value || []).indexOf(doc)
-                return (
-                  <div
-                    key={`${doc}-${index}`}
-                    title={listed ? doc : `Remplaçant : ${doc}`}
-                    className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${
-                      listed ? DOCTOR_COLORS[doc] || "bg-gray-500" : "bg-amber-600"
-                    }`}
-                  >
-                    {!listed && <span className="text-[10px] font-normal opacity-90">Rpl</span>}
-                    <span className="max-w-[160px] truncate">{doc}</span>
-                    {isAdmin && valueIndex >= 0 && (
-                      <button
-                        onClick={() => removeDoctorFromCell(valueIndex)}
-                        className="ml-1 hover:bg-black/20 rounded-full p-0.5"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
+              {[...new Set(getCellDisplayAssignees(schedule[selectedCell.row]?.[selectedCell.day]))].map(
+                (doc) => {
+                  const listed = isListedDoctor(doc)
+                  const values = schedule[selectedCell.row]?.[selectedCell.day]?.value || []
+                  const firstIndex = values.indexOf(doc)
+                  const occ = values.filter((d) => d === doc).length
+                  const label =
+                    listed && occ >= 2 && isDoublonEligibleRow(selectedCell.row) ? `${doc}²` : doc
+                  return (
+                    <div
+                      key={doc}
+                      title={
+                        listed
+                          ? occ >= 2
+                            ? `${doc} en doublon (même case)`
+                            : doc
+                          : `Remplaçant : ${doc}`
+                      }
+                      className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${
+                        listed ? DOCTOR_COLORS[doc] || "bg-gray-500" : "bg-amber-600"
+                      }`}
+                    >
+                      {!listed && <span className="text-[10px] font-normal opacity-90">Rpl</span>}
+                      <span className="max-w-[160px] truncate">{label}</span>
+                      {isAdmin && firstIndex >= 0 && (
+                        <button
+                          onClick={() => {
+                            // Retirer toutes les occurrences (doublon → une action)
+                            if (!selectedCell) return
+                            const cell = schedule[selectedCell.row]?.[selectedCell.day]
+                            const current = cell?.value || []
+                            const newValues = current.filter((d) => d !== doc)
+                            const newStatus =
+                              currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+                            patchSelectedCell((c) => ({
+                              ...c,
+                              value: newValues,
+                              remplacant:
+                                c.remplacant && doc === c.remplacant ? undefined : c.remplacant,
+                              type:
+                                newValues.length > 0 ||
+                                (c.remplacant && doc !== c.remplacant)
+                                  ? "doctor"
+                                  : "empty",
+                              status: newStatus,
+                            }))
+                          }}
+                          className="ml-1 hover:bg-black/20 rounded-full p-0.5"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                  )
+                },
+              )}
             </div>
 
             {isAdmin ? (
