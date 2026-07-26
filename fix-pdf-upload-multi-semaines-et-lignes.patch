@@ -1,0 +1,226 @@
+diff --git a/main.py b/main.py
+index 1d95914..7a0592e 100644
+--- a/main.py
++++ b/main.py
+@@ -81,4 +81,4 @@ async def upload_planning_pdf_endpoint(
+     if file.content_type != "application/pdf":
+         raise HTTPException(status_code=422, detail="Le fichier doit etre un PDF.")
+     file_bytes = await file.read()
+-    return handle_pdf_upload(file_bytes)
++    return await handle_pdf_upload(file_bytes)
+diff --git a/pdf_upload.py b/pdf_upload.py
+index 34d6c35..231f9ba 100644
+--- a/pdf_upload.py
++++ b/pdf_upload.py
+@@ -18,6 +18,7 @@ Chaque cellule ambiguë doit être signalée pour vérification humaine avant
+ d'être injectée dans le solveur.
+ """
+ 
++import asyncio
+ import base64
+ import io
+ import json
+@@ -33,9 +34,32 @@ from solver import map_row_key_to_slot_activity
+ 
+ client = anthropic.Anthropic()
+ 
+-# Lignes que le solveur sait gérer (doivent correspondre exactement aux clés
+-# utilisées dans solver.map_row_key_to_slot_activity)
++# Lignes réelles du planning (source de vérité : lib/schedule-utils.ts,
++# generateWeekSchedule côté front). Étendu le 26/07/2026 : ne couvrait avant
++# que les 9 activités gérées par le solveur ; sans les autres, l'extraction de
++# plannings historiques (Cs, ETT, EE, hors site...) les étiquetait "non
++# reconnues" et les rendait inexploitables pour l'analyse de fréquence.
+ KNOWN_ROW_KEYS = [
++    "Astreintes ATL Matin", "Astreintes ATL Midi", "Astreintes ATL Nuit",
++    "Garde Matin", "Garde Midi", "Garde Nuit",
++    "Matin - Visite",
++    "Hors site - NCT", "Hors site - CDL", "Hors site - IRM",
++    "Hors site - Scinti", "Hors site - LFB", "Hors site - PSSL",
++    "Matin - Cs PSS", "Matin - Cs Tessée", "Matin - Stress",
++    "Matin - ETT salle 1", "Matin - ETT salle 2",
++    "Matin - EE1", "Matin - EE2", "Matin - Rythmo", "Matin - Coro",
++    "Apm - Cs PSS", "Apm - Cs Tessée", "Apm - Stress",
++    "Apm - ETT salle 1", "Apm - ETT salle 2", "Apm - RÉEDUCATION",
++    "Apm - EE1", "Apm - EE2", "Apm - Rythmo", "Apm - Coro",
++    "Entrées PSS", "Pré-op",
++    "1/2 journée off Matin", "1/2 journée off Après-midi",
++]
++
++# Sous-ensemble directement exploitable par le solveur CP-SAT aujourd'hui
++# (ASTREINTE/GARDE/NCT/CORO). Les autres lignes de KNOWN_ROW_KEYS sont
++# correctement étiquetées à l'extraction mais pas encore modélisées comme
++# contraintes fortes - elles alimentent l'analyse de fréquence historique.
++SOLVER_MANAGED_ROW_KEYS = [
+     "Astreintes ATL Matin",
+     "Astreintes ATL Midi",
+     "Astreintes ATL Nuit",
+@@ -74,17 +98,32 @@ class PdfExtractionResult(BaseModel):
+     warnings: List[str] = []
+ 
+ 
++class WeekExtraction(BaseModel):
++    """Une semaine individuelle dans un PDF multi-semaines (une page = une semaine)."""
++    page_index: int
++    raw_extraction: PdfExtractionResult
++    mapped_existing_schedule: Dict[str, List[str]]
++    warnings: List[str]
++
++
+ class PdfUploadResponse(BaseModel):
+     raw_extraction: PdfExtractionResult
+     mapped_existing_schedule: Dict[str, List[str]]  # clé sérialisée "row_key||day_name" -> [doctors]
+     warnings: List[str]
++    # Rempli uniquement si le PDF contient plusieurs pages (une page = une semaine
++    # complète) : une entrée par semaine, dans l'ordre des pages. `raw_extraction`/
++    # `mapped_existing_schedule`/`warnings` ci-dessus restent la 1ère page seule,
++    # pour ne rien casser côté front existant (qui ne connaît que le cas 1 semaine).
++    weeks: List[WeekExtraction] = []
+ 
+ 
+ # ============================================================
+ # Étape 1 : PDF -> image
+ # ============================================================
+ 
+-def pdf_to_image_base64(file_bytes: bytes, dpi: int = 200) -> str:
++def pdf_to_image_base64(file_bytes: bytes, dpi: int = 150) -> str:
++    """Conserve le comportement historique : rend UNIQUEMENT la première page.
++    Utilisé quand on sait que le PDF ne contient qu'une seule semaine."""
+     try:
+         doc = fitz.open(stream=file_bytes, filetype="pdf")
+         page = doc[0]
+@@ -95,6 +134,20 @@ def pdf_to_image_base64(file_bytes: bytes, dpi: int = 200) -> str:
+         raise HTTPException(status_code=422, detail=f"PDF illisible : {str(e)}")
+ 
+ 
++def pdf_pages_to_images_base64(file_bytes: bytes, dpi: int = 150) -> List[str]:
++    """Rend TOUTES les pages du PDF en images (une par semaine, cas des exports
++    multi-semaines : chaque page = un planning hebdomadaire complet)."""
++    try:
++        doc = fitz.open(stream=file_bytes, filetype="pdf")
++        images = []
++        for page in doc:
++            pix = page.get_pixmap(dpi=dpi)
++            images.append(base64.b64encode(pix.tobytes("png")).decode("utf-8"))
++        return images
++    except Exception as e:
++        raise HTTPException(status_code=422, detail=f"PDF illisible : {str(e)}")
++
++
+ # ============================================================
+ # Étape 2 : image -> extraction structurée via Claude Vision
+ # ============================================================
+@@ -138,14 +191,18 @@ Règles importantes :
+ """
+ 
+ 
+-def extract_planning_from_pdf(file_bytes: bytes) -> PdfExtractionResult:
+-    image_b64 = pdf_to_image_base64(file_bytes)
+-
++def extract_planning_from_image(image_b64: str) -> PdfExtractionResult:
++    """Un seul appel Claude Vision sur UNE image déjà rendue. Fonction de base
++    réutilisée à la fois pour le cas mono-semaine (une image) et multi-semaines
++    (plusieurs images traitées en parallèle - voir extract_all_weeks_from_pdf)."""
+     try:
+         response = client.messages.create(
+             model="claude-sonnet-4-6",
+             max_tokens=4000,
+             system=EXTRACTION_SYSTEM_PROMPT,
++            timeout=45.0,  # échoue proprement avant la limite de 60s de Vercel
++                           # (Hobby), plutôt que de risquer un blocage silencieux
++                           # qui se termine en 504 générique côté front.
+             messages=[
+                 {
+                     "role": "user",
+@@ -182,6 +239,26 @@ def extract_planning_from_pdf(file_bytes: bytes) -> PdfExtractionResult:
+         )
+ 
+ 
++def extract_planning_from_pdf(file_bytes: bytes) -> PdfExtractionResult:
++    """Cas mono-semaine (comportement historique) : ne traite que la 1ère page."""
++    image_b64 = pdf_to_image_base64(file_bytes)
++    return extract_planning_from_image(image_b64)
++
++
++async def extract_all_weeks_from_pdf(file_bytes: bytes) -> List[PdfExtractionResult]:
++    """Cas multi-semaines : une page = une semaine complète. Traite TOUTES les
++    pages EN PARALLÈLE (asyncio.to_thread, le SDK Anthropic étant synchrone) -
++    indispensable pour rester sous la limite de 60s de Vercel/Render : 9 appels
++    séquentiels dépasseraient largement cette limite, en parallèle le temps total
++    reste proche du temps d'une seule page."""
++    images = pdf_pages_to_images_base64(file_bytes)
++    if not images:
++        raise HTTPException(status_code=422, detail="PDF vide ou illisible.")
++
++    tasks = [asyncio.to_thread(extract_planning_from_image, img) for img in images]
++    return await asyncio.gather(*tasks)
++
++
+ # ============================================================
+ # Étape 3 : filtrer/mapper vers existing_schedule (format solveur)
+ # ============================================================
+@@ -198,11 +275,11 @@ def build_existing_schedule(extraction: PdfExtractionResult) -> Tuple[Dict[str,
+     for row in extraction.rows:
+         if row.matched_row_key is None:
+             continue
+-        if row.matched_row_key not in KNOWN_ROW_KEYS:
+-            warnings.append(
+-                f"Ligne '{row.row_label}' : matched_row_key '{row.matched_row_key}' "
+-                f"non reconnu, ignorée."
+-            )
++        if row.matched_row_key not in SOLVER_MANAGED_ROW_KEYS:
++            # Ligne reconnue (Cs, ETT, EE, hors site...) mais pas encore gérée
++            # par le solveur CP-SAT - pas une erreur, juste hors périmètre de
++            # ce mapping précis. Reste disponible dans raw_extraction pour
++            # l'analyse de fréquence historique.
+             continue
+ 
+         for cell in row.cells:
+@@ -222,11 +299,41 @@ def build_existing_schedule(extraction: PdfExtractionResult) -> Tuple[Dict[str,
+     return mapped, warnings
+ 
+ 
+-def handle_pdf_upload(file_bytes: bytes) -> PdfUploadResponse:
+-    extraction = extract_planning_from_pdf(file_bytes)
+-    mapped_schedule, warnings = build_existing_schedule(extraction)
++async def handle_pdf_upload(file_bytes: bytes) -> PdfUploadResponse:
++    doc = fitz.open(stream=file_bytes, filetype="pdf")
++    page_count = doc.page_count
++    doc.close()
++
++    if page_count <= 1:
++        extraction = extract_planning_from_pdf(file_bytes)
++        mapped_schedule, warnings = build_existing_schedule(extraction)
++        return PdfUploadResponse(
++            raw_extraction=extraction,
++            mapped_existing_schedule=mapped_schedule,
++            warnings=warnings,
++        )
++
++    # Multi-semaines : une page = une semaine complète, traitées en parallèle.
++    extractions = await extract_all_weeks_from_pdf(file_bytes)
++    weeks: List[WeekExtraction] = []
++    for i, extraction in enumerate(extractions):
++        mapped_schedule, warnings = build_existing_schedule(extraction)
++        weeks.append(WeekExtraction(
++            page_index=i,
++            raw_extraction=extraction,
++            mapped_existing_schedule=mapped_schedule,
++            warnings=warnings,
++        ))
++
++    # Champs de rétrocompatibilité = 1ère semaine (comportement historique
++    # pour les consommateurs qui ne connaissent pas encore `weeks`).
++    first = weeks[0]
+     return PdfUploadResponse(
+-        raw_extraction=extraction,
+-        mapped_existing_schedule=mapped_schedule,
+-        warnings=warnings,
++        raw_extraction=first.raw_extraction,
++        mapped_existing_schedule=first.mapped_existing_schedule,
++        warnings=first.warnings + [
++            f"PDF multi-semaines détecté ({page_count} pages) : voir le champ "
++            f"'weeks' pour les {page_count} semaines extraites."
++        ],
++        weeks=weeks,
+     )
