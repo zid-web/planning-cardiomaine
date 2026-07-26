@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { DoctorVacation } from '@/lib/types'
 
 /**
- * Récupère toutes les vacances
+ * Récupère toutes les vacances / congés
  */
 export async function getAllVacations(): Promise<DoctorVacation[]> {
   try {
@@ -52,23 +52,48 @@ export async function getDoctorVacationsList(doctorId: string): Promise<DoctorVa
   }
 }
 
+export type VacationWriteInput = {
+  doctorId: string
+  startDate: string
+  endDate: string
+  reason?: string | null
+}
+
+function normalizeDates(startDate: string, endDate: string): { start: string; end: string } | { error: string } {
+  if (!startDate || !endDate) {
+    return { error: 'Dates de début et de fin requises' }
+  }
+  if (endDate < startDate) {
+    return { error: 'La date de fin doit être postérieure ou égale à la date de début' }
+  }
+  return { start: startDate, end: endDate }
+}
+
 /**
- * Ajoute une vacation
+ * Ajoute un congé
  */
 export async function addVacation(
   doctorId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  reason?: string | null,
 ): Promise<{ success: boolean; error?: string; data?: DoctorVacation }> {
   try {
+    if (!doctorId?.trim()) {
+      return { success: false, error: 'Médecin requis' }
+    }
+    const dates = normalizeDates(startDate, endDate)
+    if ('error' in dates) return { success: false, error: dates.error }
+
     const supabase = await createClient()
 
     const { data, error } = await supabase
       .from('doctor_vacations')
       .insert({
-        doctor_id: doctorId,
-        start_date: startDate,
-        end_date: endDate,
+        doctor_id: doctorId.trim(),
+        start_date: dates.start,
+        end_date: dates.end,
+        reason: reason?.trim() || null,
       })
       .select()
       .single()
@@ -87,7 +112,7 @@ export async function addVacation(
 }
 
 /**
- * Supprime une vacation
+ * Supprime un congé
  */
 export async function deleteVacation(vacationId: string): Promise<{ success: boolean; error?: string }> {
   try {
@@ -109,22 +134,41 @@ export async function deleteVacation(vacationId: string): Promise<{ success: boo
 }
 
 /**
- * Met à jour une vacation
+ * Met à jour un congé (dates, médecin, motif)
  */
 export async function updateVacation(
   vacationId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  opts?: { doctorId?: string; reason?: string | null },
 ): Promise<{ success: boolean; error?: string; data?: DoctorVacation }> {
   try {
+    if (!vacationId) {
+      return { success: false, error: 'Identifiant de congé manquant' }
+    }
+    const dates = normalizeDates(startDate, endDate)
+    if ('error' in dates) return { success: false, error: dates.error }
+
     const supabase = await createClient()
+
+    const payload: Record<string, string | null> = {
+      start_date: dates.start,
+      end_date: dates.end,
+      updated_at: new Date().toISOString(),
+    }
+    if (opts?.doctorId !== undefined) {
+      if (!opts.doctorId.trim()) {
+        return { success: false, error: 'Médecin requis' }
+      }
+      payload.doctor_id = opts.doctorId.trim()
+    }
+    if (opts && 'reason' in opts) {
+      payload.reason = opts.reason?.trim() || null
+    }
 
     const { data, error } = await supabase
       .from('doctor_vacations')
-      .update({
-        start_date: startDate,
-        end_date: endDate,
-      })
+      .update(payload)
       .eq('id', vacationId)
       .select()
       .single()
