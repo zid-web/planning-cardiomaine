@@ -43,6 +43,7 @@ import {
   isListedDoctor,
   normalizeRemplacantLabel,
 } from "@/lib/doctor-code"
+import { formatDoctorWithDoublon } from "@/lib/slot-blocking"
 import {
   applyStructuralConstraints,
   schedulesDiffer,
@@ -488,7 +489,10 @@ export function ScheduleApp({
       const dayDate = new Date(`${isoWeekStart}T12:00:00`)
       dayDate.setDate(dayDate.getDate() + dayIndex)
       const dateStr = dayDate.toISOString().split("T")[0]
-      const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations)
+      const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations, {
+        schedule,
+        day: selectedCell.day,
+      })
       if (!validation.allowed) {
         toast.error(validation.reason || "Assignation impossible")
         return
@@ -1549,10 +1553,14 @@ export function ScheduleApp({
                                                 `}
                                                 title={
                                                   conflict.message ||
-                                                  (listed ? doc : `Remplaçant : ${doc}`)
+                                                  (listed
+                                                    ? formatDoctorWithDoublon(schedule, day, doc, rowKey)
+                                                    : `Remplaçant : ${doc}`)
                                                 }
                                               >
-                                                {doc}
+                                                {listed
+                                                  ? formatDoctorWithDoublon(schedule, day, doc, rowKey)
+                                                  : doc}
                                               </Badge>
                                             )
                                           })}
@@ -1675,14 +1683,35 @@ export function ScheduleApp({
                     const isSelected =
                       schedule && selectedCell && schedule[selectedCell.row][selectedCell.day].value.includes(doc)
 
+                    let blockReason: string | undefined
+                    if (!isSelected && selectedCell && schedule && isoWeekStart) {
+                      const dayIndex = DAYS.indexOf(selectedCell.day)
+                      if (dayIndex >= 0) {
+                        const dayDate = new Date(`${isoWeekStart}T12:00:00`)
+                        dayDate.setDate(dayDate.getDate() + dayIndex)
+                        const dateStr = dayDate.toISOString().split("T")[0]
+                        const v = canAssignDoctor(doc, dateStr, selectedCell.row, vacations, {
+                          schedule,
+                          day: selectedCell.day,
+                        })
+                        if (!v.allowed) blockReason = v.reason
+                      }
+                    }
+                    const blocked = Boolean(blockReason)
+
                     return (
                       <button
                         key={doc}
                         onClick={() => addDoctorToCell(doc)}
-                        disabled={isSelected}
+                        disabled={isSelected || blocked}
+                        title={blockReason || (isSelected ? "Déjà dans la case" : undefined)}
                         className={`
                       flex h-10 items-center justify-center rounded-lg font-bold transition-all
-                      ${isSelected ? "opacity-20 cursor-not-allowed bg-slate-100 text-slate-400" : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"}
+                      ${
+                        isSelected || blocked
+                          ? "opacity-30 cursor-not-allowed bg-slate-100 text-slate-400"
+                          : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"
+                      }
                     `}
                       >
                         <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
