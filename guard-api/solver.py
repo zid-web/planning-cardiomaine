@@ -180,11 +180,13 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
     d_id = next((m.id for m in req.medecins if m.statut == StatutMedecin.D), None)
 
     # Demi-journées libres (exclusions solveur + émission DEMI_JOURNEE_LIBRE)
-    # Aligné frontend HABITUAL_HALF_DAYS_OFF (½ off après-midi fixes)
+    # Aligné frontend HABITUAL_HALF_DAYS_OFF (matin + après-midi)
     half_days_off = {
+        ("LUNDI", "matin"): {"R", "K"},
         ("MARDI", "am"): {"S"},
         ("MERCREDI", "am"): {"M", "W", "G", "Z", "H", "B"},
         ("JEUDI", "am"): {"U", "P"},
+        ("VENDREDI", "matin"): {"K"},
         ("VENDREDI", "am"): {"O", "A", "K", "R", "T"},
     }
 
@@ -202,11 +204,22 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
             return "matin"
         return "am"
 
+    # Exclusions hors Rythmo : S IRM lundi/vendredi. P/U/A gérés via RYTHMO_SCHEDULE.
     fixed_exclusions = {
-        "P": {1},
-        "U": {2},
-        "A": {0, 3},
         "S": {0, 4},
+    }
+
+    # Jour(s) + créneau(x) de Rythmo — aligné frontend fixed-assignments :
+    # P mardi matin+apm ; U mercredi apm ; A lundi/jeudi apm.
+    RYTHMO_SCHEDULE: Dict[str, Set[str]] = {
+        "P": {"MARDI"},
+        "U": {"MERCREDI"},
+        "A": {"LUNDI", "JEUDI"},
+    }
+    RYTHMO_SLOTS: Dict[str, Tuple[str, ...]] = {
+        "P": ("matin", "am"),
+        "U": ("am",),
+        "A": ("am",),
     }
 
     # --- 2. Création des variables ---
@@ -235,6 +248,15 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
         if (day_name, slot) in half_days_off and doc_id in half_days_off[(day_name, slot)]:
             return
 
+        # Créneau(x) de Rythmo : uniquement RYTHMO (les autres créneaux du jour restent libres)
+        if (
+            doc_id in RYTHMO_SCHEDULE
+            and day_name in RYTHMO_SCHEDULE[doc_id]
+            and slot in RYTHMO_SLOTS.get(doc_id, ("matin", "am"))
+            and activity != "RYTHMO"
+        ):
+            return
+
         if doc_id in fixed_exclusions and d_idx in fixed_exclusions[doc_id]:
             return
 
@@ -244,8 +266,14 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
                 return
         if activity == "CORO" and doc_id not in CORO_ALLOWED:
             return
-        if activity == "RYTHMO" and doc_id not in RYTHMO_ALLOWED:
-            return
+        if activity == "RYTHMO":
+            if doc_id not in RYTHMO_ALLOWED:
+                return
+            # Uniquement le(s) jour(s) + créneau(x) désigné(s)
+            if doc_id in RYTHMO_SCHEDULE and day_name not in RYTHMO_SCHEDULE[doc_id]:
+                return
+            if doc_id in RYTHMO_SLOTS and slot not in RYTHMO_SLOTS[doc_id]:
+                return
         if activity == "NCT" and (doc_id not in NCT_ALLOWED or d_idx != 3):
             return
 
@@ -294,11 +322,26 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
                 if case_vars:
                     model.Add(sum(case_vars) <= 1)
 
-    # Un médecin ne fait qu'une activité par créneau
+    # Un médecin ne fait qu'une activité par créneau.
+    # Exception ATL←Coro : ASTREINTE + CORO peuvent coexister matin/am Lun–Ven
+    # (liés par §5quater). Sans cette exception, CORO==1 ∧ ATL=CORO ∧ ≤1
+    # activité/créneau rend le modèle toujours INFEASIBLE.
     for doc_id in medecins_map:
         for d_idx in range(7):
             for slot in SLOTS:
-                slot_vars = [v for (doc, d, sl, act), v in x.items() if d == d_idx and sl == slot and doc == doc_id]
+                allow_atl_coro = d_idx < 5 and slot in ("matin", "am")
+                slot_vars = [
+                    v
+                    for (doc, d, sl, act), v in x.items()
+                    if d == d_idx
+                    and sl == slot
+                    and doc == doc_id
+                    and not (
+                        allow_atl_coro
+                        and act == "ASTREINTE"
+                        and x.get((doc_id, d_idx, slot, "CORO")) is not None
+                    )
+                ]
                 if slot_vars:
                     model.Add(sum(slot_vars) <= 1)
 
@@ -427,7 +470,7 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
             if v1 is not None and v2 is not None:
                 model.AddBoolOr([v1.Not(), v2.Not()])
 
-    # --- 6. Fixes forcés (FV) ---
+    # --- 6. Fixes forcés (FV) — soft si congé / créneau indisponible ---
     if fv_id:
         for d_idx, slot, act, forced_val in [
             (0, "nuit", "GARDE", 1),
@@ -438,6 +481,20 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
                 model.Add(var == forced_val)
             else:
                 warnings.append(f"FV : créneau {DAY_NAMES_FR[d_idx]} {slot} {act} non disponible")
+
+    # --- 6bis. RYTHMO forcé sur le(s) créneau(x) désigné(s) — soft si congé ---
+    for doc_id, rythmo_days in RYTHMO_SCHEDULE.items():
+        slots_for_doc = RYTHMO_SLOTS.get(doc_id, ("matin", "am"))
+        for day_name in rythmo_days:
+            d_idx = DAY_NAMES_FR.index(day_name)
+            for slot in slots_for_doc:
+                var = x.get((doc_id, d_idx, slot, "RYTHMO"))
+                if var is not None:
+                    model.Add(var == 1)
+                else:
+                    warnings.append(
+                        f"RYTHMO {doc_id} non disponible {day_name} {slot} (vacances/congé ce jour-là ?)"
+                    )
 
     # --- 7. Règles d'exclusion métier ---
     # 7.1 Récupération après garde nuit : pas d'activité sur le créneau cible
@@ -629,15 +686,20 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
         # On n'ajoute pas de points supplémentaires ici car ils sont déjà comptés
         pass
 
+    # Équité WOM soft (pas d'égalité dure M==W : trop fragile avec vacances / structure).
+    equity_terms = []
     if "M" in points and "W" in points:
-        model.Add(points["M"] == points["W"])
-
-    # Équité WOM prioritaire ; préférences garde nuit en second critère
+        dev_MW = model.NewIntVar(0, 20, "dev_MW")
+        model.Add(dev_MW >= points["M"] - points["W"])
+        model.Add(dev_MW >= points["W"] - points["M"])
+        equity_terms.append(dev_MW * 100)
     if "O" in points and "M" in points:
-        dev_O = model.NewIntVar(0, 10, "dev_O")
+        dev_O = model.NewIntVar(0, 20, "dev_O")
         model.Add(dev_O >= points["O"] - points["M"])
         model.Add(dev_O >= points["M"] - points["O"])
-        model.Minimize(dev_O * 100 + pref_penalty)
+        equity_terms.append(dev_O * 100)
+    if equity_terms:
+        model.Minimize(sum(equity_terms) + pref_penalty)
     else:
         model.Minimize(sum(points.values()) * 100 + pref_penalty)
 

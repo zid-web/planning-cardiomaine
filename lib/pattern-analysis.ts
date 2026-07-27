@@ -1,5 +1,5 @@
 import { DAYS } from "@/lib/constants"
-import { FREQUENCY_EXCLUDED_ROW_KEYS } from "@/lib/history-import"
+import { FREQUENCY_EXCLUDED_ROW_KEYS, isSolverHistoricalRowKey } from "@/lib/history-import"
 import type { ScheduleData } from "@/lib/types"
 
 export type PatternProposal = {
@@ -26,20 +26,24 @@ export type HistoricalPatternsPayload = Record<
 
 /**
  * Vacations cliniques matin/soir (Cs, ETT, EE, Stress) — hors Coro/Rythmo (solveur).
- * Utilisé pour filtrer / tests ; le payload `historical_patterns` couvre
- * toutes les lignes hors `FREQUENCY_EXCLUDED_ROW_KEYS`.
+ * Aligné sur `isSolverHistoricalRowKey` (payload `historical_patterns`).
  */
 export function isClinicalVacationRow(rowKey: string): boolean {
-  return /^(Matin|Apm) - (Cs |ETT |EE\d|Stress$)/.test(rowKey)
+  return isSolverHistoricalRowKey(rowKey)
 }
 
 /** Buckets internes : clé `row||DAY` → médecin → occurrences. */
-function collectFrequencyBuckets(schedules: ScheduleData[]): Map<string, Map<string, number>> {
+function collectFrequencyBuckets(
+  schedules: ScheduleData[],
+  opts?: { solverHistoricalOnly?: boolean },
+): Map<string, Map<string, number>> {
   const freq = new Map<string, Map<string, number>>()
+  const solverOnly = opts?.solverHistoricalOnly === true
 
   for (const schedule of schedules) {
     for (const [rowKey, days] of Object.entries(schedule || {})) {
       if (FREQUENCY_EXCLUDED_ROW_KEYS.has(rowKey)) continue
+      if (solverOnly && !isSolverHistoricalRowKey(rowKey)) continue
       for (const day of DAYS) {
         const doctors = days?.[day]?.value || []
         if (!doctors.length) continue
@@ -59,15 +63,13 @@ function collectFrequencyBuckets(schedules: ScheduleData[]): Map<string, Map<str
 
 /**
  * Construit `historical_patterns` pour `/generate-week`.
- * - Exclut `FREQUENCY_EXCLUDED_ROW_KEYS` (solveur + Rythmo + meta).
- * - N’inclut un `(row, day)` que s’il a ≥1 observation.
- * - `eligible_doctors` = médecins ayant occupé ce créneau au moins une fois
- *   (déduit de l’historique, pas une liste figée).
+ * Allowlist stricte : Cs / ETT / EE / Stress uniquement (le solveur ignore
+ * ½-off, Visite, hors site, etc. avec un warning sinon).
  */
 export function buildHistoricalPatternsPayload(
   schedules: ScheduleData[],
 ): HistoricalPatternsPayload {
-  const freq = collectFrequencyBuckets(schedules)
+  const freq = collectFrequencyBuckets(schedules, { solverHistoricalOnly: true })
   const out: HistoricalPatternsPayload = {}
 
   for (const [key, bucket] of freq) {

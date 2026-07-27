@@ -116,6 +116,26 @@ function main() {
   assert.deepEqual(ettPayload["Matin - ETT salle 1"].MARDI.eligible_doctors, ["A", "B"])
   assert.equal(ettPayload["Matin - ETT salle 1"].MARDI.frequency.A, 2)
 
+  // ½-off / Visite / hors site ne partent PAS dans historical_patterns (warnings solveur sinon)
+  s1["1/2 journée off Matin"] = {
+    LUNDI: { value: ["R", "K"], type: "doctor", status: "validated" },
+  } as any
+  s1["1/2 journée off Après-midi"] = {
+    MARDI: { value: ["S"], type: "doctor", status: "validated" },
+  } as any
+  s1["Matin - Visite"] = {
+    LUNDI: { value: ["U"], type: "doctor", status: "validated" },
+  } as any
+  s1["Hors site - IRM"] = {
+    LUNDI: { value: ["S"], type: "doctor", status: "validated" },
+  } as any
+  const filtered = buildHistoricalPatternsPayload([s1, s2, s3])
+  assert.equal(filtered["1/2 journée off Matin"], undefined)
+  assert.equal(filtered["1/2 journée off Après-midi"], undefined)
+  assert.equal(filtered["Matin - Visite"], undefined)
+  assert.equal(filtered["Hors site - IRM"], undefined)
+  assert.ok(filtered["Matin - Cs PSS"]?.LUNDI)
+
   console.log("✅ history-import / pattern-analysis tests passed")
 }
 

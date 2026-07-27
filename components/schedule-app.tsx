@@ -1333,7 +1333,14 @@ export function ScheduleApp({
                 <div className="mb-1 w-full rounded-md border border-yellow-200 bg-yellow-50 p-2">
                   <p className="mb-1 text-xs font-semibold text-yellow-900">Alertes de génération:</p>
                   <ul className="list-inside list-disc text-[11px] text-yellow-800">
-                    {generatedScheduleWarnings.map((warning, i) => (
+                    {generatedScheduleWarnings
+                      .filter(
+                        (w) =>
+                          !/historical_patterns\s*:.*non reconnu/i.test(w) &&
+                          !/non disponible.*vacances\/congé/i.test(w) &&
+                          !/^FV\s*:.*non disponible/i.test(w),
+                      )
+                      .map((warning, i) => (
                       <li key={i}>{warning}</li>
                     ))}
                   </ul>
