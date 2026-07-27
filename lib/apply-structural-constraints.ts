@@ -304,7 +304,7 @@ export function applyStructuralConstraints(
   }
 
   // 1) Assignations cliniques fixes (IRM / FV / DAAS / Rythmo / Visite)
-  next = applyFixedClinicalAssignments(next, weekKey, vacations)
+  next = applyFixedClinicalAssignments(next, weekKey, vacations, { vacationsReady })
 
   // 2) CH astreintes (nuit semaine + ATL weekend selon roulement)
   next = applyChAstreinteConstraints(next, weekKey)

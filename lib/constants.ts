@@ -265,7 +265,7 @@ export const DOCTOR_METADATA: Record<
 export const SPECIALTIES = {
   echo: ["P", "Z", "B", "G"],
   coro: ["W", "M", "S", "O"],
-  rythmo: ["H", "U", "A", "V"],
+  rythmo: ["H", "U", "A", "V", "P"],
   general: ["Val", "K", "CH", "FV", "D", "R", "T"],
 }
 
