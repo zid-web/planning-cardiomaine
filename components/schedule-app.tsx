@@ -53,6 +53,7 @@ import {
   schedulesDiffer,
 } from "@/lib/apply-structural-constraints"
 import { placeNightGuardRecoveryOff } from "@/lib/half-day-off"
+import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import {
@@ -540,19 +541,18 @@ export function ScheduleApp({
 
     if (alreadyCount >= 1) return
 
-    // Vérifier congés / créneau / exclusions
-    const dayIndex = DAYS.indexOf(selectedCell.day)
-    if (dayIndex >= 0 && isoWeekStart && isListedDoctor(doctor)) {
-      const dayDate = new Date(`${isoWeekStart}T12:00:00`)
-      dayDate.setDate(dayDate.getDate() + dayIndex)
-      const dateStr = dayDate.toISOString().split("T")[0]
-      const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations, {
-        schedule,
-        day: selectedCell.day,
-      })
-      if (!validation.allowed) {
-        toast.error(validation.reason || "Assignation impossible")
-        return
+    // Vérifier congés / créneau / exclusions (date alignée sur contraintes structurelles)
+    if (DAYS.includes(selectedCell.day as (typeof DAYS)[number]) && isListedDoctor(doctor)) {
+      const dateStr = dateStrForWeekDay(weekKey, selectedCell.day)
+      if (dateStr) {
+        const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations, {
+          schedule,
+          day: selectedCell.day,
+        })
+        if (!validation.allowed) {
+          toast.error(validation.reason || "Assignation impossible")
+          return
+        }
       }
     }
 
@@ -1813,12 +1813,9 @@ export function ScheduleApp({
                     const fullyInCell = occ >= 2 || (occ >= 1 && !canPromoteDoublon)
 
                     let blockReason: string | undefined
-                    if (occ === 0 && selectedCell && schedule && isoWeekStart) {
-                      const dayIndex = DAYS.indexOf(selectedCell.day)
-                      if (dayIndex >= 0) {
-                        const dayDate = new Date(`${isoWeekStart}T12:00:00`)
-                        dayDate.setDate(dayDate.getDate() + dayIndex)
-                        const dateStr = dayDate.toISOString().split("T")[0]
+                    if (occ === 0 && selectedCell && schedule) {
+                      const dateStr = dateStrForWeekDay(weekKey, selectedCell.day)
+                      if (dateStr) {
                         const v = canAssignDoctor(doc, dateStr, selectedCell.row, vacations, {
                           schedule,
                           day: selectedCell.day,

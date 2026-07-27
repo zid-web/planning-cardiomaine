@@ -6,6 +6,7 @@
  * Jamais Cs PSS + Cs Tessée le même matin/apm.
  * Interne **I** sur Garde Matin : le médecin associé peut aussi faire Cs / ETT / EE
  * le même matin (pas Coro / Rythmo / Rééducation). **S+I** peut aussi garder l’IRM.
+ * Une garde admin peut remplacer l’IRM fixe sur le même créneau.
  */
 
 import { DAYS } from "@/lib/constants"
@@ -139,6 +140,7 @@ export function periodOfRow(rowKey: string, day?: string): DayPeriod {
   if (rowKey.startsWith("Matin -")) return "matin"
   if (rowKey.startsWith("Apm -")) return "apm"
   if (rowKey === "Pré-op" || rowKey === "Entrées PSS") return "matin"
+  // IRM = S Lundi matin + Vendredi après-midi (pas journée entière)
   if (rowKey === IRM_ROW) {
     if (day === "LUNDI") return "matin"
     if (day === "VENDREDI") return "apm"
@@ -148,6 +150,14 @@ export function periodOfRow(rowKey: string, day?: string): DayPeriod {
     return "day"
   }
   return "meta"
+}
+
+/** Garde admin peut remplacer l’IRM fixe du même créneau. */
+function gardeDisplacesIrm(targetRow: string, otherRow: string): boolean {
+  return (
+    GARDE_ROWS.includes(targetRow as (typeof GARDE_ROWS)[number]) &&
+    otherRow === IRM_ROW
+  )
 }
 
 function isAtlCoroPair(a: string, b: string): boolean {
@@ -194,6 +204,7 @@ export function areCompatibleSamePeriod(
     if (hasGardeMatin && other) {
       if (isInternForbiddenClinical(other)) return false
       if (isInternCompatibleMorningClinical(other)) return true
+      // S associé à I : peut garder l’IRM en plus de la Garde Matin
       if (ctx.doctorId === "S" && other === IRM_ROW) return true
     }
   }
@@ -294,6 +305,8 @@ export function canAssignDoctorToSlot(
       reason: `${doctorId} est en congés ce jour — assignation impossible.`,
     }
   }
+  // Note: la ligne Congés est reconstruite depuis doctor_vacations ; on ne bloque
+  // plus sur une case Congés orpheline (sinon S reste inutilisable après modification).
 
   // Coro / Rythmo / Rééducation interdits si déjà Garde Matin + I
   if (wouldBePairedWithIntern(schedule, day, doctorId, rowKey) && isInternForbiddenClinical(rowKey)) {
@@ -353,6 +366,7 @@ export function canAssignDoctorToSlot(
     }
   }
 
+  // Exclusion mutuelle (sauf paires ATL+Coro, ETT, Garde Matin+I, S+I+IRM, garde↔IRM)
   if (targetPeriod !== "meta") {
     for (const otherRow of Object.keys(schedule)) {
       if (otherRow === rowKey) continue
@@ -360,6 +374,8 @@ export function canAssignDoctorToSlot(
       if (!doctorOnRow(schedule, otherRow, day, doctorId)) continue
       if (!periodsConflict(targetPeriod, periodOfRow(otherRow, day))) continue
       if (areCompatibleSamePeriod(rowKey, otherRow, compatCtx)) continue
+      // Admin assigne une garde : l’IRM fixe cède le créneau (strips le retireront)
+      if (gardeDisplacesIrm(rowKey, otherRow)) continue
       return {
         allowed: false,
         reason: `${doctorId} est déjà sur « ${otherRow} » — pas deux tâches sur le même créneau (sauf ATL+Coro, ETT 1+2, ou Garde Matin+I).`,
@@ -428,7 +444,8 @@ export function stripDoctorFromRow(
 /**
  * Applique les strips bloquants (½-off, exclusion créneau, LFB/CDL vs garde).
  * Ne touche pas Congés / Notes. Idempotent.
- * Préserve Garde Matin + I + cliniques autorisées (+ IRM pour S).
+ * Préserve Garde Matin + I + cliniques autorisées (+ IRM pour S+I).
+ * Garde sans I remplace l’IRM sur le même créneau.
  */
 export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
   let next = schedule
@@ -481,6 +498,8 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
       next = resolvePeriodConflicts(next, day, doctorId, "nuit")
       next = resolvePeriodConflicts(next, day, doctorId, "day")
 
+      // Hors-site « day » incompatible avec matin/apm (et inversement)
+      // IRM lundi/vendredi est déjà classé matin/apm via periodOfRow(day).
       const onDay = Object.keys(next).some(
         (row) => periodOfRow(row, day) === "day" && doctorOnRow(next, row, day, doctorId),
       )
@@ -489,12 +508,13 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
         return (p === "matin" || p === "apm") && doctorOnRow(next, row, day, doctorId)
       })
       if (onDay && onMatinApm) {
-        // S+I+IRM : ne pas stripper l’IRM
+        // S+I+IRM : ne pas stripper l’IRM (même si classé day sur un autre jour)
         const preserveIrm =
           doctorId === "S" &&
           isPairedWithInternOnGardeMatin(next, day, doctorId) &&
           doctorOnRow(next, IRM_ROW, day, doctorId)
 
+        // Priorité aux gardes / ATL / Coro (matin-apm) sur LFB/CDL…
         const hasHighMatinApm = Object.keys(next).some((row) => {
           const p = periodOfRow(row, day)
           if (p !== "matin" && p !== "apm") return false
@@ -565,6 +585,15 @@ function resolvePeriodConflicts(
   let next = schedule
   for (const row of occupied) {
     if (!keep.has(row)) {
+      // Garde sans I remplace IRM ; S+I conserve IRM
+      if (
+        row === IRM_ROW &&
+        doctorId === "S" &&
+        isPairedWithInternOnGardeMatin(next, day, doctorId)
+      ) {
+        keep.add(row)
+        continue
+      }
       next = stripDoctorFromRow(next, row, day, doctorId)
     }
   }
