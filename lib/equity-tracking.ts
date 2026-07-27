@@ -31,7 +31,7 @@ export function computeWeeklyEquity(scheduleData: ScheduleData): Record<string, 
   const equity: Record<string, EquityCounts> = {}
 
   const bump = (doc: string, key: keyof EquityCounts) => {
-    if (!doc || doc === "CH") return // CH = structure externe, hors équité individuelle
+    if (!doc || doc === "CH" || doc === "I") return // CH / interne hors équité individuelle
     if (!isListedDoctor(doc)) return // remplaçant texte libre : hors équité
     if (!equity[doc]) equity[doc] = emptyCounts()
     equity[doc][key]++
