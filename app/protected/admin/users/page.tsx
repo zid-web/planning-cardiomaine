@@ -24,14 +24,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -175,29 +167,29 @@ export default function AdminUsersPage() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">
+      <div className="flex h-full items-center justify-center text-slate-500">
         Chargement…
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8 pb-16">
-      <div className="mx-auto w-full max-w-6xl space-y-4">
+    // Root layout = overflow-hidden : cette page DOIT scroller ici (sinon liste tronquée).
+    <div className="h-full overflow-y-auto overscroll-y-contain bg-slate-50">
+      <div className="mx-auto w-full max-w-3xl space-y-4 p-4 pb-20 md:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <Button variant="outline" size="icon" onClick={() => router.push("/protected/planning")}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="min-w-0">
-              <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
                 <UserCog className="h-5 w-5 shrink-0" />
                 Comptes utilisateurs
               </h1>
               <p className="text-xs text-slate-500">
-                Création, rôles et codes. Admin hors planning (ex. Lucie ={" "}
-                <span className="font-semibold">L</span> / luciecardiomaine@gmail.com) :
-                rôle admin, code L — pas dans la liste des médecins assignables.
+                Admin hors planning (Lucie = <span className="font-semibold">L</span>) : rôle admin,
+                pas dans les médecins assignables.
               </p>
             </div>
           </div>
@@ -212,109 +204,56 @@ export default function AdminUsersPage() {
           </Button>
         </div>
 
-        <Card className="overflow-visible">
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">
               {loading ? "Chargement…" : `${users.length} utilisateur(s)`}
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0 sm:p-6 sm:pt-0">
-            {/* Mobile : cartes empilées — emails complets, pas de troncature tableau */}
-            <div className="space-y-2 p-4 sm:hidden">
-              {users.map((u) => (
-                <div
-                  key={u.id}
-                  className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
-                >
-                  <p className="break-all text-sm font-semibold text-slate-900">
-                    {u.email || "—"}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
+          <CardContent className="space-y-2">
+            {users.map((u) => (
+              <div
+                key={u.id}
+                className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+              >
+                <p className="break-all text-sm font-semibold text-slate-900">{u.email || "—"}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span>
                     {[u.first_name, u.last_name].filter(Boolean).join(" ") || "Sans nom"}
-                    {" · "}
-                    <span className={u.role === "admin" ? "text-blue-700 font-semibold" : ""}>
-                      {u.role || "—"}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      u.role === "admin"
+                        ? "bg-blue-100 text-blue-700"
+                        : "bg-slate-100 text-slate-700"
+                    }`}
+                  >
+                    {u.role || "—"}
+                  </span>
+                  {u.doctor_code ? (
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
+                      {u.doctor_code}
                     </span>
-                    {u.doctor_code ? ` · ${u.doctor_code}` : ""}
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setEditUser({ ...u })}>
-                      Modifier
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-red-600"
-                      onClick={() => setDeleteUser(u)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  ) : null}
                 </div>
-              ))}
-              {!loading && users.length === 0 && (
-                <p className="py-8 text-center text-slate-400">Aucun utilisateur</p>
-              )}
-            </div>
-
-            {/* Desktop : tableau avec email qui peut wrapping */}
-            <div className="hidden overflow-x-auto sm:block">
-              <Table className="min-w-[720px] table-fixed">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40%]">Email</TableHead>
-                    <TableHead className="w-[20%]">Nom</TableHead>
-                    <TableHead className="w-[12%]">Rôle</TableHead>
-                    <TableHead className="w-[10%]">Code</TableHead>
-                    <TableHead className="w-[18%] text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="max-w-0 whitespace-normal break-all font-medium text-slate-900">
-                        {u.email || "—"}
-                      </TableCell>
-                      <TableCell className="whitespace-normal break-words">
-                        {[u.first_name, u.last_name].filter(Boolean).join(" ") || "—"}
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                            u.role === "admin"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-slate-100 text-slate-700"
-                          }`}
-                        >
-                          {u.role || "—"}
-                        </span>
-                      </TableCell>
-                      <TableCell>{u.doctor_code || "—"}</TableCell>
-                      <TableCell className="text-right space-x-2 whitespace-nowrap">
-                        <Button size="sm" variant="outline" onClick={() => setEditUser({ ...u })}>
-                          Modifier
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600"
-                          onClick={() => setDeleteUser(u)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!loading && users.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-slate-400 py-8">
-                        Aucun utilisateur
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                <div className="mt-2 flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setEditUser({ ...u })}>
+                    Modifier
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-600"
+                    onClick={() => setDeleteUser(u)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {!loading && users.length === 0 && (
+              <p className="py-8 text-center text-slate-400">Aucun utilisateur</p>
+            )}
           </CardContent>
         </Card>
       </div>

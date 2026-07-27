@@ -53,15 +53,16 @@ export default function AdminFeedbackPage() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-slate-500">
+      <div className="flex h-full items-center justify-center text-slate-500">
         Chargement…
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="mx-auto max-w-3xl space-y-4">
+    // Root layout = overflow-hidden : scroller ici sinon la liste est tronquée.
+    <div className="h-full overflow-y-auto overscroll-y-contain bg-slate-50">
+      <div className="mx-auto max-w-3xl space-y-4 p-4 pb-20 md:p-8">
         <div className="flex items-center gap-3">
           <Button variant="outline" size="icon" onClick={() => router.push("/protected/planning")}>
             <ArrowLeft className="h-4 w-4" />
