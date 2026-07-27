@@ -172,20 +172,20 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
     d_id = next((m.id for m in req.medecins if m.statut == StatutMedecin.D), None)
 
     # Demi-journées libres (exclusions solveur + émission DEMI_JOURNEE_LIBRE)
+    # Aligné frontend HABITUAL_HALF_DAYS_OFF (½ off après-midi fixes)
     half_days_off = {
-        ("MERCREDI", "am"): {"M", "W", "G", "Z", "H"},
-        ("JEUDI", "am"): {"U", "S", "P"},
+        ("MARDI", "am"): {"S"},
+        ("MERCREDI", "am"): {"M", "W", "G", "Z", "H", "B"},
+        ("JEUDI", "am"): {"U", "P"},
         ("VENDREDI", "am"): {"O", "A", "K", "R", "T"},
     }
 
-    # Off habituels après-midi (aligné frontend lib/half-day-off.ts) —
-    # utilisés pour choisir le créneau de récupération après garde de nuit.
+    # Off habituels après-midi — créneau de récupération après garde de nuit
     habitual_afternoon_off = {
-        "LUNDI": {"R", "K", "Z"},
-        "MARDI": {"H", "S"},
-        "MERCREDI": {"B", "W", "M", "G"},
-        "JEUDI": {"P", "U"},
-        "VENDREDI": {"O", "K", "A"},
+        "MARDI": {"S"},
+        "MERCREDI": {"M", "W", "G", "Z", "H", "B"},
+        "JEUDI": {"U", "P"},
+        "VENDREDI": {"O", "A", "K", "R", "T"},
     }
 
     def target_off_slot_after_night_guard(doc_id: str, next_day_name: str) -> str:
