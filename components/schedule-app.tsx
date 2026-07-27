@@ -55,9 +55,10 @@ import {
 import {
   extractSundayNightGuardDoctor,
   nextIsoWeekKey,
+  nightGuardDoctorsOnDay,
   placeMondayRecoveryFromSundayNight,
-  placeNightGuardRecoveryOff,
   previousIsoWeekKey,
+  syncRecoveryOffsAfterNightGuardChange,
 } from "@/lib/half-day-off"
 import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import { cn } from "@/lib/utils"
@@ -544,42 +545,43 @@ export function ScheduleApp({
       },
     }
 
-    // Garde Nuit → 1/2 off apm lendemain (matin si off habituel apm) ; pas le samedi
+    // Garde Nuit modifiée → reconstruire ½ off matin+apm du lendemain
+    // (uniquement habituels + médecin(s) réellement de garde ; pas le samedi)
     // Dimanche → ½ off lundi de la semaine suivante
-    const addedListed = nextCell.value.filter(
-      (d) => isListedDoctor(d) && !(prevCell.value || []).includes(d),
-    )
-    if (row.includes("Garde Nuit") && addedListed.length > 0) {
-      if (day === "DIMANCHE") {
-        const nextWk = nextIsoWeekKey(weekKey)
-        if (nextWk) {
-          const nextWeekBase =
-            fullSchedule[nextWk] || generateWeekSchedule(nextWk, vacations)
-          let nextWeekSched = structuredClone(nextWeekBase)
-          for (const doctor of addedListed) {
-            nextWeekSched = placeMondayRecoveryFromSundayNight(nextWeekSched, doctor)
+    if (row.includes("Garde Nuit")) {
+      const prevNight = (prevCell.value || []).filter(isListedDoctor).join("|")
+      const nextNight = (nextCell.value || []).filter(isListedDoctor).join("|")
+      if (prevNight !== nextNight) {
+        if (day === "DIMANCHE") {
+          const nextWk = nextIsoWeekKey(weekKey)
+          if (nextWk) {
+            const nextWeekBase =
+              fullSchedule[nextWk] || generateWeekSchedule(nextWk, vacations)
+            let nextWeekSched = structuredClone(nextWeekBase)
+            nextWeekSched = placeMondayRecoveryFromSundayNight(
+              nextWeekSched,
+              nightGuardDoctorsOnDay(newSchedule, "DIMANCHE"),
+            )
+            const updatedFull: FullSchedule = {
+              ...fullSchedule,
+              [weekKey]: newSchedule,
+              [nextWk]: nextWeekSched,
+            }
+            setFullSchedule(updatedFull)
+            void saveScheduleToDb(weekKey, newSchedule, currentUser || "unknown", {
+              source: "ui",
+            })
+            void saveScheduleToDb(nextWk, nextWeekSched, currentUser || "unknown", {
+              source: "constraints",
+            })
+            if (opts?.closeModal) {
+              setSelectedCell(null)
+              setRemplacantInput("")
+            }
+            return
           }
-          const updatedFull: FullSchedule = {
-            ...fullSchedule,
-            [weekKey]: newSchedule,
-            [nextWk]: nextWeekSched,
-          }
-          setFullSchedule(updatedFull)
-          void saveScheduleToDb(weekKey, newSchedule, currentUser || "unknown", {
-            source: "ui",
-          })
-          void saveScheduleToDb(nextWk, nextWeekSched, currentUser || "unknown", {
-            source: "constraints",
-          })
-          if (opts?.closeModal) {
-            setSelectedCell(null)
-            setRemplacantInput("")
-          }
-          return
-        }
-      } else {
-        for (const doctor of addedListed) {
-          newSchedule = placeNightGuardRecoveryOff(newSchedule, day, doctor)
+        } else {
+          newSchedule = syncRecoveryOffsAfterNightGuardChange(newSchedule, day)
         }
       }
     }
