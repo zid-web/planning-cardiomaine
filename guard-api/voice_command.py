@@ -66,15 +66,15 @@ class VoiceCommandResponse(BaseModel):
 # ============================================================
 
 SYSTEM_PROMPT = """Tu transformes une consigne orale ou écrite en français, concernant un planning \
-médical de gardes/astreintes, en une instruction JSON strictement structurée.
+médical de gardes/astreintes/vacations, en une instruction JSON strictement structurée.
 
 Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après, sans balises markdown.
 
 Format exact attendu :
 {
   "date": "YYYY-MM-DD",
-  "slot": "matin" | "am" | "nuit",
-  "activity": "ASTREINTE" | "GARDE" | "CORO" | "NCT",
+  "slot": "matin" | "am" | "nuit" | "weekend",
+  "activity": "ASTREINTE" | "GARDE" | "CORO" | "NCT" | "VACANCES" | "CONGE" | "CONGRES" | "RYTHMO" | "PRE_OP" | "REEDUC",
   "doctor_out": "CODE_MEDECIN ou null",
   "doctor_in": "CODE_MEDECIN",
   "confidence": "high" | "low"
@@ -84,6 +84,10 @@ Règles :
 - Résous les expressions relatives ("demain", "après-demain", "lundi prochain") à partir de la date de référence fournie.
 - Les codes médecins doivent être EXACTEMENT l'un de ceux fournis dans la liste des médecins connus. \
 Si le texte mentionne un nom qui ne correspond à aucun code connu, mets "confidence": "low".
+- Remplacement / changement de vacation : "X remplace Y en …" → doctor_in=X, doctor_out=Y, activity selon le créneau \
+(CORO, GARDE, ASTREINTE, RYTHMO, etc.).
+- Congés / vacances / absence : activity "VACANCES" ou "CONGE", slot "matin" (journée), doctor_in = médecin absent.
+- Congrès : activity "CONGRES".
 - Si l'activité ou le créneau n'est pas explicite dans le texte, déduis le plus probable \
 (la garde de nuit est l'activité la plus fréquente pour ce type de consigne), mais mets "confidence": "low" \
 si tu as dû deviner.
@@ -160,6 +164,20 @@ _SLOT_ACTIVITY_TO_ROW_KEY = {
     ("matin", "NCT"): "Hors site - NCT",
     ("am", "NCT"): "Hors site - NCT",
     ("weekend", "NCT"): "Hors site - NCT",
+    ("matin", "VACANCES"): "Congés",
+    ("am", "VACANCES"): "Congés",
+    ("nuit", "VACANCES"): "Congés",
+    ("weekend", "VACANCES"): "Congés",
+    ("matin", "CONGE"): "Congés",
+    ("am", "CONGE"): "Congés",
+    ("nuit", "CONGE"): "Congés",
+    ("matin", "CONGRES"): "Congrès",
+    ("am", "CONGRES"): "Congrès",
+    ("matin", "RYTHMO"): "Matin - Rythmo",
+    ("am", "RYTHMO"): "Apm - Rythmo",
+    ("matin", "PRE_OP"): "Pré-op",
+    ("am", "PRE_OP"): "Pré-op",
+    ("am", "REEDUC"): "Apm - RÉEDUCATION",
 }
 
 
@@ -168,6 +186,10 @@ def resolve_row_key(slot: str, activity: str) -> Optional[str]:
     sl = (slot or "").lower().strip()
     if act == "NCT":
         return "Hors site - NCT"
+    if act in ("VACANCES", "CONGE", "CONGES"):
+        return "Congés"
+    if act == "CONGRES":
+        return "Congrès"
     return _SLOT_ACTIVITY_TO_ROW_KEY.get((sl, act))
 
 

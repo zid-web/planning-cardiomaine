@@ -223,6 +223,7 @@ function setCellDoctors(
 
 /**
  * Applique une commande vocale parsée (remplacement chirurgical) sur le planning UI.
+ * Crée la cellule si la ligne existe sans case pour ce jour (évite no-op silencieux).
  */
 export function applyParsedCommandToSchedule(
   schedule: ScheduleData,
@@ -232,9 +233,14 @@ export function applyParsedCommandToSchedule(
   if (!DAYS.includes(dayKey)) return schedule;
 
   const rowKey = resolveRowKey(parsed.slot, parsed.activity, dayKey);
-  if (!rowKey || !schedule[rowKey]?.[dayKey]) return schedule;
+  if (!rowKey) return schedule;
 
-  const cell = schedule[rowKey][dayKey];
+  const existingRow = schedule[rowKey] || {};
+  const cell: CellData = existingRow[dayKey] || {
+    value: [],
+    type: "empty",
+    status: "validated",
+  };
   let value = [...(cell.value || [])];
   if (parsed.doctor_out) {
     value = value.filter((d) => d !== parsed.doctor_out);
@@ -242,7 +248,19 @@ export function applyParsedCommandToSchedule(
   if (parsed.doctor_in && !value.includes(parsed.doctor_in)) {
     value = [...value, parsed.doctor_in];
   }
-  return setCellDoctors(schedule, rowKey, dayKey, value);
+  const unique = Array.from(new Set(value.filter(Boolean)));
+  return {
+    ...schedule,
+    [rowKey]: {
+      ...existingRow,
+      [dayKey]: {
+        ...cell,
+        value: unique,
+        type: unique.length ? "doctor" : "empty",
+        status: "validated",
+      },
+    },
+  };
 }
 
 /**

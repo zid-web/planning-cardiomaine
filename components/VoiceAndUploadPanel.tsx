@@ -25,6 +25,14 @@ import {
   uploadPlanningPdfDirect,
   uploadPlanningPdfViaProxy,
 } from '@/lib/pdf-upload-client'
+import {
+  collectSpeechTranscript,
+  createFrSpeechRecognition,
+  ensureMicrophonePermission,
+  isSpeechRecognitionSupported,
+  speechErrorMessage,
+  type SpeechRecognitionLike,
+} from '@/lib/speech-recognition'
 
 interface VoiceAndUploadPanelProps {
   onCommandExecuted?: (result: any) => void
@@ -65,64 +73,23 @@ export function VoiceAndUploadPanel({
   const [uploadedFileName, setUploadedFileName] = useState("")
   const [uploadError, setUploadError] = useState("")
 
-  const recognitionRef = useRef<any>(null)
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const finalTranscriptRef = useRef("")
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [speechSupported, setSpeechSupported] = useState(true)
 
-  // Initialiser Web Speech API
+  // Stoppe proprement le micro à la fermeture / démontage + détecte support client
   useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition()
-      recognitionRef.current.continuous = false
-      recognitionRef.current.interimResults = true
-      recognitionRef.current.lang = 'fr-FR'
-
-      recognitionRef.current.onstart = () => {
-        setIsListening(true)
-        setStatus({ type: "loading", message: "Écoute en cours..." })
+    setSpeechSupported(isSpeechRecognitionSupported())
+    return () => {
+      try {
+        recognitionRef.current?.abort()
+      } catch {
+        /* ignore */
       }
-
-      recognitionRef.current.onend = () => {
-        setIsListening(false)
-      }
-
-      recognitionRef.current.onresult = (event: any) => {
-        let interimTranscript = ""
-        let finalTranscript = ""
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcriptPart = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            finalTranscript += transcriptPart + " "
-          } else {
-            interimTranscript += transcriptPart
-          }
-        }
-
-        if (finalTranscript) {
-          setTranscript((prev) => prev + finalTranscript)
-          setEditedTranscript((prev) => prev + finalTranscript)
-        }
-      }
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('[app] Speech recognition error:', event.error)
-        // Ne pas afficher l'erreur "not-allowed" au démarrage
-        if (event.error !== 'not-allowed') {
-          setStatus({
-            type: "error",
-            message: `Erreur: ${event.error}`
-          })
-        }
-        setIsListening(false)
-      }
+      recognitionRef.current = null
     }
   }, [])
-
-  // Mettre à jour editedTranscript quand la transcription change
-  useEffect(() => {
-    setEditedTranscript(transcript)
-  }, [transcript])
 
   const resolveWeekStart = useCallback(() => {
     return initialWeekStartDate || getIsoWeekStartDate(new Date())
@@ -137,23 +104,128 @@ export function VoiceAndUploadPanel({
     })
   }, [currentWeekRequest, resolveWeekStart, weekNumber, vacations])
 
-  const toggleListening = useCallback(() => {
-    if (!recognitionRef.current) {
-      setStatus({
-        type: "error",
-        message: "La reconnaissance vocale n'est pas disponible dans votre navigateur"
-      })
+  const stopListening = useCallback(() => {
+    try {
+      recognitionRef.current?.stop()
+    } catch {
+      try {
+        recognitionRef.current?.abort()
+      } catch {
+        /* ignore */
+      }
+    }
+    setIsListening(false)
+  }, [])
+
+  const startListening = useCallback(async () => {
+    if (!isSpeechRecognitionSupported()) {
+      const msg = speechErrorMessage("not-supported")
+      setStatus({ type: "error", message: msg })
+      toast.error(msg)
+      return
+    }
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      const msg = speechErrorMessage("insecure-context")
+      setStatus({ type: "error", message: msg })
+      toast.error(msg)
       return
     }
 
-    if (isListening) {
-      recognitionRef.current.stop()
-    } else {
-      setTranscript("")
-      setEditedTranscript("")
-      recognitionRef.current.start()
+    setStatus({ type: "loading", message: "Demande d’accès au micro…" })
+    const perm = await ensureMicrophonePermission()
+    if (!perm.ok) {
+      const msg = speechErrorMessage(perm.error || "not-allowed")
+      setStatus({ type: "error", message: msg })
+      toast.error(msg)
+      return
     }
-  }, [isListening])
+
+    try {
+      recognitionRef.current?.abort()
+    } catch {
+      /* ignore */
+    }
+
+    const recognition = createFrSpeechRecognition({ continuous: true })
+    if (!recognition) {
+      const msg = speechErrorMessage("not-supported")
+      setStatus({ type: "error", message: msg })
+      toast.error(msg)
+      return
+    }
+
+    finalTranscriptRef.current = ""
+    setTranscript("")
+    setEditedTranscript("")
+
+    recognition.onstart = () => {
+      setIsListening(true)
+      setStatus({ type: "loading", message: "Écoute en cours… parlez maintenant" })
+    }
+
+    recognition.onresult = (event) => {
+      const { finalText, displayText } = collectSpeechTranscript(
+        event,
+        finalTranscriptRef.current,
+      )
+      finalTranscriptRef.current = finalText ? `${finalText} ` : ""
+      setTranscript(finalText)
+      setEditedTranscript(displayText)
+    }
+
+    recognition.onerror = (event) => {
+      console.error("[app] Speech recognition error:", event.error)
+      const msg = speechErrorMessage(event.error)
+      if (msg) {
+        setStatus({ type: "error", message: msg })
+        toast.error(msg)
+      }
+      setIsListening(false)
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+      const text = (finalTranscriptRef.current || "").trim()
+      if (text) {
+        setTranscript(text)
+        setEditedTranscript(text)
+        setStatus({
+          type: "idle",
+          message: "",
+        })
+      }
+    }
+
+    recognitionRef.current = recognition
+    try {
+      recognition.start()
+    } catch (err) {
+      console.error("[app] SpeechRecognition.start failed:", err)
+      // InvalidStateError : retry une fois après abort
+      try {
+        recognition.abort()
+      } catch {
+        /* ignore */
+      }
+      try {
+        recognition.start()
+      } catch (err2) {
+        console.error("[app] SpeechRecognition.start retry failed:", err2)
+        const msg = speechErrorMessage("start-failed")
+        setStatus({ type: "error", message: msg })
+        toast.error(msg)
+        setIsListening(false)
+      }
+    }
+  }, [])
+
+  const toggleListening = useCallback(() => {
+    if (isListening) {
+      stopListening()
+    } else {
+      void startListening()
+    }
+  }, [isListening, startListening, stopListening])
 
   const sendVoiceCommand = useCallback(async (text: string) => {
     if (!text.trim()) {
@@ -446,11 +518,20 @@ export function VoiceAndUploadPanel({
               {isListening ? "Écoute en cours..." : "Reconnaissance vocale"}
             </span>
           </div>
+          <p className="text-[11px] text-slate-500">
+            Dictez une consigne (remplacement, garde, NCT, congés, vacation) puis{" "}
+            <strong>Appliquer</strong> pour l’exécuter sur le planning. Chrome/Edge + micro autorisé.
+            {!speechSupported && (
+              <span className="block mt-1 text-amber-700">
+                Ce navigateur ne supporte pas la dictée — saisissez le texte manuellement.
+              </span>
+            )}
+          </p>
 
           {/* Bouton Écouter */}
           <button
             onClick={toggleListening}
-            disabled={isLoading}
+            disabled={isLoading || (!speechSupported && !isListening)}
             className={`w-full py-2 px-3 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${
               isListening
                 ? 'bg-red-500 hover:bg-red-600 text-white'
@@ -470,50 +551,51 @@ export function VoiceAndUploadPanel({
             )}
           </button>
 
-          {/* Transcription / saisie manuelle (toujours visible hors écoute) */}
-          {!isListening && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Commande (dictée ou saisie manuelle):
-              </label>
-              <textarea
-                value={editedTranscript}
-                onChange={(e) => setEditedTranscript(e.target.value)}
-                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white resize-none"
-                rows={3}
-                placeholder='Ex: "demain S remplace B en garde de nuit"'
-              />
+          {/* Transcription / saisie manuelle — toujours visible (y compris pendant l’écoute) */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Commande (dictée ou saisie manuelle):
+            </label>
+            <textarea
+              value={editedTranscript}
+              onChange={(e) => setEditedTranscript(e.target.value)}
+              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white resize-none"
+              rows={3}
+              placeholder='Ex: "demain S remplace B en garde de nuit"'
+            />
 
-              {/* Boutons d'action */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => copyToClipboard()}
-                  disabled={!editedTranscript.trim()}
-                  className="flex-1 py-2 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <Copy className="w-4 h-4" />
-                  Copier
-                </button>
-                <button
-                  onClick={() => sendVoiceCommand(editedTranscript)}
-                  disabled={isLoading || !editedTranscript.trim()}
-                  className="flex-1 py-2 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Envoi en cours...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      Appliquer
-                    </>
-                  )}
-                </button>
-              </div>
+            {/* Boutons d'action */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => copyToClipboard()}
+                disabled={!editedTranscript.trim()}
+                className="flex-1 py-2 px-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Copy className="w-4 h-4" />
+                Copier
+              </button>
+              <button
+                onClick={() => {
+                  if (isListening) stopListening()
+                  void sendVoiceCommand(editedTranscript)
+                }}
+                disabled={isLoading || !editedTranscript.trim()}
+                className="flex-1 py-2 px-3 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Envoi en cours...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Appliquer
+                  </>
+                )}
+              </button>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Section Upload PDF / CSV / Excel */}
