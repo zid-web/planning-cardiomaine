@@ -48,7 +48,7 @@ required service is the Next.js dev server; the backend is Supabase.
 - **« Générer »** = **propositions** `pending` (gardes/astreintes WOM/Coro/…) à valider admin. Lignes : `GENERATOR_PROPOSAL_ROW_KEYS`.
 - Congés CRUD : **ne pas** `revalidatePath('/protected/planning')` pendant la modale (course / faux positif « message channel closed »). Refresh via `onVacationsUpdated` + `getAllVacations` (`noStore`).
 - Do **not** reintroduce `generateWeekWithSolver` / second bouton solveur.
-- **Equity / CellData:** `{ value: string[], status, type? }` + row key. Use `lib/equity-tracking.ts`.
+- **Equity / CellData:** `{ value: string[], status, type? }` + row key. Use `lib/equity-tracking.ts`. **Fenêtre glissante 6 mois** pour toutes les catégories (`getCumulativeEquityFromTable` + repli JSON + `getCoroEquity` / `points_coro`) — pas « depuis toujours », pas « mois calendaire » pour CORO. Recalculée à chaque Générer ; pas de changement de schéma DB.
 
 ### Run / build / lint
 - Dev server: `bun run dev` → http://localhost:3000 (this is the app; use dev, not `build`/`start`).

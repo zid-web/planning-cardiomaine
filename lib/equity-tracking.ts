@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { isListedDoctor } from "@/lib/doctor-code"
+import { mondayOfIsoWeekKey } from "@/lib/fixed-assignments"
 import type { ScheduleData } from "@/lib/types"
 
 export type EquityCounts = {
@@ -9,6 +10,9 @@ export type EquityCounts = {
   weekend_count: number
 }
 
+/** Fenêtre glissante unique pour toutes les catégories d’équité (y compris CORO). */
+export const EQUITY_ROLLING_MONTHS = 6
+
 /** Lignes planning UI → buckets d’équité (doit rester aligné avec le solveur). */
 export const ASTREINTE_ROWS = new Set([
   "Astreintes ATL Matin",
@@ -17,10 +21,48 @@ export const ASTREINTE_ROWS = new Set([
 ])
 export const GARDE_ROWS = new Set(["Garde Matin", "Garde Midi", "Garde Nuit"])
 export const NCT_ROWS = new Set(["Hors site - NCT"])
+/** CORO : compté à part (`getCoroEquity`) — pas de colonne `coro_count` en base. */
+export const CORO_ROWS = new Set(["Matin - Coro", "Apm - Coro"])
 export const WEEKEND_DAYS = new Set(["SAMEDI", "DIMANCHE"])
 
 function emptyCounts(): EquityCounts {
   return { astreinte_count: 0, garde_count: 0, nct_count: 0, weekend_count: 0 }
+}
+
+/** Alias explicite — lundi UTC de la semaine ISO `YYYY-Www`. */
+export function isoWeekKeyToMonday(weekKey: string): Date | null {
+  return mondayOfIsoWeekKey(weekKey)
+}
+
+/** Début de la fenêtre glissante (aujourd’hui − N mois), recalculé à chaque appel. */
+export function equityRollingWindowStart(
+  now: Date = new Date(),
+  months: number = EQUITY_ROLLING_MONTHS,
+): Date {
+  const start = new Date(now.getTime())
+  start.setUTCMonth(start.getUTCMonth() - months)
+  return start
+}
+
+/**
+ * True si le lundi de `week_key` tombe dans la fenêtre glissante
+ * `[now − months, now]` (bornes inclusives côté dates).
+ */
+export function isWeekKeyInEquityWindow(
+  weekKey: string,
+  now: Date = new Date(),
+  months: number = EQUITY_ROLLING_MONTHS,
+): boolean {
+  if (!weekKey || weekKey === "full_schedule") return false
+  const monday = isoWeekKeyToMonday(weekKey)
+  if (!monday) return false
+  const start = equityRollingWindowStart(now, months)
+  // Inclure la semaine en cours même si son lundi est « demain » (fuseau) :
+  // borne haute = fin de journée UTC de `now`.
+  const end = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999),
+  )
+  return monday.getTime() >= start.getTime() && monday.getTime() <= end.getTime()
 }
 
 /**
@@ -66,13 +108,21 @@ export function computeWeeklyEquity(scheduleData: ScheduleData): Record<string, 
 
 /**
  * Somme les compteurs sur plusieurs semaines (scan JSON de secours).
+ * Par défaut, n’agrège que les semaines dans la fenêtre glissante 6 mois.
  */
 export function accumulateEquityFromSchedules(
   schedules: Array<{ week_key?: string; schedule_data?: ScheduleData | null }>,
+  options?: { now?: Date; months?: number; rollingWindow?: boolean },
 ): Record<string, EquityCounts> {
+  const useWindow = options?.rollingWindow !== false
+  const now = options?.now ?? new Date()
+  const months = options?.months ?? EQUITY_ROLLING_MONTHS
   const total: Record<string, EquityCounts> = {}
   for (const row of schedules) {
     if (!row?.schedule_data || row.week_key === "full_schedule") continue
+    if (useWindow && row.week_key && !isWeekKeyInEquityWindow(row.week_key, now, months)) {
+      continue
+    }
     const week = computeWeeklyEquity(row.schedule_data)
     for (const [doc, counts] of Object.entries(week)) {
       if (!total[doc]) total[doc] = emptyCounts()
@@ -120,17 +170,20 @@ export async function upsertWeeklyEquity(weekKey: string, scheduleData: Schedule
 }
 
 /**
- * Équité cumulée depuis doctor_equity_weekly (ou table/vue totals).
+ * Équité sur fenêtre glissante 6 mois depuis `doctor_equity_weekly`.
+ * Recalculée à chaque appel (pas de cache figé).
  * Retourne null si la table est indisponible ; {} si vide (→ repli scan JSON).
  */
-export async function getCumulativeEquityFromTable(): Promise<Record<string, EquityCounts> | null> {
+export async function getCumulativeEquityFromTable(
+  now: Date = new Date(),
+): Promise<Record<string, EquityCounts> | null> {
   try {
     const supabase = await createClient()
 
     // Source de vérité : snapshots hebdo (indépendant du nommage view vs table totals)
     const { data, error } = await supabase
       .from("doctor_equity_weekly")
-      .select("doctor_id, astreinte_count, garde_count, nct_count, weekend_count")
+      .select("doctor_id, week_key, astreinte_count, garde_count, nct_count, weekend_count")
 
     if (error) {
       console.warn(
@@ -144,6 +197,8 @@ export async function getCumulativeEquityFromTable(): Promise<Record<string, Equ
 
     const equity: Record<string, EquityCounts> = {}
     for (const row of data) {
+      const weekKey = row.week_key as string
+      if (!isWeekKeyInEquityWindow(weekKey, now)) continue
       const id = row.doctor_id as string
       if (!equity[id]) equity[id] = emptyCounts()
       equity[id].astreinte_count += Number(row.astreinte_count) || 0
@@ -157,3 +212,66 @@ export async function getCumulativeEquityFromTable(): Promise<Record<string, Equ
     return null
   }
 }
+
+/** Compte CORO (Matin/Apm) pour une semaine — hors table equity (pas de colonne DB). */
+export function computeWeeklyCoro(scheduleData: ScheduleData): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const [rowKey, dayData] of Object.entries(scheduleData || {})) {
+    if (!CORO_ROWS.has(rowKey)) continue
+    for (const cell of Object.values(dayData || {})) {
+      const doctors = Array.isArray((cell as { value?: unknown })?.value)
+        ? ((cell as { value: string[] }).value as string[])
+        : []
+      for (const doc of doctors) {
+        if (!doc || doc === "CH" || doc === "I") continue
+        if (!isListedDoctor(doc)) continue
+        counts[doc] = (counts[doc] || 0) + 1
+      }
+    }
+  }
+  return counts
+}
+
+/**
+ * Équité CORO sur la même fenêtre glissante 6 mois que le reste
+ * (ex-`getMonthlyCoroEquity` mensuel — désormais uniformisé).
+ * Scan des plannings JSON : pas de colonne `coro_count` en base.
+ */
+export async function getCoroEquity(
+  now: Date = new Date(),
+): Promise<Record<string, number>> {
+  try {
+    const supabase = await createClient()
+    // ~27 semaines ≈ 6 mois ; on prend large puis on filtre par date exacte
+    const { data, error } = await supabase
+      .from("schedules")
+      .select("week_key, schedule_data")
+      .neq("week_key", "full_schedule")
+      .order("week_key", { ascending: false })
+      .limit(40)
+
+    if (error || !data?.length) {
+      if (error) {
+        console.warn("[equity-tracking] Lecture schedules pour CORO:", error.message)
+      }
+      return {}
+    }
+
+    const total: Record<string, number> = {}
+    for (const row of data) {
+      const weekKey = row.week_key as string
+      if (!isWeekKeyInEquityWindow(weekKey, now)) continue
+      const week = computeWeeklyCoro(row.schedule_data as ScheduleData)
+      for (const [doc, n] of Object.entries(week)) {
+        total[doc] = (total[doc] || 0) + n
+      }
+    }
+    return total
+  } catch (err) {
+    console.warn("[equity-tracking] Erreur getCoroEquity:", err)
+    return {}
+  }
+}
+
+/** @deprecated Alias — préférer `getCoroEquity` (fenêtre 6 mois, plus mensuel). */
+export const getMonthlyCoroEquity = getCoroEquity
