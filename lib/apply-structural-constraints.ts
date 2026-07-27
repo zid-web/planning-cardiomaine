@@ -70,17 +70,19 @@ function ensureDoctorInCell(
   if (!schedule[rowKey]?.[day]) return schedule
   const cell = schedule[rowKey][day]
   const values = cell.value || []
-  if (values.includes(doctor) && cell.status === "validated") return schedule
-  const nextVals = values.includes(doctor) ? [...values] : [...values, doctor]
+  // Déjà présent : ne pas toucher au status (sinon une proposition « Prop. »
+  // pending sur ATL Nuit / week-end serait forcée en validated et perdrait le violet).
+  if (values.includes(doctor)) return schedule
   return {
     ...schedule,
     [rowKey]: {
       ...schedule[rowKey],
       [day]: {
         ...cell,
-        value: nextVals,
+        value: [...values, doctor],
         type: "doctor",
-        status: "validated",
+        // Injection structurelle : préserver pending (proposition Générer), sinon validated.
+        status: cell.status === "pending" ? "pending" : "validated",
       },
     },
   }

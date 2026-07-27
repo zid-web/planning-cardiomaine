@@ -159,6 +159,26 @@ function main() {
   assert.ok(!chSchedule["Astreintes ATL Nuit"].LUNDI.value.includes("CH"))
   assert.ok(!chSchedule["Astreintes ATL Matin"].SAMEDI.value.includes("CH"))
 
+  // Proposition Générer pending sur ATL Nuit : injection CH ne doit pas forcer validated
+  let pendingAtl = generateWeekSchedule(oddWeek, [])
+  pendingAtl["Astreintes ATL Nuit"].LUNDI = {
+    value: ["W"],
+    type: "doctor",
+    status: "pending",
+  }
+  pendingAtl = applyChAstreinteConstraints(pendingAtl, oddWeek)
+  assert.ok(pendingAtl["Astreintes ATL Nuit"].LUNDI.value.includes("CH"))
+  assert.ok(pendingAtl["Astreintes ATL Nuit"].LUNDI.value.includes("W"))
+  assert.equal(pendingAtl["Astreintes ATL Nuit"].LUNDI.status, "pending")
+  // CH déjà présent + pending → status inchangé
+  pendingAtl["Astreintes ATL Nuit"].MARDI = {
+    value: ["CH", "O"],
+    type: "doctor",
+    status: "pending",
+  }
+  pendingAtl = applyChAstreinteConstraints(pendingAtl, oddWeek)
+  assert.equal(pendingAtl["Astreintes ATL Nuit"].MARDI.status, "pending")
+
   // ATL Matin/Midi Lun–Ven suivent Coro
   let coroSched = generateWeekSchedule(oddWeek, [])
   coroSched["Matin - Coro"].LUNDI = { value: ["W"], type: "doctor", status: "pending" }

@@ -1729,7 +1729,6 @@ export function ScheduleApp({
                                   const isHoliday = !!holidayName
                                   const isRestrictedHoliday = isHoliday && !isAllowedOnHoliday(rowKey)
                                   const cellBlocked = isCellBlocked(rowKey, day)
-                                  const proposal = getCellProposal(rowKey, day)
 
                                   return (
                                     <td
