@@ -2156,17 +2156,17 @@ export function ScheduleApp({
         </>
       )}
 
-      {/* Note Modal */}
+      {/* Note Modal — footer sticky pour garder Valider visible (clavier mobile) */}
       {noteModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
           onClick={() => setNoteModalOpen(false)}
         >
           <Card
-            className="relative w-full max-w-md overflow-hidden rounded-t-3xl border border-slate-200 bg-white py-0 text-slate-900 shadow-2xl sm:rounded-2xl"
+            className="relative flex max-h-[min(92dvh,640px)] w-full max-w-md flex-col gap-0 overflow-hidden rounded-t-3xl border border-slate-200 bg-white py-0 text-slate-900 shadow-2xl sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 to-white px-5 py-4">
+            <div className="shrink-0 border-b border-slate-200 bg-gradient-to-r from-sky-50 to-white px-5 py-4 pr-12">
               <Button
                 variant="ghost"
                 size="icon"
@@ -2182,9 +2182,12 @@ export function ScheduleApp({
                 </span>
                 Note — {noteDay}
               </CardTitle>
-              <p className="mt-1 text-xs text-slate-600">Texte libre visible sur le planning de la semaine</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                Visible par <span className="font-semibold text-slate-800">tous les utilisateurs</span> du
+                planning de cette semaine (pas privée à votre session).
+              </p>
             </div>
-            <CardContent className="space-y-4 bg-white p-5">
+            <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-white p-5 pb-3">
               <div className="space-y-2">
                 <Label htmlFor="day-note-input" className="font-medium text-slate-800">
                   Contenu
@@ -2193,31 +2196,40 @@ export function ScheduleApp({
                   id="day-note-input"
                   value={currentNote}
                   onChange={(e) => setCurrentNote(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                      e.preventDefault()
+                      saveNote()
+                    }
+                  }}
                   placeholder="Consigne, rappel, information pour l’équipe…"
                   className="min-h-[140px] resize-y border-slate-300 bg-white text-sm text-slate-900 placeholder:text-slate-400"
                   autoFocus
                 />
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-slate-300 bg-white !text-slate-900 hover:bg-slate-100"
-                  onClick={() => {
-                    setCurrentNote("")
-                  }}
-                >
-                  Effacer
-                </Button>
-                <Button
-                  type="button"
-                  className="flex-1 bg-slate-900 text-white hover:bg-slate-800"
-                  onClick={saveNote}
-                >
-                  Enregistrer
-                </Button>
+                <p className="text-[11px] text-slate-500">
+                  Ctrl/⌘ + Entrée pour valider · Fermer sans Valider annule les modifications
+                </p>
               </div>
             </CardContent>
+            <div className="flex shrink-0 gap-2 border-t border-slate-200 bg-white px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-slate-300 bg-white !text-slate-900 hover:bg-slate-100"
+                onClick={() => {
+                  setCurrentNote("")
+                }}
+              >
+                Effacer
+              </Button>
+              <Button
+                type="button"
+                className="h-11 flex-1 bg-sky-700 text-base font-semibold text-white hover:bg-sky-800"
+                onClick={saveNote}
+              >
+                Valider
+              </Button>
+            </div>
           </Card>
         </div>
       )}

@@ -156,7 +156,7 @@ export function TodayView({
             </span>
             <div>
               <h4 className="text-sm font-semibold text-slate-900">Notes du jour</h4>
-              <p className="text-[11px] text-slate-500">Appuyez pour ajouter ou modifier</p>
+              <p className="text-[11px] text-slate-500">Partagée avec toute l’équipe · appuyez pour modifier</p>
             </div>
           </div>
           <span
