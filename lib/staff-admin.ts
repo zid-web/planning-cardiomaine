@@ -9,8 +9,8 @@
 export const NON_SCHEDULING_STAFF_ADMINS = [
   {
     code: "L",
-    email: "lucillecardiomaine@gmail.com",
-    first_name: "Lucille",
+    email: "luciecardiomaine@gmail.com",
+    first_name: "Lucie",
     last_name: "",
   },
 ] as const

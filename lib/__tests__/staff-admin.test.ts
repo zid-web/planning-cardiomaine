@@ -13,7 +13,7 @@ import {
 function main() {
   const lucille = NON_SCHEDULING_STAFF_ADMINS.find((a) => a.code === "L")
   assert.ok(lucille)
-  assert.equal(lucille!.email, "lucillecardiomaine@gmail.com")
+  assert.equal(lucille!.email, "luciecardiomaine@gmail.com")
 
   // L n’est PAS un médecin du planning
   assert.equal(DOCTORS.includes("L"), false)
@@ -27,8 +27,8 @@ function main() {
   assert.equal(adminEditsAreValidated("Z"), true)
   assert.equal(adminEditsAreValidated("P"), false)
 
-  assert.ok(findNonSchedulingStaffAdminByEmail("lucillecardiomaine@gmail.com"))
-  assert.ok(findNonSchedulingStaffAdminByEmail("LucilleCardiomaine@gmail.com"))
+  assert.ok(findNonSchedulingStaffAdminByEmail("luciecardiomaine@gmail.com"))
+  assert.ok(findNonSchedulingStaffAdminByEmail("LucieCardiomaine@gmail.com"))
   assert.equal(findNonSchedulingStaffAdminByEmail("other@example.com"), undefined)
 
   console.log("✅ staff-admin tests passed")

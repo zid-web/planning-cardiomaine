@@ -78,7 +78,7 @@ export async function createUserAccount(input: {
     let firstName = input.first_name?.trim() || null
     let lastName = input.last_name?.trim() || null
 
-    // Lucille (L) et autres admins hors planning : forcer admin + code, jamais médecin
+    // Lucie (L) et autres admins hors planning : forcer admin + code, jamais médecin
     if (knownStaff) {
       role = "admin"
       doctorCode = knownStaff.code

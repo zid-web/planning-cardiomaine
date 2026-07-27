@@ -1,20 +1,20 @@
 #!/usr/bin/env bun
 /**
- * Crée / met à jour les admins hors planning (ex. Lucille = L).
+ * Crée / met à jour les admins hors planning (ex. Lucie = L).
  *
  * Usage:
  *   bun scripts/ensure-staff-admins.ts
  *
  * Requiert SUPABASE_SERVICE_ROLE_KEY + NEXT_PUBLIC_SUPABASE_URL
  * (local ou prod). Mot de passe temporaire via STAFF_ADMIN_TEMP_PASSWORD
- * (défaut: ChangeMeLucille1!).
+ * (défaut: ChangeMeLucie1!).
  */
 import { createClient } from "@supabase/supabase-js"
 import { NON_SCHEDULING_STAFF_ADMINS } from "../lib/staff-admin"
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const tempPassword = process.env.STAFF_ADMIN_TEMP_PASSWORD || "ChangeMeLucille1!"
+const tempPassword = process.env.STAFF_ADMIN_TEMP_PASSWORD || "ChangeMeLucie1!"
 
 if (!url || !serviceKey) {
   console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")

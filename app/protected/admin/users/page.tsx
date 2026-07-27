@@ -195,8 +195,8 @@ export default function AdminUsersPage() {
                 Comptes utilisateurs
               </h1>
               <p className="text-xs text-slate-500">
-                Création, rôles et codes. Admin hors planning (ex. Lucille ={" "}
-                <span className="font-semibold">L</span> / lucillecardiomaine@gmail.com) :
+                Création, rôles et codes. Admin hors planning (ex. Lucie ={" "}
+                <span className="font-semibold">L</span> / luciecardiomaine@gmail.com) :
                 rôle admin, code L — pas dans la liste des médecins assignables.
               </p>
             </div>
