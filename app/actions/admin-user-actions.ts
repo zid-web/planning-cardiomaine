@@ -45,6 +45,7 @@ export async function listUsers() {
       .from("profiles")
       .select("id, email, first_name, last_name, role, doctor_code, must_change_password, created_at")
       .order("created_at", { ascending: false })
+      .limit(1000)
 
     if (error) return { success: false as const, error: error.message, users: [] as AdminUserRow[] }
 

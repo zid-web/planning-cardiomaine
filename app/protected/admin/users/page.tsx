@@ -401,7 +401,7 @@ export default function AdminUsersPage() {
       <Dialog open={!!editUser} onOpenChange={(o) => !o && setEditUser(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Modifier {editUser?.email}</DialogTitle>
+            <DialogTitle className="break-all">Modifier {editUser?.email}</DialogTitle>
           </DialogHeader>
           {editUser && (
             <div className="space-y-3 py-2">
