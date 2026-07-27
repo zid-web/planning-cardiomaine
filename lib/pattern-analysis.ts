@@ -13,24 +13,29 @@ export type PatternProposal = {
   tie: boolean
 }
 
+/** Payload solveur : éligibilité + fréquences déduites de l’historique. */
+export type HistoricalPatternSlot = {
+  eligible_doctors: string[]
+  frequency: Record<string, number>
+}
+
+export type HistoricalPatternsPayload = Record<
+  string,
+  Record<string, HistoricalPatternSlot>
+>
+
 /**
  * Vacations cliniques matin/soir (Cs, ETT, EE, Stress) — hors Coro/Rythmo (solveur).
- * Utilisé par « Générer » et aligné sur la section Vacations du planning.
+ * Utilisé pour filtrer / tests ; le payload `historical_patterns` couvre
+ * toutes les lignes hors `FREQUENCY_EXCLUDED_ROW_KEYS`.
  */
 export function isClinicalVacationRow(rowKey: string): boolean {
   return /^(Matin|Apm) - (Cs |ETT |EE\d|Stress$)/.test(rowKey)
 }
 
-/**
- * Pour chaque (row_key, day_name) hors solveur/RYTHMO, calcule le(s) médecin(s)
- * le(s) plus fréquent(s). En cas d'ex-æquo, renvoie tous les leaders.
- */
-export function computeRowPatternsFromSchedules(
-  schedules: ScheduleData[],
-  options?: { onlyEmptyIn?: ScheduleData | null },
-): PatternProposal[] {
-  type Bucket = Map<string, number>
-  const freq = new Map<string, Bucket>() // key = row||DAY
+/** Buckets internes : clé `row||DAY` → médecin → occurrences. */
+function collectFrequencyBuckets(schedules: ScheduleData[]): Map<string, Map<string, number>> {
+  const freq = new Map<string, Map<string, number>>()
 
   for (const schedule of schedules) {
     for (const [rowKey, days] of Object.entries(schedule || {})) {
@@ -49,6 +54,50 @@ export function computeRowPatternsFromSchedules(
     }
   }
 
+  return freq
+}
+
+/**
+ * Construit `historical_patterns` pour `/generate-week`.
+ * - Exclut `FREQUENCY_EXCLUDED_ROW_KEYS` (solveur + Rythmo + meta).
+ * - N’inclut un `(row, day)` que s’il a ≥1 observation.
+ * - `eligible_doctors` = médecins ayant occupé ce créneau au moins une fois
+ *   (déduit de l’historique, pas une liste figée).
+ */
+export function buildHistoricalPatternsPayload(
+  schedules: ScheduleData[],
+): HistoricalPatternsPayload {
+  const freq = collectFrequencyBuckets(schedules)
+  const out: HistoricalPatternsPayload = {}
+
+  for (const [key, bucket] of freq) {
+    if (bucket.size === 0) continue
+    const [row_key, day_name] = key.split("||")
+    if (!row_key || !day_name) continue
+
+    const frequency: Record<string, number> = {}
+    for (const [doc, count] of bucket) {
+      if (count > 0) frequency[doc] = count
+    }
+    const eligible_doctors = Object.keys(frequency).sort()
+    if (eligible_doctors.length === 0) continue
+
+    if (!out[row_key]) out[row_key] = {}
+    out[row_key][day_name] = { eligible_doctors, frequency }
+  }
+
+  return out
+}
+
+/**
+ * Pour chaque (row_key, day_name) hors solveur/RYTHMO, calcule le(s) médecin(s)
+ * le(s) plus fréquent(s). En cas d'ex-æquo, renvoie tous les leaders.
+ */
+export function computeRowPatternsFromSchedules(
+  schedules: ScheduleData[],
+  options?: { onlyEmptyIn?: ScheduleData | null },
+): PatternProposal[] {
+  const freq = collectFrequencyBuckets(schedules)
   const proposals: PatternProposal[] = []
   const onlyEmpty = options?.onlyEmptyIn
 
@@ -125,8 +174,9 @@ export function applyPatternProposals(
 }
 
 /**
- * Remplit les cellules vides Cs/ETT/EE/Stress à partir des fréquences historiques
- * (même logique qu’Historique+, sans confirmation UI — pour le bouton Générer).
+ * Remplit les cellules vides Cs/ETT/EE/Stress à partir des fréquences historiques.
+ * Conservé pour tests / repli local — la génération principale envoie désormais
+ * `historical_patterns` au solveur au lieu d’appliquer ceci après coup.
  */
 export function fillClinicalVacationsFromPatterns(
   schedule: ScheduleData,

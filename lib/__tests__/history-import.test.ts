@@ -10,6 +10,7 @@ import {
   type PdfWeekExtraction,
 } from "@/lib/history-import"
 import {
+  buildHistoricalPatternsPayload,
   computeRowPatternsFromSchedules,
   fillClinicalVacationsFromPatterns,
   isClinicalVacationRow,
@@ -83,7 +84,17 @@ function main() {
     "solver rows excluded",
   )
 
-  // Générer doit pouvoir remplir Cs/ETT/EE via les mêmes patterns
+  // historical_patterns payload (envoyé au solveur)
+  const histPayload = buildHistoricalPatternsPayload([s1, s2, s3])
+  assert.ok(histPayload["Matin - Cs PSS"]?.LUNDI)
+  assert.deepEqual(histPayload["Matin - Cs PSS"].LUNDI.eligible_doctors, ["P", "Z"])
+  assert.equal(histPayload["Matin - Cs PSS"].LUNDI.frequency.P, 2)
+  assert.equal(histPayload["Matin - Cs PSS"].LUNDI.frequency.Z, 1)
+  assert.equal(histPayload["Garde Nuit"], undefined, "solver rows excluded from payload")
+  // Pas de slot sans observation
+  assert.equal(histPayload["Matin - Cs PSS"]?.MARDI, undefined)
+
+  // Générer doit pouvoir remplir Cs/ETT/EE via les mêmes patterns (repli / tests)
   assert.equal(isClinicalVacationRow("Matin - Cs PSS"), true)
   assert.equal(isClinicalVacationRow("Apm - ETT salle 2"), true)
   assert.equal(isClinicalVacationRow("Matin - EE1"), true)
@@ -100,6 +111,10 @@ function main() {
   assert.deepEqual(filled.next["Matin - Cs PSS"].LUNDI.value, ["P"])
   assert.deepEqual(filled.next["Matin - ETT salle 1"].MARDI.value, ["A"])
   assert.equal(filled.next["Matin - Cs PSS"].LUNDI.status, "pending")
+
+  const ettPayload = buildHistoricalPatternsPayload([s1, s2, s3])
+  assert.deepEqual(ettPayload["Matin - ETT salle 1"].MARDI.eligible_doctors, ["A", "B"])
+  assert.equal(ettPayload["Matin - ETT salle 1"].MARDI.frequency.A, 2)
 
   console.log("✅ history-import / pattern-analysis tests passed")
 }

@@ -16,7 +16,6 @@ import {
   MessageSquare,
   Mic,
   UserCog,
-  Wand2,
   Wifi,
   WifiOff,
   X,
@@ -91,9 +90,6 @@ const GuardGenerationButton = lazy(() =>
 )
 const HistoryImportDialog = lazy(() =>
   import("@/components/history-import-dialog").then((m) => ({ default: m.HistoryImportDialog })),
-)
-const PatternFillDialog = lazy(() =>
-  import("@/components/pattern-fill-dialog").then((m) => ({ default: m.PatternFillDialog })),
 )
 import { createClient } from "@/lib/supabase/client"
 import type { PdfWeekExtraction } from "@/lib/history-import"
@@ -189,7 +185,6 @@ export function ScheduleApp({
   const [isExportingPdf, setIsExportingPdf] = useState(false)
   const [historyWeeks, setHistoryWeeks] = useState<PdfWeekExtraction[]>([])
   const [historyImportOpen, setHistoryImportOpen] = useState(false)
-  const [patternFillOpen, setPatternFillOpen] = useState(false)
   const [remplacantInput, setRemplacantInput] = useState("")
 
   const supabase = useMemo(() => createClient(), [])
@@ -1426,17 +1421,6 @@ export function ScheduleApp({
                           variant="outline"
                           size="sm"
                           className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
-                          onClick={() => setPatternFillOpen(true)}
-                          title="Pré-remplir Cs/ETT/EE/hors site selon les semaines passées (revue avant écriture)"
-                        >
-                          <Wand2 className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
-                          <span className="hidden sm:inline">Pré-remplir</span>
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => void exportWeekPdf()}
                           disabled={isExportingPdf}
                           title="Exporter la semaine en PDF"
@@ -2358,19 +2342,6 @@ export function ScheduleApp({
                 } catch (err) {
                   console.error("[history-import] reload failed:", err)
                 }
-              }}
-            />
-            <PatternFillDialog
-              open={patternFillOpen}
-              onOpenChange={setPatternFillOpen}
-              currentSchedule={schedule}
-              onApply={(next, meta) => {
-                void updateSchedule(next, "ui")
-                toast.success(
-                  `${meta.applied} cellule(s) proposée(s) (pending)${
-                    meta.skippedTies ? ` · ${meta.skippedTies} ex-æquo ignoré(s)` : ""
-                  }`,
-                )
               }}
             />
           </Suspense>
