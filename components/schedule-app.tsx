@@ -1329,16 +1329,25 @@ export function ScheduleApp({
                   </Button>
                 )}
               </div>
-              {generatedScheduleWarnings.length > 0 && !compactHeader && (
+              {(() => {
+                const actionableWarnings = generatedScheduleWarnings.filter(
+                  (w) =>
+                    !/historical_patterns\s*:.*non reconnu/i.test(w) &&
+                    !/non disponible.*vacances\/congé/i.test(w) &&
+                    !/^FV\s*:.*non disponible/i.test(w),
+                )
+                if (actionableWarnings.length === 0 || compactHeader) return null
+                return (
                 <div className="mb-1 w-full rounded-md border border-yellow-200 bg-yellow-50 p-2">
                   <p className="mb-1 text-xs font-semibold text-yellow-900">Alertes de génération:</p>
                   <ul className="list-inside list-disc text-[11px] text-yellow-800">
-                    {generatedScheduleWarnings.map((warning, i) => (
+                    {actionableWarnings.map((warning, i) => (
                       <li key={i}>{warning}</li>
                     ))}
                   </ul>
                 </div>
-              )}
+                )
+              })()}
               <div className="flex max-w-full flex-wrap items-center justify-end gap-1">
                 {!compactHeader && (
                   <div className="hidden sm:block">

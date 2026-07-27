@@ -1,4 +1,8 @@
 import { DAYS } from "@/lib/constants"
+import {
+  HALF_DAY_OFF_APM_ROW,
+  HALF_DAY_OFF_MATIN_ROW,
+} from "@/lib/half-day-off"
 import { generateWeekSchedule, getWeekNumber } from "@/lib/schedule-utils"
 import type { CellData, ScheduleData } from "@/lib/types"
 
@@ -15,7 +19,10 @@ export const SOLVER_MANAGED_ROW_KEYS = new Set([
   "Apm - Coro",
 ])
 
-/** RYTHMO déjà géré par règles fixes côté solveur — hors analyse de fréquence. */
+/**
+ * Lignes hors analyse de fréquence / hors `historical_patterns` solveur.
+ * Inclut règles structurelles (½-off, Visite, hors site fixes, Rythmo…).
+ */
 export const FREQUENCY_EXCLUDED_ROW_KEYS = new Set([
   ...SOLVER_MANAGED_ROW_KEYS,
   "Matin - Rythmo",
@@ -23,9 +30,28 @@ export const FREQUENCY_EXCLUDED_ROW_KEYS = new Set([
   "Notes du jour",
   "Congrès",
   "Congés",
-  // Ancienne ligne (PDFs / historiques) — hors analyse de fréquence
   "Vacances",
+  HALF_DAY_OFF_MATIN_ROW,
+  HALF_DAY_OFF_APM_ROW,
+  "Matin - Visite",
+  "Hors site - CDL",
+  "Hors site - IRM",
+  "Hors site - Scinti",
+  "Hors site - LFB",
+  "Hors site - PSSL",
+  "Apm - RÉEDUCATION",
+  "Pré-op",
+  "Entrées PSS",
 ])
+
+/**
+ * Seules ces lignes partent dans `historical_patterns` vers le solveur
+ * (Cs / ETT / EE / Stress). Tout le reste est structurel ou déjà géré ailleurs.
+ */
+export function isSolverHistoricalRowKey(rowKey: string): boolean {
+  if (FREQUENCY_EXCLUDED_ROW_KEYS.has(rowKey)) return false
+  return /^(Matin|Apm) - (Cs |ETT |EE\d|Stress$)/.test(rowKey)
+}
 
 export type PdfExtractedCell = {
   day_name: string

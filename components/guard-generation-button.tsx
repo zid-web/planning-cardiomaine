@@ -46,13 +46,27 @@ export function GuardGenerationButton({
             : ''
 
         if (result.warnings && result.warnings.length > 0) {
-          toast.warning(
-            `Alertes de génération${patternNote}:\n` + result.warnings.join('\n'),
-            {
-              id: 'guard-generation',
-              duration: 5000,
-            },
+          // Bruit attendu : row_key hors allowlist (ignorés), créneaux soft
+          // sautés si congé (FV/Rythmo). Ne garder que les alertes actionnables.
+          const actionable = result.warnings.filter(
+            (w) =>
+              !/historical_patterns\s*:.*non reconnu/i.test(w) &&
+              !/non disponible.*vacances\/congé/i.test(w) &&
+              !/^FV\s*:.*non disponible/i.test(w),
           )
+          if (actionable.length > 0) {
+            toast.warning(
+              `Alertes de génération${patternNote}:\n` + actionable.join('\n'),
+              {
+                id: 'guard-generation',
+                duration: 8000,
+              },
+            )
+          } else {
+            toast.success(`Propositions générées (à valider)${patternNote}`, {
+              id: 'guard-generation',
+            })
+          }
         } else {
           toast.success(`Propositions générées (à valider)${patternNote}`, {
             id: 'guard-generation',
