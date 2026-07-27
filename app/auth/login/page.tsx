@@ -93,9 +93,6 @@ export default function Page() {
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl lg:text-5xl">
               Cardiomaine
             </h1>
-            <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-300 sm:text-base">
-              {TAGLINE}
-            </p>
           </div>
 
           {/* Séparateur ECG mobile */}
