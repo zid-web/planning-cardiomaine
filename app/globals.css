@@ -225,3 +225,23 @@
     touch-action: manipulation;
   }
 }
+
+/* Login / branding : tracé ECG — une seule apparition */
+.ecg-trace-path {
+  stroke-dasharray: 320;
+  stroke-dashoffset: 320;
+  animation: ecg-draw 1.6s ease-out forwards;
+}
+
+@keyframes ecg-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ecg-trace-path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
