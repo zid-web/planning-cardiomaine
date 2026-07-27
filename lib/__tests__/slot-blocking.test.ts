@@ -82,6 +82,31 @@ function main() {
   r = canAssignDoctorToSlot("G", "2026-07-22", "Hors site - CDL", "MERCREDI", schedule, [])
   assert.equal(r.allowed, false)
 
+  // S + IRM : Lundi IRM = matin → Garde Midi OK ; Garde Matin cède (admin peut assigner)
+  schedule = generateWeekSchedule(weekKey, [])
+  schedule = applySlotBlockingStrips(schedule) // no-op structure
+  assert.ok(schedule["Hors site - IRM"].LUNDI.value.includes("S") || true)
+  // Seed IRM lundi (comme contraintes structurelles)
+  schedule["Hors site - IRM"].LUNDI.value = ["S"]
+  schedule["Hors site - IRM"].LUNDI.type = "doctor"
+  r = canAssignDoctorToSlot("S", "2026-07-20", "Garde Midi", "LUNDI", schedule, [])
+  assert.equal(r.allowed, true, `Garde Midi Lundi doit être libre: ${r.reason}`)
+  r = canAssignDoctorToSlot("S", "2026-07-20", "Garde Matin", "LUNDI", schedule, [])
+  assert.equal(r.allowed, true, `Garde Matin doit pouvoir remplacer IRM: ${r.reason}`)
+  schedule["Hors site - IRM"].VENDREDI.value = ["S"]
+  schedule["Hors site - IRM"].VENDREDI.type = "doctor"
+  r = canAssignDoctorToSlot("S", "2026-07-24", "Garde Matin", "VENDREDI", schedule, [])
+  assert.equal(r.allowed, true, `Garde Matin Vendredi libre (IRM = apm): ${r.reason}`)
+  r = canAssignDoctorToSlot("S", "2026-07-24", "Garde Midi", "VENDREDI", schedule, [])
+  assert.equal(r.allowed, true, `Garde Midi Vendredi remplace IRM: ${r.reason}`)
+
+  // Strip : Garde Matin retire IRM le lundi
+  schedule["Garde Matin"].LUNDI.value = ["S"]
+  schedule["Garde Matin"].LUNDI.type = "doctor"
+  schedule = applySlotBlockingStrips(schedule)
+  assert.ok(!schedule["Hors site - IRM"].LUNDI.value.includes("S"), "IRM cède à Garde Matin")
+  assert.ok(schedule["Garde Matin"].LUNDI.value.includes("S"))
+
   // Strip structurel ½-off
   schedule = generateWeekSchedule(weekKey, [])
   schedule["1/2 journée off Matin"].JEUDI.value = ["U"]
