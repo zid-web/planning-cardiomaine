@@ -94,6 +94,12 @@ export function extractSundayNightGuardDoctor(
   return null
 }
 
+/** Médecins listés (hors CH) réellement sur Garde Nuit ce jour. */
+export function nightGuardDoctorsOnDay(schedule: ScheduleData, nightDay: string): string[] {
+  const vals = schedule["Garde Nuit"]?.[nightDay]?.value || []
+  return vals.filter((d) => Boolean(d) && d !== "CH" && isListedDoctor(d))
+}
+
 /**
  * Remplit les lignes 1/2 journée off avec les règles habituelles.
  */
@@ -132,123 +138,118 @@ export function applyHabitualHalfDaysOff(schedule: ScheduleData): ScheduleData {
   return next
 }
 
-function addDoctorToHalfDayCell(
+function setHalfDayCell(
   schedule: ScheduleData,
   rowKey: string,
   dayName: string,
-  doctorId: string,
+  doctors: string[],
 ): ScheduleData {
   if (!schedule[rowKey]?.[dayName]) return schedule
   const cell = schedule[rowKey][dayName]
-  const value = cell.value || []
-  if (value.includes(doctorId)) return schedule
+  const unique = [...new Set(doctors.filter(Boolean))]
+  const prev = cell.value || []
+  const same =
+    prev.length === unique.length && unique.every((d, i) => prev[i] === d)
+  if (same) return schedule
   return {
     ...schedule,
     [rowKey]: {
       ...schedule[rowKey],
       [dayName]: {
         ...cell,
-        value: [...value, doctorId],
-        type: "doctor",
+        value: unique,
+        type: unique.length > 0 ? "doctor" : "empty",
       },
     },
   }
 }
 
-function removeDoctorFromHalfDayCell(
+/**
+ * Reconstruit les cases ½ off matin + après-midi d’un jour :
+ * - conserve uniquement les offs **habituels**
+ * - ajoute uniquement le(s) médecin(s) de récupération (garde de nuit la veille)
+ * Nettoyage systématique : plus d’anciens médecins de récupération orphelins.
+ */
+export function rebuildHalfDayOffsForDay(
   schedule: ScheduleData,
-  rowKey: string,
   dayName: string,
-  doctorId: string,
+  recoveryDoctors: string[],
 ): ScheduleData {
-  if (!schedule[rowKey]?.[dayName]) return schedule
-  const cell = schedule[rowKey][dayName]
-  const value = cell.value || []
-  if (!value.includes(doctorId)) return schedule
-  const filtered = value.filter((d) => d !== doctorId)
-  return {
-    ...schedule,
-    [rowKey]: {
-      ...schedule[rowKey],
-      [dayName]: {
-        ...cell,
-        value: filtered,
-        type: filtered.length > 0 ? "doctor" : "empty",
-      },
-    },
+  const habitualMatin = HABITUAL_HALF_DAYS_OFF[dayName]?.matin || []
+  const habitualAm = HABITUAL_HALF_DAYS_OFF[dayName]?.am || []
+
+  const matin: string[] = [...habitualMatin]
+  const am: string[] = [...habitualAm]
+
+  for (const doc of recoveryDoctors) {
+    if (!doc || doc === "CH" || !isListedDoctor(doc)) continue
+    const slot = targetOffSlotAfterNightGuard(doc, dayName)
+    if (slot === "matin") {
+      if (!matin.includes(doc)) matin.push(doc)
+    } else if (!am.includes(doc)) {
+      am.push(doc)
+    }
   }
+
+  let next = setHalfDayCell(schedule, HALF_DAY_OFF_MATIN_ROW, dayName, matin)
+  next = setHalfDayCell(next, HALF_DAY_OFF_APM_ROW, dayName, am)
+  return next
+}
+
+/**
+ * Jour suivant d’une nuit de garde (null si samedi / dimanche / inconnu).
+ */
+export function nextDayAfterNightGuard(nightDayName: string): string | null {
+  if (nightDayName === "SAMEDI" || nightDayName === "DIMANCHE") return null
+  const idx = DAYS.indexOf(nightDayName)
+  if (idx < 0 || idx >= DAYS.length - 1) return null
+  return DAYS[idx + 1]
+}
+
+/**
+ * Après modification de Garde Nuit un jour J : reconstruit les ½ off du lendemain
+ * (matin + apm) pour ne garder que les habituels + le médecin réellement de garde.
+ */
+export function syncRecoveryOffsAfterNightGuardChange(
+  schedule: ScheduleData,
+  nightDayName: string,
+): ScheduleData {
+  const nextDay = nextDayAfterNightGuard(nightDayName)
+  if (!nextDay) return schedule
+  const recovery = nightGuardDoctorsOnDay(schedule, nightDayName)
+  return rebuildHalfDayOffsForDay(schedule, nextDay, recovery)
 }
 
 /**
  * Place la ½ off de récupération le **lundi** après une garde de nuit dimanche
- * (semaine précédente). Défaut = après-midi ; matin si off habituel apm lundi.
+ * (semaine précédente). Reconstruit matin + apm lundi (habituels + récupération).
  */
 export function placeMondayRecoveryFromSundayNight(
   schedule: ScheduleData,
-  sundayDoc: string,
+  sundayDoc: string | string[] | null | undefined,
 ): ScheduleData {
-  if (!sundayDoc || sundayDoc === "CH" || !isListedDoctor(sundayDoc)) return schedule
-  const targetSlot = targetOffSlotAfterNightGuard(sundayDoc, "LUNDI")
-  const targetRow = halfDayOffRowForSlot(targetSlot)
-  const otherSlot: HalfDaySlot = targetSlot === "am" ? "matin" : "am"
-  const otherRow = halfDayOffRowForSlot(otherSlot)
-  let next = addDoctorToHalfDayCell(schedule, targetRow, "LUNDI", sundayDoc)
-  const otherIsHabitual =
-    otherSlot === "am"
-      ? hasHabitualAfternoonOff(sundayDoc, "LUNDI")
-      : hasHabitualMorningOff(sundayDoc, "LUNDI")
-  if (!otherIsHabitual) {
-    next = removeDoctorFromHalfDayCell(next, otherRow, "LUNDI", sundayDoc)
-  }
-  return next
+  const list = Array.isArray(sundayDoc) ? sundayDoc : sundayDoc ? [sundayDoc] : []
+  const recovery = list.filter((d) => Boolean(d) && d !== "CH" && isListedDoctor(d))
+  return rebuildHalfDayOffsForDay(schedule, "LUNDI", recovery)
 }
 
 /**
  * Place (ou corrige) la 1/2 journée off de récupération après garde de nuit.
- * - tous les jours sauf SAMEDI
- * - défaut : après-midi du lendemain
- * - si off habituel apm ce jour-là → matin du lendemain
- * - DIMANCHE : pas de lendemain in-week — utiliser
- *   `placeMondayRecoveryFromSundayNight` sur la semaine suivante /
- *   `previousSundayGuardDoctor` dans `applyNightGuardRecoveryOffs`.
+ * Préférer `syncRecoveryOffsAfterNightGuardChange` (nettoie toute la case lendemain).
+ * - DIMANCHE / SAMEDI : no-op in-week
  */
 export function placeNightGuardRecoveryOff(
   schedule: ScheduleData,
   nightDayName: string,
-  doctorId: string,
+  _doctorId?: string,
 ): ScheduleData {
-  if (!doctorId || doctorId === "CH" || !isListedDoctor(doctorId)) return schedule
-  if (nightDayName === "SAMEDI") return schedule
-  // Dimanche → lundi semaine suivante (hors de cette ScheduleData)
-  if (nightDayName === "DIMANCHE") return schedule
-
-  const dayIndex = DAYS.indexOf(nightDayName)
-  if (dayIndex < 0 || dayIndex >= DAYS.length - 1) return schedule
-
-  const nextDay = DAYS[dayIndex + 1]
-  const targetSlot = targetOffSlotAfterNightGuard(doctorId, nextDay)
-  const targetRow = halfDayOffRowForSlot(targetSlot)
-  const otherSlot: HalfDaySlot = targetSlot === "am" ? "matin" : "am"
-  const otherRow = halfDayOffRowForSlot(otherSlot)
-
-  let next = addDoctorToHalfDayCell(schedule, targetRow, nextDay, doctorId)
-
-  // Nettoie un mauvais créneau de récupération (sans toucher à l’off habituel)
-  const otherIsHabitual =
-    otherSlot === "am"
-      ? hasHabitualAfternoonOff(doctorId, nextDay)
-      : hasHabitualMorningOff(doctorId, nextDay)
-  if (!otherIsHabitual) {
-    next = removeDoctorFromHalfDayCell(next, otherRow, nextDay, doctorId)
-  }
-
-  return next
+  return syncRecoveryOffsAfterNightGuardChange(schedule, nightDayName)
 }
 
 /**
- * Parcourt la ligne Garde Nuit de la semaine et applique les récupérations.
- * `previousSundayGuardDoctor` : garde dimanche semaine précédente → ½ off lundi
- * (après-midi, ou matin si off habituel apm).
+ * Parcourt la ligne Garde Nuit et reconstruit les ½ off du lendemain
+ * (nettoyage systématique : uniquement habituels + médecin(s) réellement de garde).
+ * `previousSundayGuardDoctor` : garde dimanche semaine précédente → ½ off lundi.
  */
 export function applyNightGuardRecoveryOffs(
   schedule: ScheduleData,
@@ -256,21 +257,13 @@ export function applyNightGuardRecoveryOffs(
 ): ScheduleData {
   let next = schedule
 
-  const nightRow = schedule["Garde Nuit"]
-  if (nightRow) {
-    for (const dayName of DAYS) {
-      if (dayName === "SAMEDI" || dayName === "DIMANCHE") continue
-      const doctors = nightRow[dayName]?.value || []
-      for (const doctorId of doctors) {
-        next = placeNightGuardRecoveryOff(next, dayName, doctorId)
-      }
-    }
+  for (const dayName of DAYS) {
+    if (dayName === "SAMEDI" || dayName === "DIMANCHE") continue
+    next = syncRecoveryOffsAfterNightGuardChange(next, dayName)
   }
 
-  const sundayDoc = opts?.previousSundayGuardDoctor
-  if (sundayDoc) {
-    next = placeMondayRecoveryFromSundayNight(next, sundayDoc)
-  }
+  // Lundi : récupération dimanche précédent (remplace / nettoie au-delà des nuits in-week)
+  next = placeMondayRecoveryFromSundayNight(next, opts?.previousSundayGuardDoctor)
 
   return next
 }
