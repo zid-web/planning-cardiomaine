@@ -30,7 +30,7 @@ export function dateStrForWeekDay(weekKey: string, dayName: string): string | nu
   return d.toISOString().split("T")[0]
 }
 
-/** Vacances pour règles fixes — CH exempt ; FV / S / A / DAAS respectent les congés. */
+/** Vacances pour règles fixes — CH exempt ; FV / S / A / P / U / DAAS respectent les congés. */
 export function isDoctorOnVacationForFixed(
   doctorId: string,
   dateStr: string,
@@ -45,6 +45,22 @@ export function isDoctorOnVacationForFixed(
     const endDate = parseISO(vacation.end_date)
     return !isBefore(targetDate, startDate) && !isAfter(targetDate, endDate)
   })
+}
+
+/** Absent = doctor_vacations **ou** déjà sur la ligne Congés (signal planning). */
+export function isDoctorAbsentForFixed(
+  schedule: ScheduleData,
+  doctorId: string,
+  day: string,
+  dateStr: string,
+  vacations: DoctorVacation[],
+): boolean {
+  if (!doctorId || doctorId === "CH") return false
+  if (isDoctorOnVacationForFixed(doctorId, dateStr, vacations)) return true
+  const conges = schedule["Congés"]?.[day]?.value || []
+  if (conges.includes(doctorId)) return true
+  const legacy = schedule["Vacances"]?.[day]?.value || []
+  return legacy.includes(doctorId)
 }
 
 function setDoctors(
@@ -63,6 +79,10 @@ function setDoctors(
   }
 }
 
+/**
+ * Assignation fixe uniquement si le médecin est présent (pas en congés).
+ * Sinon : retire l’initiale de la case (la contrainte saute).
+ */
 function assignIfAvailable(
   schedule: ScheduleData,
   rowKey: string,
@@ -73,11 +93,15 @@ function assignIfAvailable(
 ): void {
   const dateStr = dateStrForWeekDay(weekKey, day)
   if (!dateStr) return
-  if (isDoctorOnVacationForFixed(doctor, dateStr, vacations)) {
-    // Ne pas forcer l’initiale si le médecin est en congés ce jour-là
+  if (isDoctorAbsentForFixed(schedule, doctor, day, dateStr, vacations)) {
     const current = schedule[rowKey]?.[day]?.value || []
-    if (current.length === 1 && current[0] === doctor) {
-      setDoctors(schedule, rowKey, day, [])
+    if (current.includes(doctor)) {
+      setDoctors(
+        schedule,
+        rowKey,
+        day,
+        current.filter((d) => d !== doctor),
+      )
     }
     return
   }
@@ -89,8 +113,9 @@ function assignIfAvailable(
  * - IRM : uniquement S — Lundi (matin) + Vendredi (après-midi), hors vacances
  * - FV : Garde Nuit chaque Lundi ; Coro chaque Jeudi après-midi ; hors vacances
  * - DAAS : uniquement Apm - EE2 chaque Lundi, hors vacances
- * - Rythmo : A chaque Lundi + Jeudi après-midi (+ P mardi, U mercredi conservés)
- * - Visite : uniquement U/A/B en rotation hebdomadaire
+ * - Rythmo : P mardi (matin+apm), U mercredi apm, A lundi+jeudi apm —
+ *   **uniquement si le médecin n’est pas en congés** (sinon case laissée / vidée)
+ * - Visite : uniquement U/A/B en rotation hebdomadaire, hors vacances
  */
 export function applyFixedClinicalAssignments(
   schedule: ScheduleData,
@@ -108,7 +133,7 @@ export function applyFixedClinicalAssignments(
     assignIfAvailable(schedule, "Hors site - IRM", "VENDREDI", "S", weekKey, vacations)
   }
 
-  // --- Rythmo ---
+  // --- Rythmo (saute si le médecin est en congés ce jour-là) ---
   // P : Mardi matin + apm
   assignIfAvailable(schedule, "Matin - Rythmo", "MARDI", "P", weekKey, vacations)
   assignIfAvailable(schedule, "Apm - Rythmo", "MARDI", "P", weekKey, vacations)

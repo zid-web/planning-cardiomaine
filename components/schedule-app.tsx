@@ -151,6 +151,8 @@ export function ScheduleApp({
   const [guardProposals, setGuardProposals] = useState<Map<string, GuardProposal[]>>(new Map())
   const [showProposals, setShowProposals] = useState(false)
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
+  /** false tant que getAllVacations n’a pas répondu — évite d’écraser Congés/Rythmo avec []. */
+  const [vacationsReady, setVacationsReady] = useState(false)
   const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
@@ -198,9 +200,11 @@ export function ScheduleApp({
     try {
       const data = await getAllVacations()
       setVacations(data)
+      setVacationsReady(true)
       return data
     } catch (error) {
       console.error("[app] Error loading vacations:", error)
+      // Ne pas marquer ready : évite de reconstruire Congés=[] et de réinjecter Rythmo
       return []
     }
   }
@@ -209,6 +213,7 @@ export function ScheduleApp({
   const handleVacationsUpdated = useCallback(async (next?: DoctorVacation[]) => {
     if (next) {
       setVacations(next)
+      setVacationsReady(true)
       return
     }
     await loadVacations()
@@ -315,8 +320,10 @@ export function ScheduleApp({
       scheduleToUse = fullSchedule[weekKey]
     }
 
-    return applyStructuralConstraints(scheduleToUse, weekKey, vacations)
-  }, [fullSchedule, weekKey, vacations])
+    return applyStructuralConstraints(scheduleToUse, weekKey, vacations, {
+      vacationsReady,
+    })
+  }, [fullSchedule, weekKey, vacations, vacationsReady])
 
   // Persiste les contraintes quand la semaine ou les congés changent (debounce court)
   // → toutes les semaines déjà en mémoire + la semaine affichée (répercussion immédiate CRUD)
@@ -332,6 +339,7 @@ export function ScheduleApp({
   )
 
   useEffect(() => {
+    if (!vacationsReady) return
     const gen = ++constraintsPersistGenRef.current
     const timer = window.setTimeout(() => {
       void (async () => {
@@ -356,7 +364,9 @@ export function ScheduleApp({
                 base["Notes du jour"][day] = { value: [], type: "empty", status: "validated" }
               }
             })
-            const injected = applyStructuralConstraints(base, wk, vacations)
+            const injected = applyStructuralConstraints(base, wk, vacations, {
+              vacationsReady: true,
+            })
             if (!schedulesDiffer(source, injected)) continue
 
             if (!nextFull) nextFull = { ...fullSchedule }
@@ -380,7 +390,7 @@ export function ScheduleApp({
     }
     // Pas de dépendance à l’identité de fullSchedule (évite courses à l’ajout congés)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekKey, vacationsSig, weekLoaded, currentUser])
+  }, [weekKey, vacationsSig, weekLoaded, currentUser, vacationsReady])
 
   const workloadStats = useMemo(() => calculateWorkloadStats(schedule), [schedule])
 

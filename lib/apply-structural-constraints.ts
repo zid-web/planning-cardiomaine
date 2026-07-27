@@ -12,7 +12,11 @@ import {
 import { NCT_DATES_2025_DEC, NCT_DATES_2026 } from "@/lib/guard-scheduler"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
-import { normalizeLeaveSchedule } from "@/lib/vacation-congés-mapper"
+import {
+  mergeVacancesIntoConges,
+  populateCongesRowFromVacations,
+  stripDoctorsOnLeaveFromOtherRows,
+} from "@/lib/vacation-congés-mapper"
 
 /**
  * Lignes / règles structurelles — toujours injectées dans le planning
@@ -22,7 +26,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "IRM = S (Lundi + Vendredi)",
   "FV = Garde Nuit Lundi + Coro Jeudi apm",
   "DAAS = Apm EE2 Lundi",
-  "Rythmo = P mardi, U mercredi apm, A lundi/jeudi apm",
+  "Rythmo = P mardi, U mercredi apm, A lundi/jeudi apm (uniquement si le médecin n’est pas en congés)",
   "Visite = rotation U → A → B",
   "½ journée off habituelles",
   "½ journée off récupération après Garde Nuit",
@@ -266,6 +270,12 @@ export type ApplyStructuralConstraintsOptions = {
   applyHabitualHalfDays?: boolean
   /** Si false, ne dérive pas la récupération garde nuit (défaut true). */
   applyNightRecovery?: boolean
+  /**
+   * Si false, ne reconstruit pas la ligne Congés depuis `doctor_vacations`
+   * (préserve Congés existants — utile avant le chargement async des congés).
+   * Défaut true.
+   */
+  vacationsReady?: boolean
 }
 
 /**
@@ -285,6 +295,13 @@ export function applyStructuralConstraints(
 
   // Clone profond : applyFixedClinicalAssignments mute les cellules en place
   let next: ScheduleData = structuredClone(schedule)
+  const vacationsReady = opts.vacationsReady !== false
+
+  // 0) Congés d’abord — les règles fixes (Rythmo P/U/A, IRM, …) sautent si absent
+  next = mergeVacancesIntoConges(next)
+  if (vacationsReady) {
+    next = populateCongesRowFromVacations(next, vacations, weekKey)
+  }
 
   // 1) Assignations cliniques fixes (IRM / FV / DAAS / Rythmo / Visite)
   next = applyFixedClinicalAssignments(next, weekKey, vacations)
@@ -311,8 +328,8 @@ export function applyStructuralConstraints(
     })
   }
 
-  // 7) Congés + retrait des absents des autres lignes
-  next = normalizeLeaveSchedule(next, vacations, weekKey)
+  // 7) Retrait des absents des autres lignes (Congés déjà à jour)
+  next = stripDoctorsOnLeaveFromOtherRows(next, vacations, weekKey)
 
   // 8) Sécurité : retirer initiales fixes si congés (idempotent avec 1)
   if (vacations.length > 0) {
