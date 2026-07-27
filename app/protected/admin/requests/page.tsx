@@ -64,6 +64,39 @@ type RequesterOption = {
   email: string;
 };
 
+/** Attache `profiles.email` sans embed PostgREST (évite 400 si FK absente en prod). */
+async function withRequesterEmails(
+  supabase: ReturnType<typeof createClient>,
+  rows: ChangeRequestRow[],
+): Promise<ChangeRequestRow[]> {
+  const ids = Array.from(
+    new Set(rows.map((r) => r.requester_id).filter((id): id is string => Boolean(id))),
+  );
+  if (ids.length === 0) return rows.map((r) => ({ ...r, profiles: r.profiles ?? null }));
+
+  const { data: profiles, error } = await supabase
+    .from('profiles')
+    .select('id, email')
+    .in('id', ids);
+
+  if (error) {
+    console.warn('[admin/requests] profiles lookup', error);
+    return rows.map((r) => ({ ...r, profiles: r.profiles ?? null }));
+  }
+
+  const emailById = new Map<string, string>();
+  for (const p of profiles || []) {
+    if (p.id && p.email) emailById.set(p.id, p.email);
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    profiles: r.requester_id
+      ? { email: emailById.get(r.requester_id) || r.profiles?.email || null }
+      : null,
+  }));
+}
+
 function formatDateTime(iso: string | null | undefined) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('fr-FR', {
@@ -142,7 +175,7 @@ export default function AdminRequestsPage() {
   const loadRequesters = useCallback(async () => {
     const { data, error } = await supabase
       .from('change_requests')
-      .select('requester_id, profiles(email)')
+      .select('requester_id')
       .not('requester_id', 'is', null);
 
     if (error) {
@@ -150,15 +183,33 @@ export default function AdminRequestsPage() {
       return;
     }
 
-    const map = new Map<string, string>();
-    for (const row of data || []) {
-      const id = row.requester_id as string | null;
-      const email = (row as any).profiles?.email as string | undefined;
-      if (id && email && !map.has(id)) map.set(id, email);
+    const ids = Array.from(
+      new Set(
+        (data || [])
+          .map((row) => row.requester_id as string | null)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    if (ids.length === 0) {
+      setRequesters([]);
+      return;
     }
+
+    const { data: profiles, error: pErr } = await supabase
+      .from('profiles')
+      .select('id, email')
+      .in('id', ids);
+
+    if (pErr) {
+      console.error('[admin/requests] requesters profiles', pErr);
+      setRequesters(ids.map((id) => ({ id, email: id.slice(0, 8) })));
+      return;
+    }
+
     setRequesters(
-      Array.from(map.entries())
-        .map(([id, email]) => ({ id, email }))
+      (profiles || [])
+        .filter((p) => p.id && p.email)
+        .map((p) => ({ id: p.id as string, email: p.email as string }))
         .sort((a, b) => a.email.localeCompare(b.email, 'fr')),
     );
   }, [supabase]);
@@ -168,7 +219,7 @@ export default function AdminRequestsPage() {
     try {
       let query = supabase
         .from('change_requests')
-        .select('*, profiles(email)', { count: 'exact' })
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: sortAsc })
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
 
@@ -181,13 +232,21 @@ export default function AdminRequestsPage() {
       const { data, error, count } = await query;
       if (error) {
         console.error('[admin/requests] load', error);
-        toast.error('Erreur de chargement des demandes');
+        toast.error(
+          error.message?.includes('relationship')
+            ? 'Erreur schéma demandes (relation profiles) — recharger après déploiement'
+            : 'Erreur de chargement des demandes',
+        );
         setRequests([]);
         setTotalCount(0);
         return;
       }
 
-      setRequests((data as ChangeRequestRow[]) || []);
+      const withEmails = await withRequesterEmails(
+        supabase,
+        (data as ChangeRequestRow[]) || [],
+      );
+      setRequests(withEmails);
       setTotalCount(count ?? 0);
     } finally {
       setTableLoading(false);
@@ -241,13 +300,17 @@ export default function AdminRequestsPage() {
       setAdminComment(req.admin_comment || '');
       const { data } = await supabase
         .from('change_requests')
-        .select('*, profiles(email)')
+        .select('*')
         .eq('week_key', req.week_key)
         .eq('day_name', req.day_name)
         .eq('row_key', req.row_key)
         .order('created_at', { ascending: false })
         .limit(10);
-      setRelated(((data as ChangeRequestRow[]) || []).filter((r) => r.id !== req.id));
+      const relatedRows = await withRequesterEmails(
+        supabase,
+        ((data as ChangeRequestRow[]) || []).filter((r) => r.id !== req.id),
+      );
+      setRelated(relatedRows);
     },
     [supabase],
   );
@@ -304,11 +367,14 @@ export default function AdminRequestsPage() {
                 void (async () => {
                   const { data } = await supabase
                     .from('change_requests')
-                    .select('*, profiles(email)')
+                    .select('*')
                     .eq('id', row.id)
                     .maybeSingle();
                   if (data) {
-                    await openDetail(data as ChangeRequestRow);
+                    const [enriched] = await withRequesterEmails(supabase, [
+                      data as ChangeRequestRow,
+                    ]);
+                    await openDetail(enriched);
                     window.setTimeout(() => {
                       document
                         .getElementById(`request-${row.id}`)
