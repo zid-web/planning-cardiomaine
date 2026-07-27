@@ -26,7 +26,9 @@ function main() {
   assert.equal(targetOffSlotAfterNightGuard("P", "JEUDI"), "matin")
   assert.equal(targetOffSlotAfterNightGuard("O", "VENDREDI"), "matin")
   assert.equal(targetOffSlotAfterNightGuard("Z", "LUNDI"), "matin")
+  // Mardi apm : H, S (habituel apm → récupération garde nuit = matin)
   assert.equal(targetOffSlotAfterNightGuard("H", "MARDI"), "matin")
+  assert.equal(targetOffSlotAfterNightGuard("S", "MARDI"), "matin")
 
   const weekKey = "2026-W30"
   let schedule = generateWeekSchedule(weekKey)
@@ -94,15 +96,17 @@ function main() {
     !schedule["1/2 journée off Matin"].MARDI.value.includes("B"),
     "B aussi retiré du matin",
   )
-  // Habituels mardi conservés
-  assert.ok(schedule["1/2 journée off Matin"].MARDI.value.includes("H"))
+  // Habituels mardi : H/S en apm seulement (pas le matin)
   assert.ok(schedule["1/2 journée off Après-midi"].MARDI.value.includes("S"))
+  assert.ok(schedule["1/2 journée off Après-midi"].MARDI.value.includes("H"))
+  assert.ok(!schedule["1/2 journée off Matin"].MARDI.value.includes("S"))
+  assert.ok(!schedule["1/2 journée off Matin"].MARDI.value.includes("H"))
 
   // Vider la garde nuit → plus de récupération (seulement habituels)
   schedule["Garde Nuit"].LUNDI.value = []
   schedule = syncRecoveryOffsAfterNightGuardChange(schedule, "LUNDI")
   assert.ok(!schedule["1/2 journée off Après-midi"].MARDI.value.includes("O"))
-  assert.deepEqual(schedule["1/2 journée off Matin"].MARDI.value, ["H", "S"])
+  assert.deepEqual(schedule["1/2 journée off Matin"].MARDI.value, [])
   assert.deepEqual(schedule["1/2 journée off Après-midi"].MARDI.value, ["H", "S"])
 
   // Samedi (pas d’habituel) : remplacement propre
@@ -149,6 +153,18 @@ function main() {
   schedule = applyNightGuardRecoveryOffs(schedule)
   assert.ok(schedule["1/2 journée off Après-midi"].MARDI.value.includes("FV"))
   assert.ok(!schedule["1/2 journée off Matin"].MARDI.value.includes("FV"))
+
+  // H/S : ½ off mardi apm seulement ; matin uniquement si garde nuit la veille
+  schedule = generateWeekSchedule(weekKey)
+  schedule = applyNightGuardRecoveryOffs(schedule)
+  assert.deepEqual(schedule["1/2 journée off Après-midi"].MARDI.value, ["H", "S"])
+  assert.deepEqual(schedule["1/2 journée off Matin"].MARDI.value, [])
+  // S de garde nuit lundi → ½ off mardi matin (récupération) + apm habituel
+  schedule["Garde Nuit"].LUNDI.value = ["S"]
+  schedule = syncRecoveryOffsAfterNightGuardChange(schedule, "LUNDI")
+  assert.ok(schedule["1/2 journée off Matin"].MARDI.value.includes("S"))
+  assert.ok(schedule["1/2 journée off Après-midi"].MARDI.value.includes("S"))
+  assert.ok(!schedule["1/2 journée off Matin"].MARDI.value.includes("H"))
 
   console.log("✅ half-day-off recovery tests passed")
 }
