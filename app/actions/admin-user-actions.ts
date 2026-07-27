@@ -45,9 +45,38 @@ export async function listUsers() {
       .from("profiles")
       .select("id, email, first_name, last_name, role, doctor_code, must_change_password, created_at")
       .order("created_at", { ascending: false })
+      .limit(1000)
 
     if (error) return { success: false as const, error: error.message, users: [] as AdminUserRow[] }
-    return { success: true as const, users: (profiles || []) as AdminUserRow[] }
+
+    // Compléter les emails manquants depuis Auth (anciens profils / trigger partiel)
+    const emailById = new Map<string, string>()
+    try {
+      let page = 1
+      for (;;) {
+        const { data: listed, error: authErr } = await admin.auth.admin.listUsers({
+          page,
+          perPage: 200,
+        })
+        if (authErr) break
+        const batch = listed?.users || []
+        for (const u of batch) {
+          if (u.email) emailById.set(u.id, u.email)
+        }
+        if (batch.length < 200) break
+        page += 1
+        if (page > 20) break
+      }
+    } catch {
+      // Auth list optionnelle — on garde les emails profil
+    }
+
+    const users = (profiles || []).map((p) => ({
+      ...(p as AdminUserRow),
+      email: (p as AdminUserRow).email || emailById.get(p.id) || null,
+    }))
+
+    return { success: true as const, users }
   } catch (err) {
     return {
       success: false as const,
