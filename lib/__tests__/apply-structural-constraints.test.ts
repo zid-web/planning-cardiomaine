@@ -44,6 +44,49 @@ function main() {
   assert.ok(schedule["Congés"].LUNDI.value.includes("S"))
   assert.ok(!schedule["Hors site - IRM"].LUNDI.value.includes("S"))
 
+  // Rythmo fixe saute si A/P/U en congés
+  const rythmoVacations: DoctorVacation[] = [
+    {
+      id: "a",
+      doctor_id: "A",
+      start_date: "2026-07-20",
+      end_date: "2026-07-23",
+      created_at: "",
+      updated_at: "",
+    },
+    {
+      id: "p",
+      doctor_id: "P",
+      start_date: "2026-07-21",
+      end_date: "2026-07-21",
+      created_at: "",
+      updated_at: "",
+    },
+    {
+      id: "u",
+      doctor_id: "U",
+      start_date: "2026-07-22",
+      end_date: "2026-07-22",
+      created_at: "",
+      updated_at: "",
+    },
+  ]
+  schedule = applyStructuralConstraints(generateWeekSchedule(weekKey, []), weekKey, rythmoVacations)
+  assert.deepEqual(schedule["Apm - Rythmo"].LUNDI.value, [])
+  assert.deepEqual(schedule["Apm - Rythmo"].JEUDI.value, [])
+  assert.deepEqual(schedule["Matin - Rythmo"].MARDI.value, [])
+  assert.deepEqual(schedule["Apm - Rythmo"].MARDI.value, [])
+  assert.deepEqual(schedule["Apm - Rythmo"].MERCREDI.value, [])
+  assert.ok(schedule["Congés"].LUNDI.value.includes("A"))
+
+  // Avant chargement congés : ne pas écraser Congés ni réinjecter Rythmo
+  let pendingLoad = generateWeekSchedule(weekKey, [])
+  pendingLoad["Congés"].LUNDI = { value: ["A"], type: "doctor", status: "validated" }
+  pendingLoad["Apm - Rythmo"].LUNDI = { value: [], type: "empty", status: "validated" }
+  pendingLoad = applyStructuralConstraints(pendingLoad, weekKey, [], { vacationsReady: false })
+  assert.ok(pendingLoad["Congés"].LUNDI.value.includes("A"), "Congés préservé avant load")
+  assert.deepEqual(pendingLoad["Apm - Rythmo"].LUNDI.value, [], "Rythmo ne revient pas si A en Congés")
+
   // Générer : propositions pending, sans écraser Congés structurels
   let base = applyStructuralConstraints(generateWeekSchedule(weekKey, []), weekKey, [])
   base = mergeAssignmentsIntoSchedule(

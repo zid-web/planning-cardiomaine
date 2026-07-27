@@ -30,6 +30,9 @@ function main() {
 
   assert.deepEqual(schedule["Apm - Rythmo"].LUNDI.value, ["A"])
   assert.deepEqual(schedule["Apm - Rythmo"].JEUDI.value, ["A"])
+  assert.deepEqual(schedule["Matin - Rythmo"].MARDI.value, ["P"])
+  assert.deepEqual(schedule["Apm - Rythmo"].MARDI.value, ["P"])
+  assert.deepEqual(schedule["Apm - Rythmo"].MERCREDI.value, ["U"])
 
   const visite = VISITE_ROTATION[30 % 3]
   assert.equal(visite, "U")
@@ -57,6 +60,52 @@ function main() {
   assert.deepEqual(withVac["Hors site - IRM"].LUNDI.value, [], "S en vacances → pas d’IRM lundi")
   assert.deepEqual(withVac["Hors site - IRM"].VENDREDI.value, ["S"])
   assert.deepEqual(withVac["Garde Nuit"].LUNDI.value, [], "FV en vacances → pas de garde lundi")
+
+  // Rythmo : contrainte saute dès que P / U / A est en congés
+  const rythmoVac: DoctorVacation[] = [
+    {
+      id: "a",
+      doctor_id: "A",
+      start_date: "2026-07-20",
+      end_date: "2026-07-20",
+      reason: "test",
+    },
+    {
+      id: "p",
+      doctor_id: "P",
+      start_date: "2026-07-21",
+      end_date: "2026-07-21",
+      reason: "test",
+    },
+    {
+      id: "u",
+      doctor_id: "U",
+      start_date: "2026-07-22",
+      end_date: "2026-07-22",
+      reason: "test",
+    },
+  ]
+  const rythmoOff = applyFixedClinicalAssignments(
+    generateWeekSchedule(weekKey, []),
+    weekKey,
+    rythmoVac,
+  )
+  assert.deepEqual(rythmoOff["Apm - Rythmo"].LUNDI.value, [], "A en congés → pas de Rythmo lundi")
+  assert.deepEqual(rythmoOff["Apm - Rythmo"].JEUDI.value, ["A"], "A présent jeudi → Rythmo OK")
+  assert.deepEqual(rythmoOff["Matin - Rythmo"].MARDI.value, [], "P en congés → pas de Rythmo mardi matin")
+  assert.deepEqual(rythmoOff["Apm - Rythmo"].MARDI.value, [], "P en congés → pas de Rythmo mardi apm")
+  assert.deepEqual(rythmoOff["Apm - Rythmo"].MERCREDI.value, [], "U en congés → pas de Rythmo mercredi")
+
+  // Congés déjà sur la ligne (sans doctor_vacations) → saute aussi
+  const withCongesOnly = generateWeekSchedule(weekKey, [])
+  withCongesOnly["Congés"].LUNDI = { value: ["A"], type: "doctor", status: "validated" }
+  withCongesOnly["Apm - Rythmo"].LUNDI = { value: ["A"], type: "doctor", status: "validated" }
+  applyFixedClinicalAssignments(withCongesOnly, weekKey, [])
+  assert.deepEqual(
+    withCongesOnly["Apm - Rythmo"].LUNDI.value,
+    [],
+    "A sur Congés → Rythmo lundi sauté même sans liste vacations",
+  )
 
   const cleared = clearFixedAssigneesOnVacation(schedule, weekKey, vacations)
   assert.ok(!cleared["Hors site - IRM"].LUNDI.value.includes("S"))
