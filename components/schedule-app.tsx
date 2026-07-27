@@ -99,7 +99,7 @@ import {
 } from "@/lib/guard-api-mapping"
 import { toast } from "sonner"
 import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
-import { applyNctAssignmentsToFullSchedule, type NctAssignment } from "@/lib/nct-command"
+import { applyNctAssignmentsToFullSchedule, type NctAssignment, weekKeyFromIsoDate } from "@/lib/nct-command"
 
 type ChangeRequest = {
   id: string
@@ -790,6 +790,8 @@ export function ScheduleApp({
 
       let next = schedule
       let changed = false
+      let targetWeekKey = weekKey
+      let crossWeek = false
 
       if (data?.parsed_command?.doctor_in) {
         const cmd = {
@@ -800,9 +802,33 @@ export function ScheduleApp({
               ? "nuit"
               : data.parsed_command.slot,
         }
-        const before = JSON.stringify(next)
-        next = applyParsedCommandToSchedule(next, cmd)
-        if (JSON.stringify(next) !== before) changed = true
+        targetWeekKey = weekKeyFromIsoDate(cmd.date)
+        if (targetWeekKey !== weekKey) {
+          crossWeek = true
+          const base =
+            fullSchedule[targetWeekKey] || generateWeekSchedule(targetWeekKey, vacations)
+          const before = JSON.stringify(base)
+          const updated = applyParsedCommandToSchedule(base, cmd)
+          if (JSON.stringify(updated) !== before) {
+            setFullSchedule((prev) => ({ ...prev, [targetWeekKey]: updated }))
+            void (async () => {
+              try {
+                await saveScheduleToDb(targetWeekKey, updated, currentUser || "unknown", {
+                  source: "voice",
+                })
+                toast.success(`Commande appliquée sur ${targetWeekKey} (semaine de la consigne)`)
+              } catch (err) {
+                console.error("[voice] cross-week save failed:", err)
+                toast.error("Commande appliquée en mémoire mais sauvegarde en échec")
+              }
+            })()
+            return
+          }
+        } else {
+          const before = JSON.stringify(next)
+          next = applyParsedCommandToSchedule(next, cmd)
+          if (JSON.stringify(next) !== before) changed = true
+        }
       }
 
       if (data?.raw_extraction?.rows?.length) {
@@ -834,9 +860,14 @@ export function ScheduleApp({
         changed = true
       }
 
-      if (!changed && !data?.parsed_command && data?.updated_schedule?.assignments?.length) {
+      // Fallback solveur : même si parsed_command est présent mais n'a rien changé
+      // (ligne absente, mapping raté…). Voice = merge large, pas seulement propositions Générer.
+      if (!changed && !crossWeek && data?.updated_schedule?.assignments?.length) {
         const before = JSON.stringify(next)
-        next = mergeAssignmentsIntoSchedule(next, data.updated_schedule.assignments)
+        next = mergeAssignmentsIntoSchedule(next, data.updated_schedule.assignments, {
+          forcePending: false,
+          proposalRowsOnly: false,
+        })
         if (JSON.stringify(next) !== before) changed = true
       }
 
@@ -850,11 +881,15 @@ export function ScheduleApp({
             ? "csv"
             : "voice"
         void updateSchedule(next, source)
+      } else if (data?.parsed_command || data?.updated_schedule) {
+        toast.warning(
+          "Commande reçue mais aucune cellule modifiée sur la semaine affichée — vérifiez la date / le créneau.",
+        )
       }
     },
     // updateSchedule / fullSchedule intentionally captured for apply-after-response
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [schedule, fullSchedule, currentUser, setFullSchedule],
+    [schedule, fullSchedule, currentUser, setFullSchedule, weekKey, vacations],
   )
 
   const handleNoteClick = (day: string) => {
