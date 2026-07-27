@@ -10,7 +10,7 @@ required service is the Next.js dev server; the backend is Supabase.
 - `generateNightGuardProposals` (`lib/guard-scheduler.ts`) : Mar–Dim (+ Lun si FV vacances). Préférences : Lun→U, Mar→M/W, Mer→S/U/P, Jeu→O/G, Ven→rotation B/G/A/P/Z/H/S (O/W/M exclus). Pas de garde la veille d’un NCT pour le médecin NCT (W/M, calendrier `NCT_DATES_2026`). Miroir soft/hard dans `guard-api/solver.py` (`NIGHT_GARDE_*`).
 
 ### Fixed clinical assignments & remplacant
-- Règles fixes centralisées dans `lib/fixed-assignments.ts` (`applyFixedClinicalAssignments`) : **IRM = S** (Lundi + Vendredi), **FV** Garde Nuit Lundi + Coro Jeudi apm, **DAAS** = `Apm - EE2` Lundi, **Rythmo A** Lundi/Jeudi apm, **Visite** = rotation `U → A → B`. Hors vacances (FV inclus). Appliqué via `generateWeekSchedule(weekKey, vacations)` ; `clearFixedAssigneesOnVacation` retire les initiales fixes si congés.
+- Règles fixes centralisées dans `lib/fixed-assignments.ts` (`applyFixedClinicalAssignments`) : **IRM = S** (Lundi matin + Vendredi après-midi), **FV** Garde Nuit Lundi + Coro Jeudi apm, **DAAS** = `Apm - EE2` Lundi, **Rythmo A** Lundi/Jeudi apm, **Visite** = rotation `U → A → B`. Hors vacances (FV inclus). Appliqué via `generateWeekSchedule(weekKey, vacations)` ; `clearFixedAssigneesOnVacation` retire les initiales fixes si congés. Une **garde** admin sur le même créneau **remplace** l’IRM (`periodOfRow` + priorité strips).
 - **Remplaçant texte libre** : dans la modale d’affectation admin, champ « Remplaçant » → ajoute un libellé dans `cell.value` (badge ambre). Utiliser `isListedDoctor` / `normalizeRemplacantLabel` (`lib/doctor-code.ts`) — hors équité / hors contrôle vacances.
 
 ### Vues Aujourd’hui / Semaine

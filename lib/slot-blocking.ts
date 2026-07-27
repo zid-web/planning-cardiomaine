@@ -48,8 +48,10 @@ function ettPairForRow(rowKey: string): [string, string] | null {
   return null
 }
 
-/** Classe une ligne planning dans une période de conflit. */
-export function periodOfRow(rowKey: string): DayPeriod {
+/** Classe une ligne planning dans une période de conflit.
+ * IRM : Lundi = matin, Vendredi = après-midi (commentaire métier), sinon « day ».
+ */
+export function periodOfRow(rowKey: string, day?: string): DayPeriod {
   if (
     rowKey === "Congés" ||
     rowKey === "Vacances" ||
@@ -66,14 +68,24 @@ export function periodOfRow(rowKey: string): DayPeriod {
   if (rowKey.startsWith("Matin -")) return "matin"
   if (rowKey.startsWith("Apm -")) return "apm"
   if (rowKey === "Pré-op" || rowKey === "Entrées PSS") return "matin"
-  if (
-    rowKey === LFB_ROW ||
-    rowKey === CDL_ROW ||
-    rowKey.startsWith("Hors site -")
-  ) {
+  // IRM = S Lundi matin + Vendredi après-midi (pas journée entière)
+  if (rowKey === "Hors site - IRM") {
+    if (day === "LUNDI") return "matin"
+    if (day === "VENDREDI") return "apm"
+    return "day"
+  }
+  if (rowKey === LFB_ROW || rowKey === CDL_ROW || rowKey.startsWith("Hors site -")) {
     return "day"
   }
   return "meta"
+}
+
+/** Garde admin peut remplacer l’IRM fixe du même créneau. */
+function gardeDisplacesIrm(targetRow: string, otherRow: string): boolean {
+  return (
+    GARDE_ROWS.includes(targetRow as (typeof GARDE_ROWS)[number]) &&
+    otherRow === "Hors site - IRM"
+  )
 }
 
 function isAtlCoroPair(a: string, b: string): boolean {
@@ -184,14 +196,10 @@ export function canAssignDoctorToSlot(
       reason: `${doctorId} est en congés ce jour — assignation impossible.`,
     }
   }
-  if (doctorOnRow(schedule, "Congés", day, doctorId) || doctorOnRow(schedule, "Vacances", day, doctorId)) {
-    return {
-      allowed: false,
-      reason: `${doctorId} est sur la ligne Congés — pas d’autre assignation.`,
-    }
-  }
+  // Note: la ligne Congés est reconstruite depuis doctor_vacations ; on ne bloque
+  // plus sur une case Congés orpheline (sinon S reste inutilisable après modification).
 
-  const targetPeriod = periodOfRow(rowKey)
+  const targetPeriod = periodOfRow(rowKey, day)
 
   // ½ journée off Matin → aucun créneau matin (ni day)
   if (doctorOnRow(schedule, HALF_DAY_OFF_MATIN_ROW, day, doctorId)) {
@@ -244,14 +252,16 @@ export function canAssignDoctorToSlot(
     }
   }
 
-  // Exclusion mutuelle matin / apm / day / nuit (sauf paires autorisées)
+  // Exclusion mutuelle matin / apm / day / nuit (sauf paires autorisées / garde↔IRM)
   if (targetPeriod !== "meta") {
     for (const otherRow of Object.keys(schedule)) {
       if (otherRow === rowKey) continue
-      if (periodOfRow(otherRow) === "meta") continue
+      if (periodOfRow(otherRow, day) === "meta") continue
       if (!doctorOnRow(schedule, otherRow, day, doctorId)) continue
-      if (!periodsConflict(targetPeriod, periodOfRow(otherRow))) continue
+      if (!periodsConflict(targetPeriod, periodOfRow(otherRow, day))) continue
       if (areCompatibleSamePeriod(rowKey, otherRow)) continue
+      // Admin assigne une garde : l’IRM fixe cède le créneau (strips le retireront)
+      if (gardeDisplacesIrm(rowKey, otherRow)) continue
       return {
         allowed: false,
         reason: `${doctorId} est déjà sur « ${otherRow} » — pas deux tâches sur le même créneau (sauf ATL+Coro ou doublon ETT 1+2).`,
@@ -336,7 +346,7 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
       // ½ off Matin → vider activités matin + day
       if (doctorOnRow(next, HALF_DAY_OFF_MATIN_ROW, day, doctorId)) {
         for (const row of Object.keys(next)) {
-          const p = periodOfRow(row)
+          const p = periodOfRow(row, day)
           if (p === "matin" || p === "day") {
             next = stripDoctorFromRow(next, row, day, doctorId)
           }
@@ -346,7 +356,7 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
       // ½ off Apm → vider activités apm + day
       if (doctorOnRow(next, HALF_DAY_OFF_APM_ROW, day, doctorId)) {
         for (const row of Object.keys(next)) {
-          const p = periodOfRow(row)
+          const p = periodOfRow(row, day)
           if (p === "apm" || p === "day") {
             next = stripDoctorFromRow(next, row, day, doctorId)
           }
@@ -375,30 +385,31 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
       next = resolvePeriodConflicts(next, day, doctorId, "day")
 
       // Hors-site « day » incompatible avec matin/apm (et inversement)
+      // IRM lundi/vendredi est déjà classé matin/apm via periodOfRow(day).
       const onDay = Object.keys(next).some(
-        (row) => periodOfRow(row) === "day" && doctorOnRow(next, row, day, doctorId),
+        (row) => periodOfRow(row, day) === "day" && doctorOnRow(next, row, day, doctorId),
       )
       const onMatinApm = Object.keys(next).some((row) => {
-        const p = periodOfRow(row)
+        const p = periodOfRow(row, day)
         return (p === "matin" || p === "apm") && doctorOnRow(next, row, day, doctorId)
       })
       if (onDay && onMatinApm) {
-        // Priorité aux gardes / ATL / Coro (matin-apm) sur LFB/CDL/IRM…
+        // Priorité aux gardes / ATL / Coro (matin-apm) sur LFB/CDL…
         const hasHighMatinApm = Object.keys(next).some((row) => {
-          const p = periodOfRow(row)
+          const p = periodOfRow(row, day)
           if (p !== "matin" && p !== "apm") return false
           if (!doctorOnRow(next, row, day, doctorId)) return false
           return conflictPriority(row) >= 75
         })
         if (hasHighMatinApm) {
           for (const row of Object.keys(next)) {
-            if (periodOfRow(row) === "day") {
+            if (periodOfRow(row, day) === "day") {
               next = stripDoctorFromRow(next, row, day, doctorId)
             }
           }
         } else {
           for (const row of Object.keys(next)) {
-            const p = periodOfRow(row)
+            const p = periodOfRow(row, day)
             if (p === "matin" || p === "apm") {
               next = stripDoctorFromRow(next, row, day, doctorId)
             }
@@ -438,7 +449,7 @@ function resolvePeriodConflicts(
 ): ScheduleData {
   if (period === "meta") return schedule
   const occupied = Object.keys(schedule).filter(
-    (row) => periodOfRow(row) === period && doctorOnRow(schedule, row, day, doctorId),
+    (row) => periodOfRow(row, day) === period && doctorOnRow(schedule, row, day, doctorId),
   )
   if (occupied.length <= 1) return schedule
 
