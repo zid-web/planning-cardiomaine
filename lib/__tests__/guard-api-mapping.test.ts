@@ -3,6 +3,7 @@
  */
 import assert from "node:assert/strict"
 import {
+  isSolverProposalCell,
   mergeAssignmentsIntoSchedule,
   mergeSolverWeekIntoExisting,
   resolveRowKey,
@@ -76,6 +77,17 @@ function main() {
   assert.ok(!merged["Congés"].LUNDI.value.includes("Z"), "Congés hors propositions Générer")
   assert.deepEqual(merged["Pré-op"].LUNDI.value, ["A"])
   assert.equal(merged["Pré-op"].LUNDI.status, "pending")
+  assert.equal(isSolverProposalCell("Matin - Coro", merged["Matin - Coro"].LUNDI), true)
+  assert.equal(isSolverProposalCell("Matin - Rythmo", { status: "validated", value: ["P"] }), false)
+  assert.equal(
+    isSolverProposalCell("Garde Nuit", {
+      status: "pending",
+      value: ["W"],
+      request: { requester: "W", status: "pending", timestamp: 1 },
+    }),
+    false,
+    "demande de changement ≠ proposition solveur",
+  )
 
   // Merge Générer : préserve Cs déjà rempli, propose Coro en pending
   const existing: ScheduleData = generateWeekSchedule("2026-W30")

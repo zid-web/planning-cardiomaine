@@ -103,6 +103,7 @@ import {
   getIsoWeekStartDate,
   mergeAssignmentsIntoSchedule,
   mergeSolverWeekIntoExisting,
+  isSolverProposalCell,
 } from "@/lib/guard-api-mapping"
 import { toast } from "sonner"
 import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
@@ -501,9 +502,21 @@ export function ScheduleApp({
         activity: rowKey,
         doctors: rowData[day].value,
         status: rowData[day].status,
+        isSolverProposal: isSolverProposalCell(rowKey, rowData[day]),
       }))
       .sort((a, b) => getTaskSortOrder(a.activity) - getTaskSortOrder(b.activity)) // Added sorting
   }
+
+  const solverProposalCount = useMemo(() => {
+    if (!schedule) return 0
+    let n = 0
+    for (const [rowKey, days] of Object.entries(schedule)) {
+      for (const cell of Object.values(days || {})) {
+        if (isSolverProposalCell(rowKey, cell) && (cell.value?.length || 0) > 0) n++
+      }
+    }
+    return n
+  }, [schedule])
 
   const getUserTasks = (day: string) => {
     if (!doctorCode) return []
@@ -1348,6 +1361,26 @@ export function ScheduleApp({
                 </div>
                 )
               })()}
+              {solverProposalCount > 0 && !compactHeader && isGlobalView && (
+                <div className="mb-1 flex w-full flex-wrap items-center gap-3 rounded-md border border-violet-200 bg-violet-50 px-2 py-1.5 text-[11px] text-violet-900">
+                  <span className="font-semibold">Légende :</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-block size-3 rounded-sm bg-violet-50 ring-2 ring-inset ring-violet-400" />
+                    <span className="rounded bg-violet-600 px-1 text-[8px] font-bold uppercase text-white">
+                      Prop.
+                    </span>
+                    Proposition Générer ({solverProposalCount}) — à valider
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-slate-600">
+                    <span className="inline-block size-3 rounded-sm border border-gray-300 bg-white" />
+                    Fixe / saisie validée
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-orange-800">
+                    <span className="inline-block size-3 rounded-sm bg-orange-50 ring-1 ring-orange-300" />
+                    Demande de changement
+                  </span>
+                </div>
+              )}
               <div className="flex max-w-full flex-wrap items-center justify-end gap-1">
                 {!compactHeader && (
                   <div className="hidden sm:block">
@@ -1687,6 +1720,10 @@ export function ScheduleApp({
                                   const isWeekend = day === "SAMEDI" || day === "DIMANCHE"
                                   const isPending =
                                     cellData.status === "pending" || cellData.request?.status === "pending"
+                                  const isSolverProposal = isSolverProposalCell(rowKey, cellData)
+                                  const isChangeRequestPending = Boolean(
+                                    isPending && cellData.request && !isSolverProposal,
+                                  )
 
                                   const holidayName = isDateHoliday(weekDates[dayIndex])
                                   const isHoliday = !!holidayName
@@ -1703,14 +1740,40 @@ export function ScheduleApp({
                                           ? "bg-black cursor-not-allowed opacity-40"
                                           : "cursor-pointer hover:bg-gray-50",
                                         isHoliday && "bg-red-50 border-l-4 border-r-4 border-red-400",
+                                        // Proposition solveur « Générer » — distincte des fixes (validated)
+                                        // et des demandes de changement (anneau orange sur badge).
+                                        isSolverProposal &&
+                                          !cellBlocked &&
+                                          "bg-violet-50/90 ring-2 ring-inset ring-violet-400/70",
+                                        isChangeRequestPending &&
+                                          !cellBlocked &&
+                                          !isSolverProposal &&
+                                          "bg-orange-50/60",
                                       )}
                                       onClick={() => {
                                         if (!cellBlocked && !isRestrictedHoliday) {
                                           handleCellClick(rowKey, day)
                                         }
                                       }}
-                                      title={holidayName || (cellBlocked ? "Case bloquée" : "")}
+                                      title={
+                                        holidayName ||
+                                        (cellBlocked
+                                          ? "Case bloquée"
+                                          : isSolverProposal
+                                            ? "Proposition Générer — à valider"
+                                            : isChangeRequestPending
+                                              ? "Demande de changement en attente"
+                                              : "")
+                                      }
                                     >
+                                      {isSolverProposal && !cellBlocked && (
+                                        <span
+                                          className="pointer-events-none absolute right-0.5 top-0.5 z-[1] rounded bg-violet-600 px-1 py-px text-[8px] font-bold uppercase leading-none tracking-wide text-white shadow-sm"
+                                          aria-hidden
+                                        >
+                                          Prop.
+                                        </span>
+                                      )}
                                       {showProposals &&
                                         (() => {
                                           const proposal = getCellProposal(rowKey, day)
@@ -1774,17 +1837,20 @@ export function ScheduleApp({
                                                         ? DOCTOR_COLORS[doc] || "bg-slate-500"
                                                         : "bg-amber-600"
                                                   } text-white border-none px-1 py-0 text-[9px] h-5 max-w-[80px] truncate justify-center
-                                                  ${isPending && cellData.request?.requester === doc ? "ring-2 ring-orange-400" : ""}
+                                                  ${isChangeRequestPending && cellData.request?.requester === doc ? "ring-2 ring-orange-400" : ""}
+                                                  ${isSolverProposal && !conflict.hasConflict ? "ring-1 ring-violet-300/80 border border-dashed border-white/50" : ""}
                                                 `}
                                                 title={
                                                   conflict.message ||
-                                                  (listed
-                                                    ? label.includes("²")
-                                                      ? sisterRoomForDoublon(rowKey)
-                                                        ? `${doc} en doublon (les deux salles)`
-                                                        : `${doc} en doublon (même case)`
-                                                      : doc
-                                                    : `Remplaçant : ${doc}`)
+                                                  (isSolverProposal
+                                                    ? `Proposition Générer : ${doc}`
+                                                    : listed
+                                                      ? label.includes("²")
+                                                        ? sisterRoomForDoublon(rowKey)
+                                                          ? `${doc} en doublon (les deux salles)`
+                                                          : `${doc} en doublon (même case)`
+                                                        : doc
+                                                      : `Remplaçant : ${doc}`)
                                                 }
                                               >
                                                 {label}
@@ -2063,7 +2129,12 @@ export function ScheduleApp({
                   {schedule[selectedCell.row][selectedCell.day].status === "pending" ? (
                     <>
                       <CheckCircle2 className="mr-2 size-4" />
-                      Valider la demande
+                      {isSolverProposalCell(
+                        selectedCell.row,
+                        schedule[selectedCell.row][selectedCell.day],
+                      )
+                        ? "Valider la proposition"
+                        : "Valider la demande"}
                     </>
                   ) : (
                     <>

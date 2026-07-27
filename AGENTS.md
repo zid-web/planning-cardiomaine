@@ -45,7 +45,7 @@ required service is the Next.js dev server; the backend is Supabase.
   - **Nuits + weekend** (cycle 2 sem., `week_type` 1=impaire / 2=paire) : **impaire** = CH Lun/Mar/Ven nuit + weekend ATL entier ; W/O/M = Mer/Jeu nuit. **paire** = W/O/M Lun/Mar/Ven nuit + weekend ATL ; CH = Mer/Jeu nuit. Weekend `ASTREINTE` mappe vers **Astreintes ATL Matin** (pas Garde).
   - **Pas de nuits ATL consécutives Lun–Ven** pour W/O/M (weekend et CH exempts) — solveur §5quinquies ; dérogation = saisie admin / `existing_schedule`.
   - `generateGuardsViaAPI` dérive `week_type` du n° de semaine ISO (ne plus laisser le défaut 1).
-- **« Générer »** = **propositions** `pending` (gardes/astreintes WOM/Coro/…) à valider admin. Lignes : `GENERATOR_PROPOSAL_ROW_KEYS`.
+- **« Générer »** = **propositions** `pending` (gardes/astreintes WOM/Coro/…) à valider admin. Lignes : `GENERATOR_PROPOSAL_ROW_KEYS`. **UI** : cases violet + badge `Prop.` (`isSolverProposalCell`) — distinct des fixes/`validated` et des demandes de changement (orange).
 - Congés CRUD : **ne pas** `revalidatePath('/protected/planning')` pendant la modale (course / faux positif « message channel closed »). Refresh via `onVacationsUpdated` + `getAllVacations` (`noStore`).
 - Do **not** reintroduce `generateWeekWithSolver` / second bouton solveur.
 - **Equity / CellData:** `{ value: string[], status, type? }` + row key. Use `lib/equity-tracking.ts`. **Fenêtre glissante 6 mois** pour toutes les catégories (`getCumulativeEquityFromTable` + repli JSON + `getCoroEquity` / `points_coro`) — pas « depuis toujours », pas « mois calendaire » pour CORO. Recalculée à chaque Générer ; pas de changement de schéma DB.

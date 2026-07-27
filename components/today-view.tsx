@@ -9,6 +9,8 @@ export type DayTask = {
   activity: string
   doctors: string[]
   status: "validated" | "pending"
+  /** Proposition solveur « Générer » (pas une demande de changement). */
+  isSolverProposal?: boolean
 }
 
 type TodayViewProps = {
@@ -200,7 +202,10 @@ export function TodayView({
                   className={cn(
                     "rounded-2xl border bg-gradient-to-r p-3.5 shadow-sm transition hover:shadow-md",
                     meta.accent,
-                    task.status === "pending" && "ring-1 ring-amber-300",
+                    task.isSolverProposal && "ring-2 ring-violet-400/80 bg-violet-50/40",
+                    task.status === "pending" &&
+                      !task.isSolverProposal &&
+                      "ring-1 ring-amber-300",
                   )}
                 >
                   <div className="flex items-start gap-3">
@@ -212,10 +217,16 @@ export function TodayView({
                         <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", meta.chip)}>
                           {meta.label}
                         </span>
-                        {task.status === "pending" && (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                            En attente
+                        {task.isSolverProposal ? (
+                          <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                            Prop. Générer
                           </span>
+                        ) : (
+                          task.status === "pending" && (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                              En attente
+                            </span>
+                          )
                         )}
                       </div>
                       <p className="truncate text-sm font-semibold text-slate-900">

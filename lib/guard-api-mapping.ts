@@ -115,6 +115,19 @@ export const GENERATOR_PROPOSAL_ROW_KEYS = new Set([
 /** @deprecated alias — préférer GENERATOR_PROPOSAL_ROW_KEYS */
 export const GENERATOR_OWNED_ROW_KEYS = GENERATOR_PROPOSAL_ROW_KEYS;
 
+/**
+ * Proposition « Générer » (solveur) à valider — distincte d’une saisie manuelle
+ * (`validated`) et d’une demande de changement (`pending` + `request`).
+ */
+export function isSolverProposalCell(
+  rowKey: string,
+  cell: { status?: string; request?: unknown } | null | undefined,
+): boolean {
+  if (!cell || cell.status !== "pending") return false
+  if (cell.request) return false
+  return GENERATOR_PROPOSAL_ROW_KEYS.has(rowKey)
+}
+
 export type GuardAssignment = {
   date: string;
   day_name: string;
