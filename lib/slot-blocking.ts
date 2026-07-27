@@ -1,9 +1,11 @@
 /**
  * Règles d’assignation bloquantes (matin / après-midi / garde / ½-off / congés).
  * Exception : cumul Astreinte ATL Matin/Midi + Coro correspondant.
- * Doublon Cs : 2× le même médecin dans la **même** case Cs (PSS *ou* Tessée) → ².
+ * Doublon Cs / EE : 2× le même médecin dans la **même** case → ².
  * Doublon ETT : présent sur **ETT salle 1 et salle 2** le même créneau → ².
  * Jamais Cs PSS + Cs Tessée le même matin/apm.
+ * Interne **I** sur Garde Matin : le médecin associé peut aussi faire Cs / ETT / EE
+ * le même matin (pas Coro / Rythmo / Rééducation). **S+I** peut aussi garder l’IRM.
  */
 
 import { DAYS } from "@/lib/constants"
@@ -17,25 +19,36 @@ export type DayPeriod = "matin" | "apm" | "nuit" | "day" | "meta"
 const GARDE_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
 const LFB_ROW = "Hors site - LFB"
 const CDL_ROW = "Hors site - CDL"
+const IRM_ROW = "Hors site - IRM"
 
-/** Doublon Cs = 2× dans la même cellule (2ᵉ clic). */
-export const CS_SAME_CELL_DOUBLON_ROWS = new Set([
+/** Code de l’interne (associé à un médecin sur Garde Matin). */
+export const INTERN_CODE = "I"
+
+/** Doublon même cellule (2ᵉ clic) : Cs + EE1/EE2. */
+export const SAME_CELL_DOUBLON_ROWS = new Set([
   "Matin - Cs PSS",
   "Matin - Cs Tessée",
   "Apm - Cs PSS",
   "Apm - Cs Tessée",
+  "Matin - EE1",
+  "Matin - EE2",
+  "Apm - EE1",
+  "Apm - EE2",
 ])
+
+/** @deprecated alias — préférer SAME_CELL_DOUBLON_ROWS */
+export const CS_SAME_CELL_DOUBLON_ROWS = SAME_CELL_DOUBLON_ROWS
 
 export const ETT_DOUBLON_PAIRS: Record<"Matin" | "Apm", [string, string]> = {
   Matin: ["Matin - ETT salle 1", "Matin - ETT salle 2"],
   Apm: ["Apm - ETT salle 1", "Apm - ETT salle 2"],
 }
 
-/** @deprecated alias — préférer CS_SAME_CELL_DOUBLON_ROWS */
-export const DOUBLON_ELIGIBLE_ROWS = CS_SAME_CELL_DOUBLON_ROWS
+/** @deprecated alias — préférer SAME_CELL_DOUBLON_ROWS */
+export const DOUBLON_ELIGIBLE_ROWS = SAME_CELL_DOUBLON_ROWS
 
 export function isDoublonEligibleRow(rowKey: string): boolean {
-  return CS_SAME_CELL_DOUBLON_ROWS.has(rowKey)
+  return SAME_CELL_DOUBLON_ROWS.has(rowKey)
 }
 
 export function isEttRow(rowKey: string): boolean {
@@ -48,8 +61,68 @@ function ettPairForRow(rowKey: string): [string, string] | null {
   return null
 }
 
-/** Classe une ligne planning dans une période de conflit. */
-export function periodOfRow(rowKey: string): DayPeriod {
+/** Cliniques matin autorisées avec Garde Matin + I. */
+export function isInternCompatibleMorningClinical(rowKey: string): boolean {
+  if (rowKey.startsWith("Matin - Cs")) return true
+  if (rowKey.startsWith("Matin - ETT")) return true
+  if (rowKey === "Matin - EE1" || rowKey === "Matin - EE2") return true
+  return false
+}
+
+/** Activités explicitement interdites en cumul avec Garde Matin + I. */
+export function isInternForbiddenClinical(rowKey: string): boolean {
+  const r = rowKey.toLowerCase()
+  return (
+    r.includes("coro") ||
+    r.includes("rythmo") ||
+    r.includes("réeducation") ||
+    r.includes("reeducation")
+  )
+}
+
+/** Médecin présent sur Garde Matin avec l’interne I (ou I avec un médecin). */
+export function isPairedWithInternOnGardeMatin(
+  schedule: ScheduleData,
+  day: string,
+  doctorId: string,
+): boolean {
+  const vals = schedule["Garde Matin"]?.[day]?.value || []
+  if (!vals.includes(INTERN_CODE)) return false
+  if (doctorId === INTERN_CODE) {
+    return vals.some((d) => d && d !== INTERN_CODE && isListedDoctor(d))
+  }
+  return vals.includes(doctorId)
+}
+
+/**
+ * Appariement effectif ou prospectif (ex. I déjà sur Garde Matin, on y ajoute le médecin
+ * alors qu’il a déjà un Cs — ou l’inverse).
+ */
+export function wouldBePairedWithIntern(
+  schedule: ScheduleData,
+  day: string,
+  doctorId: string,
+  targetRow: string,
+): boolean {
+  const vals = schedule["Garde Matin"]?.[day]?.value || []
+  if (!vals.includes(INTERN_CODE)) return false
+  if (doctorId === INTERN_CODE) {
+    if (targetRow === "Garde Matin") {
+      return vals.some((d) => d && d !== INTERN_CODE && isListedDoctor(d))
+    }
+    return isPairedWithInternOnGardeMatin(schedule, day, doctorId)
+  }
+  if (vals.includes(doctorId)) return true
+  // I déjà présent : ajouter ce médecin sur Garde Matin = association
+  if (targetRow === "Garde Matin") return true
+  return false
+}
+
+/**
+ * Classe une ligne planning dans une période de conflit.
+ * IRM : Lundi = matin, Vendredi = après-midi ; sinon « day ».
+ */
+export function periodOfRow(rowKey: string, day?: string): DayPeriod {
   if (
     rowKey === "Congés" ||
     rowKey === "Vacances" ||
@@ -66,11 +139,12 @@ export function periodOfRow(rowKey: string): DayPeriod {
   if (rowKey.startsWith("Matin -")) return "matin"
   if (rowKey.startsWith("Apm -")) return "apm"
   if (rowKey === "Pré-op" || rowKey === "Entrées PSS") return "matin"
-  if (
-    rowKey === LFB_ROW ||
-    rowKey === CDL_ROW ||
-    rowKey.startsWith("Hors site -")
-  ) {
+  if (rowKey === IRM_ROW) {
+    if (day === "LUNDI") return "matin"
+    if (day === "VENDREDI") return "apm"
+    return "day"
+  }
+  if (rowKey === LFB_ROW || rowKey === CDL_ROW || rowKey.startsWith("Hors site -")) {
     return "day"
   }
   return "meta"
@@ -92,12 +166,43 @@ function isEttDoublonPair(a: string, b: string): boolean {
   return false
 }
 
-/** Deux lignes peuvent coexister le même créneau pour le même médecin. */
-export function areCompatibleSamePeriod(rowA: string, rowB: string): boolean {
+export type CompatibilityContext = {
+  schedule: ScheduleData
+  day: string
+  doctorId: string
+  /** Ligne en cours d’assignation (pour appariement prospectif avec I). */
+  targetRow?: string
+}
+
+/**
+ * Deux lignes peuvent coexister le même créneau pour le même médecin.
+ * Avec `ctx` : exceptions Garde Matin + I (Cs/ETT/EE) et S+I+IRM.
+ */
+export function areCompatibleSamePeriod(
+  rowA: string,
+  rowB: string,
+  ctx?: CompatibilityContext,
+): boolean {
   if (rowA === rowB) return true
   if (isAtlCoroPair(rowA, rowB)) return true
   if (isEttDoublonPair(rowA, rowB)) return true
+
+  if (ctx && wouldBePairedWithIntern(ctx.schedule, ctx.day, ctx.doctorId, ctx.targetRow || "Garde Matin")) {
+    const hasGardeMatin = rowA === "Garde Matin" || rowB === "Garde Matin"
+    const other = rowA === "Garde Matin" ? rowB : rowB === "Garde Matin" ? rowA : null
+
+    if (hasGardeMatin && other) {
+      if (isInternForbiddenClinical(other)) return false
+      if (isInternCompatibleMorningClinical(other)) return true
+      if (ctx.doctorId === "S" && other === IRM_ROW) return true
+    }
+  }
+
   return false
+}
+
+function doctorOnRow(schedule: ScheduleData, rowKey: string, day: string, doctorId: string): boolean {
+  return (schedule[rowKey]?.[day]?.value || []).includes(doctorId)
 }
 
 /** Nombre d’occurrences d’un médecin dans une cellule (doublon = 2). */
@@ -108,10 +213,6 @@ export function countDoctorInCell(
   doctorId: string,
 ): number {
   return (schedule[rowKey]?.[day]?.value || []).filter((d) => d === doctorId).length
-}
-
-function doctorOnRow(schedule: ScheduleData, rowKey: string, day: string, doctorId: string): boolean {
-  return (schedule[rowKey]?.[day]?.value || []).includes(doctorId)
 }
 
 function previousDayName(day: string): string | null {
@@ -149,7 +250,6 @@ export function isLfbCdlBlockedByGarde(
 function periodsConflict(target: DayPeriod, occupied: DayPeriod): boolean {
   if (target === "meta" || occupied === "meta") return false
   if (target === occupied) return true
-  // Hors-site « day » bloque matin ET après-midi (et inversement)
   if (target === "day" && (occupied === "matin" || occupied === "apm" || occupied === "day")) {
     return true
   }
@@ -174,7 +274,17 @@ export function canAssignDoctorToSlot(
     return { allowed: true }
   }
 
-  // Congés / Vacances : ligne dédiée OK ; sinon jamais d’autre assignation
+  // Interne I : uniquement Garde Matin (associé à un médecin)
+  if (doctorId === INTERN_CODE) {
+    if (rowKey !== "Garde Matin") {
+      return {
+        allowed: false,
+        reason: "L’interne I n’est assignable que sur Garde Matin (avec un médecin).",
+      }
+    }
+    return { allowed: true }
+  }
+
   if (rowKey === "Congés" || rowKey === "Vacances") {
     return { allowed: true }
   }
@@ -184,16 +294,18 @@ export function canAssignDoctorToSlot(
       reason: `${doctorId} est en congés ce jour — assignation impossible.`,
     }
   }
-  if (doctorOnRow(schedule, "Congés", day, doctorId) || doctorOnRow(schedule, "Vacances", day, doctorId)) {
+
+  // Coro / Rythmo / Rééducation interdits si déjà Garde Matin + I
+  if (wouldBePairedWithIntern(schedule, day, doctorId, rowKey) && isInternForbiddenClinical(rowKey)) {
     return {
       allowed: false,
-      reason: `${doctorId} est sur la ligne Congés — pas d’autre assignation.`,
+      reason: `${doctorId} est en Garde Matin avec I — Coro / Rythmo / Rééducation interdits.`,
     }
   }
 
-  const targetPeriod = periodOfRow(rowKey)
+  const targetPeriod = periodOfRow(rowKey, day)
+  const compatCtx: CompatibilityContext = { schedule, day, doctorId, targetRow: rowKey }
 
-  // ½ journée off Matin → aucun créneau matin (ni day)
   if (doctorOnRow(schedule, HALF_DAY_OFF_MATIN_ROW, day, doctorId)) {
     if (targetPeriod === "matin" || targetPeriod === "day") {
       return {
@@ -203,7 +315,6 @@ export function canAssignDoctorToSlot(
     }
   }
 
-  // ½ journée off Après-midi → pas d’activité apm / day (matin OK)
   if (doctorOnRow(schedule, HALF_DAY_OFF_APM_ROW, day, doctorId)) {
     if (targetPeriod === "apm" || targetPeriod === "day") {
       return {
@@ -213,18 +324,15 @@ export function canAssignDoctorToSlot(
     }
   }
 
-  // Assigner sur la ligne ½-off : OK (marqueurs)
   if (rowKey === HALF_DAY_OFF_MATIN_ROW || rowKey === HALF_DAY_OFF_APM_ROW) {
     return { allowed: true }
   }
 
-  // LFB / CDL : jour de garde ou lendemain
   if (rowKey === LFB_ROW || rowKey === CDL_ROW) {
     const gardeBlock = isLfbCdlBlockedByGarde(schedule, day, doctorId)
     if (gardeBlock.blocked) return { allowed: false, reason: gardeBlock.reason }
   }
 
-  // Inversement : si on assigne une garde, LFB/CDL déjà présents → bloquer
   if (GARDE_ROWS.includes(rowKey as (typeof GARDE_ROWS)[number])) {
     if (doctorOnRow(schedule, LFB_ROW, day, doctorId) || doctorOnRow(schedule, CDL_ROW, day, doctorId)) {
       return {
@@ -232,29 +340,29 @@ export function canAssignDoctorToSlot(
         reason: `${doctorId} est en LFB/CDL ce jour — garde impossible (retirez LFB/CDL d’abord).`,
       }
     }
-    const next = DAYS[DAYS.indexOf(day as (typeof DAYS)[number]) + 1]
+    const nextDay = DAYS[DAYS.indexOf(day as (typeof DAYS)[number]) + 1]
     if (
-      next &&
-      (doctorOnRow(schedule, LFB_ROW, next, doctorId) || doctorOnRow(schedule, CDL_ROW, next, doctorId))
+      nextDay &&
+      (doctorOnRow(schedule, LFB_ROW, nextDay, doctorId) ||
+        doctorOnRow(schedule, CDL_ROW, nextDay, doctorId))
     ) {
       return {
         allowed: false,
-        reason: `${doctorId} est en LFB/CDL le lendemain (${next}) — garde impossible.`,
+        reason: `${doctorId} est en LFB/CDL le lendemain (${nextDay}) — garde impossible.`,
       }
     }
   }
 
-  // Exclusion mutuelle matin / apm / day / nuit (sauf paires autorisées)
   if (targetPeriod !== "meta") {
     for (const otherRow of Object.keys(schedule)) {
       if (otherRow === rowKey) continue
-      if (periodOfRow(otherRow) === "meta") continue
+      if (periodOfRow(otherRow, day) === "meta") continue
       if (!doctorOnRow(schedule, otherRow, day, doctorId)) continue
-      if (!periodsConflict(targetPeriod, periodOfRow(otherRow))) continue
-      if (areCompatibleSamePeriod(rowKey, otherRow)) continue
+      if (!periodsConflict(targetPeriod, periodOfRow(otherRow, day))) continue
+      if (areCompatibleSamePeriod(rowKey, otherRow, compatCtx)) continue
       return {
         allowed: false,
-        reason: `${doctorId} est déjà sur « ${otherRow} » — pas deux tâches sur le même créneau (sauf ATL+Coro ou doublon ETT 1+2).`,
+        reason: `${doctorId} est déjà sur « ${otherRow} » — pas deux tâches sur le même créneau (sauf ATL+Coro, ETT 1+2, ou Garde Matin+I).`,
       }
     }
   }
@@ -262,7 +370,7 @@ export function canAssignDoctorToSlot(
   return { allowed: true }
 }
 
-/** Doublon Cs (2× même case) ou ETT (salle 1 + salle 2) → exposant ². */
+/** Doublon Cs/EE (2× même case) ou ETT (salle 1 + salle 2) → exposant ². */
 export function isDoctorDoublonInCell(
   schedule: ScheduleData,
   day: string,
@@ -271,12 +379,10 @@ export function isDoctorDoublonInCell(
 ): boolean {
   if (!isListedDoctor(doctorId)) return false
 
-  // Cs : 2 occurrences dans la même case
   if (isDoublonEligibleRow(rowKey)) {
     return countDoctorInCell(schedule, rowKey, day, doctorId) >= 2
   }
 
-  // ETT : présent sur les deux salles du même créneau
   const pair = ettPairForRow(rowKey)
   if (pair) {
     const [a, b] = pair
@@ -295,9 +401,6 @@ export function formatDoctorWithDoublon(
   return isDoctorDoublonInCell(schedule, day, doctorId, rowKey) ? `${doctorId}²` : doctorId
 }
 
-/**
- * Retire un médecin des lignes incompatibles avec une règle (strip structurel).
- */
 export function stripDoctorFromRow(
   schedule: ScheduleData,
   rowKey: string,
@@ -325,35 +428,33 @@ export function stripDoctorFromRow(
 /**
  * Applique les strips bloquants (½-off, exclusion créneau, LFB/CDL vs garde).
  * Ne touche pas Congés / Notes. Idempotent.
+ * Préserve Garde Matin + I + cliniques autorisées (+ IRM pour S).
  */
 export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
   let next = schedule
 
   for (const day of DAYS) {
     for (const doctorId of collectDoctorsOnDay(next, day)) {
-      if (!isListedDoctor(doctorId) || doctorId === "CH") continue
+      if (!isListedDoctor(doctorId) || doctorId === "CH" || doctorId === INTERN_CODE) continue
 
-      // ½ off Matin → vider activités matin + day
       if (doctorOnRow(next, HALF_DAY_OFF_MATIN_ROW, day, doctorId)) {
         for (const row of Object.keys(next)) {
-          const p = periodOfRow(row)
+          const p = periodOfRow(row, day)
           if (p === "matin" || p === "day") {
             next = stripDoctorFromRow(next, row, day, doctorId)
           }
         }
       }
 
-      // ½ off Apm → vider activités apm + day
       if (doctorOnRow(next, HALF_DAY_OFF_APM_ROW, day, doctorId)) {
         for (const row of Object.keys(next)) {
-          const p = periodOfRow(row)
+          const p = periodOfRow(row, day)
           if (p === "apm" || p === "day") {
             next = stripDoctorFromRow(next, row, day, doctorId)
           }
         }
       }
 
-      // Congés ligne → déjà stripé ailleurs ; double sécurité hors Congés
       if (doctorOnRow(next, "Congés", day, doctorId)) {
         for (const row of Object.keys(next)) {
           if (row === "Congés" || row === "Vacances" || row === "Notes du jour") continue
@@ -361,44 +462,54 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
         }
       }
 
-      // LFB/CDL vs garde (jour + lendemain)
       if (isLfbCdlBlockedByGarde(next, day, doctorId).blocked) {
         next = stripDoctorFromRow(next, LFB_ROW, day, doctorId)
         next = stripDoctorFromRow(next, CDL_ROW, day, doctorId)
       }
 
-      // Exclusion mutuelle : pour chaque période, garder une activité « primaire »
-      // + paires compatibles. On retire les conflits en priorisant Garde > ATL/Coro > reste.
+      // Strip Coro / Rythmo / Rééducation si Garde Matin + I
+      if (isPairedWithInternOnGardeMatin(next, day, doctorId)) {
+        for (const row of Object.keys(next)) {
+          if (isInternForbiddenClinical(row)) {
+            next = stripDoctorFromRow(next, row, day, doctorId)
+          }
+        }
+      }
+
       next = resolvePeriodConflicts(next, day, doctorId, "matin")
       next = resolvePeriodConflicts(next, day, doctorId, "apm")
       next = resolvePeriodConflicts(next, day, doctorId, "nuit")
       next = resolvePeriodConflicts(next, day, doctorId, "day")
 
-      // Hors-site « day » incompatible avec matin/apm (et inversement)
       const onDay = Object.keys(next).some(
-        (row) => periodOfRow(row) === "day" && doctorOnRow(next, row, day, doctorId),
+        (row) => periodOfRow(row, day) === "day" && doctorOnRow(next, row, day, doctorId),
       )
       const onMatinApm = Object.keys(next).some((row) => {
-        const p = periodOfRow(row)
+        const p = periodOfRow(row, day)
         return (p === "matin" || p === "apm") && doctorOnRow(next, row, day, doctorId)
       })
       if (onDay && onMatinApm) {
-        // Priorité aux gardes / ATL / Coro (matin-apm) sur LFB/CDL/IRM…
+        // S+I+IRM : ne pas stripper l’IRM
+        const preserveIrm =
+          doctorId === "S" &&
+          isPairedWithInternOnGardeMatin(next, day, doctorId) &&
+          doctorOnRow(next, IRM_ROW, day, doctorId)
+
         const hasHighMatinApm = Object.keys(next).some((row) => {
-          const p = periodOfRow(row)
+          const p = periodOfRow(row, day)
           if (p !== "matin" && p !== "apm") return false
           if (!doctorOnRow(next, row, day, doctorId)) return false
           return conflictPriority(row) >= 75
         })
         if (hasHighMatinApm) {
           for (const row of Object.keys(next)) {
-            if (periodOfRow(row) === "day") {
-              next = stripDoctorFromRow(next, row, day, doctorId)
-            }
+            if (periodOfRow(row, day) !== "day") continue
+            if (preserveIrm && row === IRM_ROW) continue
+            next = stripDoctorFromRow(next, row, day, doctorId)
           }
         } else {
           for (const row of Object.keys(next)) {
-            const p = periodOfRow(row)
+            const p = periodOfRow(row, day)
             if (p === "matin" || p === "apm") {
               next = stripDoctorFromRow(next, row, day, doctorId)
             }
@@ -438,16 +549,16 @@ function resolvePeriodConflicts(
 ): ScheduleData {
   if (period === "meta") return schedule
   const occupied = Object.keys(schedule).filter(
-    (row) => periodOfRow(row) === period && doctorOnRow(schedule, row, day, doctorId),
+    (row) => periodOfRow(row, day) === period && doctorOnRow(schedule, row, day, doctorId),
   )
   if (occupied.length <= 1) return schedule
 
-  // Choisir un ancrage (priorité haute), retirer tout incompatible avec l’ensemble retenu
+  const ctx: CompatibilityContext = { schedule, day, doctorId }
   const sorted = [...occupied].sort((a, b) => conflictPriority(b) - conflictPriority(a))
   const keep = new Set<string>()
   keep.add(sorted[0])
   for (const row of sorted.slice(1)) {
-    const ok = [...keep].every((k) => areCompatibleSamePeriod(k, row))
+    const ok = [...keep].every((k) => areCompatibleSamePeriod(k, row, ctx))
     if (ok) keep.add(row)
   }
 

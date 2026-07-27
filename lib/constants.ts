@@ -9,6 +9,7 @@ export const DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"
 // IRM: uniquement S — lundi matin + vendredi après-midi (hors vacances)
 // Visite: uniquement U, A, B en rotation hebdomadaire
 // Rythmo: A chaque lundi + jeudi après-midi
+// I: interne — Garde Matin uniquement, associé à un médecin (cumul Cs/ETT/EE autorisé)
 export const DOCTORS = [
   "P",
   "Z",
@@ -30,6 +31,7 @@ export const DOCTORS = [
   "DAAS",
   "R",
   "T",
+  "I",
 ]
 
 export const STAFF_INITIALS = [
@@ -53,6 +55,7 @@ export const STAFF_INITIALS = [
   "DAAS",
   "R",
   "T",
+  "I",
 ]
 
 // Doctor classification - metadata for different doctor types
@@ -248,6 +251,15 @@ export const DOCTOR_METADATA: Record<
     can_have_vacations: true,
     status: 'externe_consultation',
   },
+  I: {
+    name: 'Interne',
+    is_externe: true,
+    can_be_assigned_to_guards: true, // Garde Matin uniquement (règle slot-blocking)
+    can_be_assigned_to_astreinte: false,
+    can_be_assigned_to_nct: false,
+    can_have_vacations: false,
+    status: 'externe_garde',
+  },
 }
 
 export const SPECIALTIES = {
@@ -277,8 +289,10 @@ export const DOCTOR_COLORS: { [key: string]: string } = {
   CH: "bg-sky-500",
   FV: "bg-amber-500",
   D: "bg-stone-500",
+  DAAS: "bg-slate-500",
   R: "bg-red-700",
   T: "bg-emerald-700",
+  I: "bg-sky-700",
 }
 
 // Ancien gris neutre Congés — les badges Congés utilisent désormais DOCTOR_COLORS
