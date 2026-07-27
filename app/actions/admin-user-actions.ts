@@ -2,6 +2,11 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { DOCTORS } from "@/lib/constants"
+import {
+  findNonSchedulingStaffAdminByEmail,
+  isNonSchedulingStaffAdminCode,
+} from "@/lib/staff-admin"
 import { revalidatePath } from "next/cache"
 
 export type AdminUserRow = {
@@ -67,14 +72,47 @@ export async function createUserAccount(input: {
       return { success: false as const, error: "Email et mot de passe (≥ 8) requis" }
     }
 
+    const knownStaff = findNonSchedulingStaffAdminByEmail(email)
+    let role = input.role
+    let doctorCode = input.doctor_code?.trim().toUpperCase() || null
+    let firstName = input.first_name?.trim() || null
+    let lastName = input.last_name?.trim() || null
+
+    // Lucille (L) et autres admins hors planning : forcer admin + code, jamais médecin
+    if (knownStaff) {
+      role = "admin"
+      doctorCode = knownStaff.code
+      firstName = firstName || knownStaff.first_name || null
+      lastName = lastName || knownStaff.last_name || null
+    }
+
+    if (doctorCode && isNonSchedulingStaffAdminCode(doctorCode)) {
+      role = "admin"
+      if (DOCTORS.includes(doctorCode)) {
+        return {
+          success: false as const,
+          error: `${doctorCode} est un admin hors planning — ne pas l’ajouter à DOCTORS`,
+        }
+      }
+    }
+
+    // Un code médecin listé en rôle doctor est OK ; un admin hors planning ne doit pas
+    // être créé en « doctor » sous un autre code par erreur.
+    if (role === "doctor" && doctorCode && isNonSchedulingStaffAdminCode(doctorCode)) {
+      return {
+        success: false as const,
+        error: `${doctorCode} est réservé aux admins hors planning (pas médecin)`,
+      }
+    }
+
     const admin = createAdminClient()
     const { data, error } = await admin.auth.admin.createUser({
       email,
       password: input.password,
       email_confirm: true,
       user_metadata: {
-        first_name: input.first_name || "",
-        last_name: input.last_name || "",
+        first_name: firstName || "",
+        last_name: lastName || "",
       },
     })
 
@@ -85,10 +123,10 @@ export async function createUserAccount(input: {
     const { error: pErr } = await admin
       .from("profiles")
       .update({
-        role: input.role,
-        doctor_code: input.doctor_code?.trim().toUpperCase() || null,
-        first_name: input.first_name?.trim() || null,
-        last_name: input.last_name?.trim() || null,
+        role,
+        doctor_code: doctorCode,
+        first_name: firstName,
+        last_name: lastName,
         must_change_password: true,
         email,
       })
@@ -119,6 +157,13 @@ export async function updateUserProfile(
   try {
     await assertAdmin()
     const admin = createAdminClient()
+
+    const { data: existing } = await admin
+      .from("profiles")
+      .select("email, role, doctor_code")
+      .eq("id", id)
+      .single()
+
     const payload: Record<string, unknown> = {}
     if (patch.role) payload.role = patch.role
     if (patch.doctor_code !== undefined) {
@@ -128,6 +173,25 @@ export async function updateUserProfile(
     if (patch.last_name !== undefined) payload.last_name = patch.last_name
     if (patch.must_change_password !== undefined) {
       payload.must_change_password = patch.must_change_password
+    }
+
+    const nextCode =
+      (payload.doctor_code as string | null | undefined) ?? existing?.doctor_code ?? null
+    const knownStaff =
+      findNonSchedulingStaffAdminByEmail(existing?.email) ||
+      (isNonSchedulingStaffAdminCode(nextCode)
+        ? { code: String(nextCode).toUpperCase() }
+        : undefined)
+
+    if (knownStaff) {
+      payload.role = "admin"
+      payload.doctor_code = "code" in knownStaff && knownStaff.code ? knownStaff.code : nextCode
+      if (patch.role === "doctor") {
+        return {
+          success: false as const,
+          error: `${payload.doctor_code} est un admin hors planning — rôle médecin interdit`,
+        }
+      }
     }
 
     const { error } = await admin.from("profiles").update(payload).eq("id", id)

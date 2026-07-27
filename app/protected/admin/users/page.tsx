@@ -194,7 +194,11 @@ export default function AdminUsersPage() {
                 <UserCog className="h-5 w-5" />
                 Comptes utilisateurs
               </h1>
-              <p className="text-xs text-slate-500">Création, rôles et codes médecin</p>
+              <p className="text-xs text-slate-500">
+                Création, rôles et codes. Admin hors planning (ex. Lucille ={" "}
+                <span className="font-semibold">L</span> / lucillecardiomaine@gmail.com) :
+                rôle admin, code L — pas dans la liste des médecins assignables.
+              </p>
             </div>
           </div>
           <Button
@@ -330,11 +334,11 @@ export default function AdminUsersPage() {
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label>Code médecin</Label>
+                <Label>Code (initiale)</Label>
                 <Input
                   value={form.doctor_code}
                   onChange={(e) => setForm((f) => ({ ...f, doctor_code: e.target.value }))}
-                  placeholder="ex: P"
+                  placeholder="ex: P ou L (admin hors planning)"
                 />
               </div>
             </div>

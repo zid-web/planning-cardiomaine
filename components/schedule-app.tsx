@@ -33,6 +33,7 @@ import { LiveClock } from "@/components/live-clock"
 import { LearnMoreModal } from "@/components/learn-more-modal"
 import type { CellData, FullSchedule, ScheduleData } from "@/lib/types"
 import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
+import { adminEditsAreValidated } from "@/lib/staff-admin"
 import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays } from "@/lib/schedule-utils"
 import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
 import { calculateWorkloadStats } from "@/lib/scheduler-algo"
@@ -615,7 +616,7 @@ export function ScheduleApp({
 
     // 2ᵉ clic sur Cs = doublon dans la même case (pas de re-validation créneau)
     if (alreadyCount === 1 && canDoublon) {
-      const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+      const newStatus = adminEditsAreValidated(currentUser) ? "validated" : "pending"
       patchSelectedCell((cell) => ({
         ...cell,
         value: [...(cell.value || []), doctor],
@@ -639,7 +640,7 @@ export function ScheduleApp({
           return
         }
       }
-      const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+      const newStatus = adminEditsAreValidated(currentUser) ? "validated" : "pending"
       const sisterCell = schedule[sisterRow]?.[selectedCell.day] || {
         value: [] as string[],
         type: "empty" as const,
@@ -684,7 +685,7 @@ export function ScheduleApp({
       }
     }
 
-    const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+    const newStatus = adminEditsAreValidated(currentUser) ? "validated" : "pending"
     patchSelectedCell((cell) => {
       const congesToday = schedule["Congés"]?.[selectedCell.day]?.value || []
       let base = [...(cell.value || [])].filter((d) => {
@@ -729,7 +730,7 @@ export function ScheduleApp({
       return
     }
 
-    const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+    const newStatus = adminEditsAreValidated(currentUser) ? "validated" : "pending"
     patchSelectedCell(
       (prev) => {
         const values = [...(prev.value || [])]
@@ -762,7 +763,7 @@ export function ScheduleApp({
     const currentValues = currentCell?.value || []
     const removed = currentValues[indexToRemove]
     const newValues = currentValues.filter((_, index) => index !== indexToRemove)
-    const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+    const newStatus = adminEditsAreValidated(currentUser) ? "validated" : "pending"
 
     patchSelectedCell(
       (cell) => ({
@@ -1909,7 +1910,7 @@ export function ScheduleApp({
                             const current = cell?.value || []
                             const newValues = current.filter((d) => d !== doc)
                             const newStatus =
-                              currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+                              adminEditsAreValidated(currentUser) ? "validated" : "pending"
                             patchSelectedCell((c) => ({
                               ...c,
                               value: newValues,
