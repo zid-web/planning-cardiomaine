@@ -57,7 +57,22 @@ function main() {
   // Pipeline complet + couleurs : pas de conflit sur la ligne Congés
   const normalized = normalizeLeaveSchedule(generateWeekSchedule(weekKey), vacations, weekKey)
   assert.ok(normalized["Congés"].LUNDI.value.includes("Z"))
+  assert.ok(normalized["Congés"].MARDI.value.includes("Z"))
+  assert.ok(normalized["Congés"].MERCREDI.value.includes("Z"))
   assert.equal(normalized["Vacances"], undefined)
+
+  // Modifier les dates (raccourcir) → retire immédiatement les jours hors période
+  const shortened: DoctorVacation[] = [
+    { ...vacations[0], end_date: "2026-07-20" }, // lundi seulement
+  ]
+  const afterShorten = normalizeLeaveSchedule(normalized, shortened, weekKey)
+  assert.deepEqual(afterShorten["Congés"].LUNDI.value, ["Z"])
+  assert.deepEqual(afterShorten["Congés"].MARDI.value, [])
+  assert.deepEqual(afterShorten["Congés"].MERCREDI.value, [])
+
+  // Supprimer tous les congés → ligne Congés vidée
+  const afterDelete = normalizeLeaveSchedule(afterShorten, [], weekKey)
+  assert.deepEqual(afterDelete["Congés"].LUNDI.value, [])
 
   const conflictOnConges = detectConflict("Z", "2026-07-20", "Congés", vacations)
   assert.equal(conflictOnConges.hasConflict, false)

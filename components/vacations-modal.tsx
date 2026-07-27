@@ -18,7 +18,8 @@ interface VacationsModalProps {
   doctorCode?: string
   isOpen: boolean
   onClose: () => void
-  onVacationsUpdated?: () => void
+  /** Liste à jour optionnelle pour appliquer le planning sans attendre un 2ᵉ fetch. */
+  onVacationsUpdated?: (next?: DoctorVacation[]) => void | Promise<void>
   showDoctorSelector?: boolean
 }
 
@@ -171,25 +172,27 @@ export function VacationsModal({
         setSuccess('Congé modifié')
       }
 
-      // Mise à jour optimiste de la liste, puis rechargement serveur
+      // Mise à jour optimiste de la liste, puis sync planning parent + rechargement serveur
+      let nextList = vacations
       if (saved) {
-        setVacations((prev) => {
-          const without = prev.filter((v) => v.id !== saved!.id)
-          return sortVacations([...without, saved!])
-        })
+        nextList = sortVacations([...vacations.filter((v) => v.id !== saved!.id), saved!])
+        setVacations(nextList)
       }
 
       resetForm()
       try {
-        await loadVacations()
-      } catch (reloadErr) {
-        console.warn('[app] Reload liste congés après save:', reloadErr)
-      }
-      try {
-        await Promise.resolve(onVacationsUpdated?.())
+        await Promise.resolve(onVacationsUpdated?.(nextList))
       } catch (parentErr) {
         // Ne pas faire échouer l’ajout si le refresh planning parent échoue
         console.warn('[app] onVacationsUpdated après save:', parentErr)
+      }
+      try {
+        const fresh = await getAllVacations()
+        const sorted = sortVacations(fresh)
+        setVacations(sorted)
+        await Promise.resolve(onVacationsUpdated?.(sorted))
+      } catch (reloadErr) {
+        console.warn('[app] Reload liste congés après save:', reloadErr)
       }
     } catch (err) {
       setError('Erreur lors de l’enregistrement')
@@ -211,17 +214,21 @@ export function VacationsModal({
         return
       }
       if (editingId === vacationId) resetForm()
-      setVacations((prev) => prev.filter((v) => v.id !== vacationId))
+      const nextList = vacations.filter((v) => v.id !== vacationId)
+      setVacations(nextList)
       setSuccess('Congé supprimé')
       try {
-        await loadVacations()
-      } catch (reloadErr) {
-        console.warn('[app] Reload liste congés après delete:', reloadErr)
-      }
-      try {
-        await Promise.resolve(onVacationsUpdated?.())
+        await Promise.resolve(onVacationsUpdated?.(nextList))
       } catch (parentErr) {
         console.warn('[app] onVacationsUpdated après delete:', parentErr)
+      }
+      try {
+        const fresh = await getAllVacations()
+        const sorted = sortVacations(fresh)
+        setVacations(sorted)
+        await Promise.resolve(onVacationsUpdated?.(sorted))
+      } catch (reloadErr) {
+        console.warn('[app] Reload liste congés après delete:', reloadErr)
       }
     } catch (err) {
       setError('Erreur lors de la suppression')
