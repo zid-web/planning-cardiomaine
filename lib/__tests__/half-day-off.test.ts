@@ -18,10 +18,13 @@ import { applyStructuralConstraints } from "@/lib/apply-structural-constraints"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
 
 function main() {
-  // Table ½ off apm fixes
+  // Table ½ off habituels (aligné guard-api-cardiomaine rules_config)
+  assert.deepEqual(HABITUAL_HALF_DAYS_OFF.LUNDI?.matin, ["R", "K"])
+  assert.deepEqual(HABITUAL_HALF_DAYS_OFF.LUNDI?.am, ["K"])
   assert.deepEqual(HABITUAL_HALF_DAYS_OFF.MARDI?.am, ["S"])
   assert.deepEqual(HABITUAL_HALF_DAYS_OFF.MERCREDI?.am, ["M", "W", "G", "Z", "H", "B"])
   assert.deepEqual(HABITUAL_HALF_DAYS_OFF.JEUDI?.am, ["U", "P"])
+  assert.deepEqual(HABITUAL_HALF_DAYS_OFF.VENDREDI?.matin, ["K"])
   assert.deepEqual(HABITUAL_HALF_DAYS_OFF.VENDREDI?.am, ["O", "A", "K", "R", "T"])
 
   // Défaut : après-midi du lendemain
@@ -35,6 +38,8 @@ function main() {
   assert.equal(targetOffSlotAfterNightGuard("B", "MERCREDI"), "matin")
   assert.equal(targetOffSlotAfterNightGuard("P", "JEUDI"), "matin")
   assert.equal(targetOffSlotAfterNightGuard("O", "VENDREDI"), "matin")
+  // K lundi am habituel → récupération dimanche→lundi = matin
+  assert.equal(targetOffSlotAfterNightGuard("K", "LUNDI"), "matin")
   // S mardi apm habituel → récupération garde nuit = matin
   assert.equal(targetOffSlotAfterNightGuard("S", "MARDI"), "matin")
   // H n’a plus d’off mardi → récupération lundi→mardi = apm
@@ -47,6 +52,8 @@ function main() {
 
   // Seed habituels
   schedule = applyHabitualHalfDaysOff(schedule)
+  assert.deepEqual(schedule["1/2 journée off Matin"].LUNDI.value, ["R", "K"])
+  assert.deepEqual(schedule["1/2 journée off Après-midi"].LUNDI.value, ["K"])
   assert.deepEqual(schedule["1/2 journée off Après-midi"].MARDI.value, ["S"])
   assert.deepEqual(schedule["1/2 journée off Matin"].MARDI.value, [])
   assert.deepEqual(
@@ -54,11 +61,11 @@ function main() {
     ["M", "W", "G", "Z", "H", "B"],
   )
   assert.deepEqual(schedule["1/2 journée off Après-midi"].JEUDI.value, ["U", "P"])
+  assert.deepEqual(schedule["1/2 journée off Matin"].VENDREDI.value, ["K"])
   assert.deepEqual(
     schedule["1/2 journée off Après-midi"].VENDREDI.value,
     ["O", "A", "K", "R", "T"],
   )
-  assert.deepEqual(schedule["1/2 journée off Après-midi"].LUNDI.value, [])
 
   // Garde nuit lundi FV → off mardi apm (+ S habituel)
   schedule = generateWeekSchedule(weekKey)
@@ -147,7 +154,8 @@ function main() {
   assert.ok(!schedule["1/2 journée off Après-midi"].LUNDI.value.includes("B"))
   schedule = placeMondayRecoveryFromSundayNight(schedule, null)
   assert.ok(!schedule["1/2 journée off Après-midi"].LUNDI.value.includes("O"))
-  assert.deepEqual(schedule["1/2 journée off Après-midi"].LUNDI.value, [])
+  // K reste (off habituel lundi am)
+  assert.deepEqual(schedule["1/2 journée off Après-midi"].LUNDI.value, ["K"])
 
   assert.equal(previousIsoWeekKey("2026-W30"), "2026-W29")
   assert.equal(nextIsoWeekKey("2026-W30"), "2026-W31")
