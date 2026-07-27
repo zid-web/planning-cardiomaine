@@ -1,0 +1,371 @@
+diff --git a/solver.py b/solver.py
+index 279bdcc..770d987 100644
+--- a/solver.py
++++ b/solver.py
+@@ -62,6 +62,12 @@ class GenerateWeekRequest(BaseModel):
+                                                           # 1/2 journée off lundi, appliquée systématiquement")
+     existing_schedule: Optional[Dict[str, List[str]]] = None  # clé "row_key||day_name" -> [doctors]
+     rules_override: Optional[Dict[str, Any]] = None  # surcharge partielle de rules_config.json, sans redéploiement
++    historical_patterns: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
++    # { row_key: { day_name: { eligible_doctors: [str], frequency: {doctor_id: count} } } }
++    # Activités hors périmètre du solveur (Cs, ETT, EE, hors site...) - construit
++    # côté front (lib/pattern-analysis.ts) à partir de l'historique réel.
++    # eligible_doctors est DÉDUIT des données (qui a déjà fait cette activité ce
++    # jour-là par le passé), pas une liste figée à la main comme REEDUC_ALLOWED.
+ 
+ class Assignment(BaseModel):
+     date: str
+@@ -133,12 +139,46 @@ def map_row_key_to_slot_activity(row_key: str) -> Tuple[Optional[str], Optional[
+         "Apm - Coro": ("am", "CORO"),
+         "Hors site - NCT": ("nuit", "NCT"),
+         "Reeduc": ("am", "REEDUC"),          # hypothèse : créneau après-midi, à confirmer
+-        "Pre Op": ("am", "PRE_OP"),          # hypothèse : créneau après-midi, à confirmer
++        "Apm - RÉEDUCATION": ("am", "REEDUC"),
++        "Pré-op": ("am", "PRE_OP"),
+         "Matin - Rythmo": ("matin", "RYTHMO"),   # hypothèse : même structure que CORO (2 lignes), à confirmer
+         "Apm - Rythmo": ("am", "RYTHMO"),
+     }
+     return mapping.get(row_key, (None, None))
+ 
++
++def map_historical_row_key_to_slot(row_key: str) -> Optional[str]:
++    """Mapper générique pour les activités hors solveur restant basées sur la
++    fréquence historique (Cs, ETT, EE...). Les activités "Hors site - X" ont
++    leurs propres règles fixes (voir HORS_SITE_CONFIG plus bas) - pas de
++    mapping générique ici pour elles, gérées séparément.
++    """
++    if row_key.startswith("Matin - "):
++        return "matin"
++    if row_key.startswith("Apm - "):
++        return "am"
++    if row_key in ("Entrées PSS", "Pré-op"):
++        return "am"  # confirmé par l'utilisateur (26/07/2026)
++    return None
++
++
++# Règles fixes hors site (confirmées avec l'utilisateur le 26/07/2026, PAS
++# déduites de l'historique comme Cs/ETT/EE) :
++# - IRM, CDL, Scinti : ne bloquent que le MATIN (le médecin reste disponible
++#   l'après-midi pour d'autres activités).
++# - LFB, PSSL : bloquent la JOURNÉE ENTIÈRE (matin ET après-midi).
++# - CDL : H toujours prioritaire ; O uniquement si H est déjà pris ailleurs ce
++#   jour-là (pas seulement en vacances - géré via priorité dans l'objectif,
++#   pas via une exclusion a priori, pour laisser le solveur choisir O si H est
++#   occupé par autre chose ce jour précis).
++HORS_SITE_CONFIG = {
++    "Hors site - IRM":    {"allowed": ["S"],           "full_day": False},
++    "Hors site - Scinti": {"allowed": ["R", "T"],      "full_day": False},
++    "Hors site - CDL":    {"allowed": ["V", "O"],      "full_day": False, "priority": ["V", "O"]},
++    "Hors site - LFB":    {"allowed": ["H", "S", "G"], "full_day": True},
++    "Hors site - PSSL":   {"allowed": ["Z", "B"],      "full_day": True},
++}
++
+ # ============================================================
+ # 3. SOLVEUR PRINCIPAL
+ # ============================================================
+@@ -257,6 +297,211 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
+                 for activity in ACTIVITIES:
+                     add_var_if_allowed(doc_id, d_idx, slot, activity)
+ 
++    # --- 2bis. Activités historiques (Cs, ETT, EE...) ---
++    # L'éligibilité N'EST PAS une liste écrite à la main (REEDUC_ALLOWED etc.)
++    # mais DÉDUITE de historical_patterns (construit côté front à partir de
++    # l'historique réel - voir lib/pattern-analysis.ts). Un médecin n'apparaît
++    # comme éligible que s'il a déjà occupé ce (row_key, jour) au moins une
++    # fois par le passé. Les activités "Hors site" (2ter, juste après) ont
++    # leurs propres règles fixes, distinctes de ce mécanisme.
++
++    # --- 2ter. Activités hors site à règles fixes (IRM, CDL, Scinti, LFB, PSSL) ---
++    # Contrairement à 2bis (Cs/ETT/EE, déduit de l'historique), celles-ci ont des
++    # pools de médecins fixes confirmés par l'utilisateur - pas une inférence de
++    # données. Si le front envoie aussi ces row_key dans historical_patterns (par
++    # ex. via un ancien calcul générique), on les ignore ici volontairement pour
++    # ne pas créer deux jeux de variables concurrents pour la même case.
++    hors_site_vars: Dict[tuple, Any] = {}  # (row_key, d_idx) -> {doc_id: BoolVar}
++    hors_site_priority_bonus = []
++    full_day_hors_site_vars: List[tuple] = []  # (doc_id, d_idx, var) - appliqué après création de toutes les vars
++
++    for row_key, config in HORS_SITE_CONFIG.items():
++        allowed = config["allowed"]
++        full_day = config["full_day"]
++        priority = config.get("priority", [])
++        fixed_slots = config.get("fixed_slots")
++        activity_name = f"HORSSITE::{row_key}"
++
++        if fixed_slots:
++            # Créneaux fixes forcés (ex: IRM lundi matin + vendredi am, ne
++            # changent jamais) - un seul médecin autorisé attendu, forcé ==1,
++            # PAS un choix optionnel comme les autres activités hors site.
++            for day_name, slot in fixed_slots:
++                d_idx = DAY_NAMES_FR.index(day_name)
++                for doc_id in allowed:
++                    if doc_id not in medecins_map:
++                        continue
++                    if is_on_vacation(doc_id, days[d_idx], req.vacations) or is_on_vacation(doc_id, days[d_idx], req.congres):
++                        warnings.append(
++                            f"{row_key} : {doc_id} en congé le {day_name} - créneau fixe non couvert cette semaine."
++                        )
++                        continue
++                    var = model.NewBoolVar(f"horssite_{doc_id}_{d_idx}_{row_key}")
++                    x[(doc_id, d_idx, slot, activity_name)] = var
++                    model.Add(var == 1)  # forcé, pas optionnel
++                    if full_day:
++                        full_day_hors_site_vars.append((doc_id, d_idx, var))
++            continue
++
++        for d_idx in range(7):
++            day_vars: Dict[str, Any] = {}
++            for doc_id in allowed:
++                if doc_id not in medecins_map:
++                    continue
++                if is_on_vacation(doc_id, days[d_idx], req.vacations) or is_on_vacation(doc_id, days[d_idx], req.congres):
++                    continue
++                var = model.NewBoolVar(f"horssite_{doc_id}_{d_idx}_{row_key}")
++                x[(doc_id, d_idx, "matin", activity_name)] = var
++                day_vars[doc_id] = var
++
++                # Priorité (ex: CDL, V > O) : bonus fort pour le 1er de la
++                # liste `priority`, pour que le solveur le choisisse toujours
++                # sauf s'il est indisponible/occupé ailleurs ce jour-là.
++                if priority and doc_id in priority:
++                    rank = priority.index(doc_id)
++                    weight = 100 if rank == 0 else 1
++                    hors_site_priority_bonus.append(weight * var)
++
++                # Journée entière : collecté ici, appliqué APRÈS la création de
++                # TOUTES les variables (historique, Entrées PSS...) - sinon la
++                # réification ne capturerait que les vars "am" déjà existantes
++                # à ce stade, ratant Cs/ETT/Stress/Entrées PSS créées plus loin.
++                if full_day:
++                    full_day_hors_site_vars.append((doc_id, d_idx, var))
++
++            if day_vars:
++                model.Add(sum(day_vars.values()) <= 1)
++                hors_site_vars[(row_key, d_idx)] = day_vars
++
++    historical_vars: Dict[tuple, Any] = {}  # (row_key, d_idx) -> {doc_id: (BoolVar, frequency)}
++    historical_patterns = req.historical_patterns or {}
++
++    for row_key, by_day in historical_patterns.items():
++        if row_key in HORS_SITE_CONFIG or row_key == "Entrées PSS":
++            # Entrées PSS a ses propres règles dédiées (voir 2quater) : roulement
++            # lundi/mardi parmi le pool clinique, jumelé au garde de l'après-midi
++            # mercredi/jeudi/vendredi.
++            continue
++
++        slot = map_historical_row_key_to_slot(row_key)
++        if slot is None:
++            warnings.append(f"historical_patterns : row_key '{row_key}' non reconnu, ignoré.")
++            continue
++
++        activity_name = f"HIST::{row_key}"  # préfixe technique pour ne jamais collider avec ACTIVITIES
++
++        for day_name, pattern in by_day.items():
++            if day_name not in DAY_NAMES_FR:
++                continue
++            d_idx = DAY_NAMES_FR.index(day_name)
++            eligible = pattern.get("eligible_doctors", [])
++            frequency = pattern.get("frequency", {})
++
++            day_vars: Dict[str, tuple] = {}
++            for doc_id in eligible:
++                if doc_id not in medecins_map:
++                    continue  # médecin externe/inactif, pas dans la requête courante
++                if is_on_vacation(doc_id, days[d_idx], req.vacations) or is_on_vacation(doc_id, days[d_idx], req.congres):
++                    continue
++                var = model.NewBoolVar(f"hist_{doc_id}_{d_idx}_{row_key}")
++                x[(doc_id, d_idx, slot, activity_name)] = var
++                day_vars[doc_id] = (var, frequency.get(doc_id, 0))
++
++            if day_vars:
++                # Au plus une personne par créneau (pas de double-réservation),
++                # mais PAS obligatoire (<=1, pas ==1) : on ne force pas un
++                # remplissage si personne d'éligible n'est disponible cette
++                # semaine-là (vacances etc.), plutôt que de risquer une
++                # infaisabilité du modèle entier.
++                model.Add(sum(v for v, _ in day_vars.values()) <= 1)
++                historical_vars[(row_key, d_idx)] = day_vars
++
++    # --- 2quater. Entrées PSS (confirmé avec l'utilisateur le 26/07/2026) ---
++    # Lundi/mardi : roulement parmi les médecins affectés ce jour-là en Apm -
++    # ETT salle 1/2, Apm - Stress, Apm - Cs PSS ou Apm - Cs Tessée (le "pool
++    # clinique" de l'après-midi), à l'EXCLUSION de tout médecin qui, ce même
++    # jour (n'importe quel créneau), fait CORO, RYTHMO, ou une activité hors
++    # site (CDL/IRM/Scinti/LFB/PSSL).
++    # Mercredi/jeudi/vendredi : Entrées PSS = automatiquement le même médecin
++    # que le cardiologue de garde de l'après-midi (Garde Midi) ce jour-là -
++    # pas un choix séparé, un jumelage direct.
++    ENTREES_PSS_CLINIC_ROW_KEYS = [
++        "Apm - ETT salle 1", "Apm - ETT salle 2", "Apm - Stress",
++        "Apm - Cs PSS", "Apm - Cs Tessée",
++    ]
++    entrees_pss_activity = "HIST::Entrées PSS"
++    entrees_pss_fill_bonus: List[Any] = []
++
++    for d_idx in (0, 1):  # LUNDI, MARDI - roulement pool clinique
++        day_name = DAY_NAMES_FR[d_idx]
++        clinic_vars_by_doc: Dict[str, List[Any]] = {}
++        for (doc_id_x, dd, sl, act), var in list(x.items()):
++            if dd != d_idx or not act.startswith("HIST::"):
++                continue
++            if act[len("HIST::"):] in ENTREES_PSS_CLINIC_ROW_KEYS:
++                clinic_vars_by_doc.setdefault(doc_id_x, []).append(var)
++
++        day_vars: Dict[str, Any] = {}
++        for doc_id_x, vlist in clinic_vars_by_doc.items():
++            in_clinic_pool = model.NewBoolVar(f"clinic_pool_{doc_id_x}_{d_idx}")
++            model.AddMaxEquality(in_clinic_pool, vlist)
++
++            var = model.NewBoolVar(f"entreespss_{doc_id_x}_{d_idx}")
++            x[(doc_id_x, d_idx, "am", entrees_pss_activity)] = var
++            model.Add(var <= in_clinic_pool)  # ne peut être choisi que si dans le pool clinique ce jour
++
++            # Exclusion CORO/RYTHMO/hors site l'APRÈS-MIDI uniquement (corrigé
++            # le 26/07/2026 - pas toute la journée : un médecin en RYTHMO/CORO/
++            # hors site le matin seulement reste éligible à Entrées PSS l'am).
++            exclusion_vars = [
++                v for (d2, dd2, sl2, act2), v in x.items()
++                if d2 == doc_id_x and dd2 == d_idx and sl2 == "am"
++                and (act2.startswith("HORSSITE::") or act2 in ("CORO", "RYTHMO"))
++            ]
++            for ev in exclusion_vars:
++                model.Add(var == 0).OnlyEnforceIf(ev)
++
++            day_vars[doc_id_x] = var
++
++        if day_vars:
++            model.Add(sum(day_vars.values()) <= 1)
++            # Forte préférence de remplissage (pas une obligation stricte, pour
++            # éviter une infaisabilité si tous les candidats du pool clinique
++            # sont par ailleurs exclus ce jour-là) : sans ce bonus, l'activité
++            # étant purement optionnelle, le solveur la laisserait vide par
++            # défaut faute de coût associé à ne pas la remplir.
++            filled_var = model.NewBoolVar(f"entreespss_filled_{d_idx}")
++            model.AddMaxEquality(filled_var, list(day_vars.values()))
++            entrees_pss_fill_bonus.append(20 * filled_var)
++            if not clinic_vars_by_doc:
++                warnings.append(
++                    f"Entrées PSS {day_name} : aucun médecin en Cs/ETT/Stress "
++                    f"cet après-midi d'après l'historique reçu - rien à proposer."
++                )
++
++    for d_idx in (2, 3, 4):  # MERCREDI, JEUDI, VENDREDI - jumelé au garde de garde Midi
++        day_name = DAY_NAMES_FR[d_idx]
++        garde_midi_vars = {
++            doc_id_x: v for (doc_id_x, dd, sl, act), v in x.items()
++            if dd == d_idx and sl == "am" and act == "GARDE"
++        }
++        for doc_id_x, garde_var in garde_midi_vars.items():
++            var = model.NewBoolVar(f"entreespss_{doc_id_x}_{d_idx}")
++            x[(doc_id_x, d_idx, "am", entrees_pss_activity)] = var
++            # Jumelage strict : Entrées PSS == Garde Midi (même médecin, pas de choix séparé)
++            model.Add(var == garde_var)
++
++    # --- Application différée du blocage "journée entière" (LFB, PSSL...) ---
++    # Fait ICI, une fois TOUTES les variables créées (historique, Entrées PSS
++    # inclus), pour ne rater aucune activité "am" apparue plus tard dans le code.
++    for doc_id, d_idx, hors_site_var in full_day_hors_site_vars:
++        am_vars_same_day = [
++            v for (d, dd, sl, act), v in x.items()
++            if d == doc_id and dd == d_idx and sl == "am" and v is not hors_site_var
++        ]
++        for av in am_vars_same_day:
++            model.Add(av == 0).OnlyEnforceIf(hors_site_var)
++
+     # --- 3. Contraintes générales ---
+     # Règle absolue : jamais 2 médecins sur une même case (jour + créneau + activité),
+     # applicable à toutes les activités gérées par le solveur : ASTREINTE, GARDE, CORO, NCT.
+@@ -270,10 +515,17 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
+                     model.Add(sum(case_vars) <= 1)
+ 
+     # Un médecin ne fait qu'une activité par créneau
++    # (Entrées PSS exceptée : elle se SUPERPOSE intentionnellement à Cs/ETT/
++    # Stress/Garde Midi ce même créneau - voir 2quater - ce n'est pas une
++    # activité concurrente pour le temps du médecin, juste une case de plus
++    # dans le planning affichant la même personne.)
+     for doc_id in medecins_map:
+         for d_idx in range(7):
+             for slot in SLOTS:
+-                slot_vars = [v for (doc, d, sl, act), v in x.items() if d == d_idx and sl == slot and doc == doc_id]
++                slot_vars = [
++                    v for (doc, d, sl, act), v in x.items()
++                    if d == d_idx and sl == slot and doc == doc_id and act != entrees_pss_activity
++                ]
+                 if slot_vars:
+                     model.Add(sum(slot_vars) <= 1)
+ 
+@@ -677,6 +929,23 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
+         model.Add(coro_var == historical_coro + sum(this_week_coro))
+         coro_points[doc] = coro_var
+ 
++    # --- Bonus de fidélité historique (Cs/ETT/EE/hors site) ---
++    # Récompense (dans l'objectif, donc soustrait puisqu'on minimise) le fait
++    # d'assigner le médecin historiquement le plus fréquent sur ce créneau.
++    # Poids volontairement modeste : ne doit pas dominer l'équité garde/astreinte
++    # (l'enjeu principal), juste départager entre plusieurs solutions
++    # équivalentes côté équité en faveur de ce qui ressemble le plus au passé.
++    WEIGHT_HISTORICAL_FIDELITY = 1
++    historical_bonus_terms = [
++        WEIGHT_HISTORICAL_FIDELITY * freq * var
++        for day_vars in historical_vars.values()
++        for (var, freq) in day_vars.values()
++        if freq > 0
++    ]
++    historical_bonus = sum(historical_bonus_terms) if historical_bonus_terms else 0
++    hors_site_bonus = sum(hors_site_priority_bonus) if hors_site_priority_bonus else 0
++    entrees_pss_bonus = sum(entrees_pss_fill_bonus) if entrees_pss_fill_bonus else 0
++
+     if coro_points:
+         coro_max = model.NewIntVar(0, 100000, "coro_max")
+         coro_min = model.NewIntVar(0, 100000, "coro_min")
+@@ -684,12 +953,17 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
+             model.Add(coro_max >= var)
+             model.Add(coro_min <= var)
+         # Un seul model.Minimize() possible avec CP-SAT : on combine l'équité
+-        # garde/astreinte (poids fort, c'est l'enjeu principal) et l'équité CORO
+-        # mensuelle (poids plus léger, sur un périmètre de 3 personnes seulement)
+-        # en une seule expression additive.
+-        model.Minimize((max_points - min_points) + (coro_max - coro_min))
++        # garde/astreinte (poids fort, c'est l'enjeu principal), l'équité CORO
++        # mensuelle (poids plus léger, sur un périmètre de 3 personnes seulement),
++        # le bonus de fidélité historique (Cs/ETT/EE), la priorité hors site
++        # (ex: CDL, H > O) et la préférence de remplissage Entrées PSS en une
++        # seule expression additive.
++        model.Minimize(
++            (max_points - min_points) + (coro_max - coro_min)
++            - historical_bonus - hors_site_bonus - entrees_pss_bonus
++        )
+     else:
+-        model.Minimize(max_points - min_points)
++        model.Minimize((max_points - min_points) - historical_bonus - hors_site_bonus - entrees_pss_bonus)
+ 
+ 
+     # --- 12. Résolution ---
+@@ -703,13 +977,25 @@ def generate_week(req: GenerateWeekRequest) -> GenerateWeekResponse:
+     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+         for (doc, d_idx, slot, activity), var in x.items():
+             if solver.Value(var) == 1:
++                is_historical = activity.startswith("HIST::")
++                is_hors_site = activity.startswith("HORSSITE::")
++                if is_historical:
++                    row_key = activity[len("HIST::"):]
++                    clean_activity = row_key.split(" - ", 1)[1] if " - " in row_key else row_key
++                elif is_hors_site:
++                    row_key = activity[len("HORSSITE::"):]
++                    clean_activity = row_key.split(" - ", 1)[1] if " - " in row_key else row_key
++                else:
++                    clean_activity = activity
+                 assignments.append(Assignment(
+                     date=days[d_idx].isoformat(),
+                     day_name=DAY_NAMES_FR[d_idx],
+                     slot=slot,
+-                    activity=activity,
++                    activity=clean_activity,
+                     doctor=doc,
+-                    note="assigné par le solveur"
++                    note="assigné par le solveur (historique)" if is_historical else (
++                        "assigné par le solveur (hors site)" if is_hors_site else "assigné par le solveur"
++                    )
+                 ))
+ 
+         # --- Repos dynamique après garde de nuit (voir section 3bis) ---
