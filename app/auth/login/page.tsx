@@ -9,14 +9,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
-/**
- * Accroches proposées (celle affichée = 1) :
- * 1. « Organisation précise pour une équipe cardiologique. »
- * 2. « Le planning des soins, au rythme du service. »
- * 3. « Gardes, vacations et continuités — au même endroit. »
- */
-const TAGLINE = "Organisation précise pour une équipe cardiologique."
-
 export default function Page() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
