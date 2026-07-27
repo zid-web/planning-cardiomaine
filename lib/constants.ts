@@ -10,6 +10,9 @@ export const DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"
 // Visite: uniquement U, A, B en rotation hebdomadaire
 // Rythmo: A chaque lundi + jeudi après-midi
 // I: interne — Garde Matin uniquement, associé à un médecin (cumul Cs/ETT/EE autorisé)
+//
+// Admins hors planning (ex. Lucie = L) : voir `lib/staff-admin.ts` —
+// PAS dans DOCTORS (pas de tâches médicales), login admin via profiles.
 export const DOCTORS = [
   "P",
   "Z",
