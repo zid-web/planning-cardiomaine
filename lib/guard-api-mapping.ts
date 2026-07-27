@@ -1,5 +1,51 @@
 import { DAYS, DOCTOR_METADATA, DOCTORS } from "@/lib/constants";
+import { isListedDoctor } from "@/lib/doctor-code";
 import type { CellData, ScheduleData } from "@/lib/types";
+
+const GARDE_ROW_KEYS = new Set(["Garde Matin", "Garde Midi", "Garde Nuit"]);
+
+function isWeekendDayKey(day: string): boolean {
+  return day === "SAMEDI" || day === "DIMANCHE";
+}
+
+/**
+ * Fusionne les médecins solveur avec les remplaçants déjà présents.
+ * Week-end garde : toujours conserver le remplaçant + médecins listés.
+ * CH n’est jamais écrit sur une ligne Garde.
+ */
+function mergeCellDoctorsPreservingRemplacants(
+  existing: CellData | undefined,
+  incoming: string[],
+  rowKey: string,
+  dayKey: string,
+): { value: string[]; remplacant?: string } {
+  const cleanedIncoming = incoming.filter((d) => Boolean(d) && !(GARDE_ROW_KEYS.has(rowKey) && d === "CH"));
+  const existingVals = existing?.value || [];
+  const remField = existing?.remplacant?.trim();
+  const remFromExisting = existingVals.filter((v) => Boolean(v) && !isListedDoctor(v));
+  const remFromIncoming = cleanedIncoming.filter((v) => Boolean(v) && !isListedDoctor(v));
+  const remplacants = Array.from(
+    new Set([...remFromExisting, ...remFromIncoming, ...(remField ? [remField] : [])]),
+  );
+  const listed = cleanedIncoming.filter(isListedDoctor);
+
+  if (GARDE_ROW_KEYS.has(rowKey) && isWeekendDayKey(dayKey) && remplacants.length > 0) {
+    return {
+      value: Array.from(new Set([...remplacants, ...listed])),
+      remplacant: remField || remplacants[0],
+    };
+  }
+
+  if (remplacants.length > 0 && GARDE_ROW_KEYS.has(rowKey)) {
+    // Autres gardes : préserver le champ remplacant même si le solveur ne le renvoie pas
+    return {
+      value: Array.from(new Set([...listed, ...remplacants])),
+      remplacant: remField || remplacants[0],
+    };
+  }
+
+  return { value: Array.from(new Set(cleanedIncoming)), remplacant: remField };
+}
 
 /** Mapping activités solveur Render → lignes du planning UI */
 export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
@@ -38,7 +84,8 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
     CONGRES: "Congrès",
   },
   weekend: {
-    ASTREINTE: "Garde Matin",
+    // Astreinte week-end = lignes ATL (CH / WOM), jamais Garde*
+    ASTREINTE: "Astreintes ATL Matin",
     GARDE: "Garde Matin",
     NCT: "Hors site - NCT",
     VACANCES: "Congés",
@@ -183,13 +230,11 @@ export function resolveRowKey(slot: string, activity: string, dayKey: string): s
   if (act === "CONGRES") return "Congrès";
   if (act === "PRE_OP" || act === "PREOP") return "Pré-op";
 
-  // Weekend : uniquement ASTREINTE/GARDE → ligne Garde Matin (ne pas y envoyer VACANCES etc.)
+  // Weekend : ASTREINTE → ATL Matin ; GARDE → Garde Matin
   if (sl === "weekend") {
-    if (
-      (act === "ASTREINTE" || act === "GARDE") &&
-      (dayKey === "SAMEDI" || dayKey === "DIMANCHE")
-    ) {
-      return "Garde Matin";
+    if (dayKey === "SAMEDI" || dayKey === "DIMANCHE") {
+      if (act === "ASTREINTE") return "Astreintes ATL Matin"
+      if (act === "GARDE") return "Garde Matin"
     }
   }
   const mapping = ACTIVITY_TO_ROW[sl];
@@ -206,15 +251,16 @@ function setCellDoctors(
 ): ScheduleData {
   if (!schedule[rowKey]?.[dayKey]) return schedule;
   const cell = schedule[rowKey][dayKey];
-  const unique = Array.from(new Set(doctors.filter(Boolean)));
+  const merged = mergeCellDoctorsPreservingRemplacants(cell, doctors, rowKey, dayKey);
   return {
     ...schedule,
     [rowKey]: {
       ...schedule[rowKey],
       [dayKey]: {
         ...cell,
-        value: unique,
-        type: unique.length ? "doctor" : "empty",
+        value: merged.value,
+        remplacant: merged.remplacant,
+        type: merged.value.length ? "doctor" : "empty",
         status: opts?.forceStatus || cell.status || "pending",
       } as CellData,
     },
@@ -330,10 +376,19 @@ export function mergeSolverWeekIntoExisting(
         if (!genCell) continue;
         const genVals = Array.isArray(genCell.value) ? genCell.value : [];
         if (!genVals.length) continue;
+        const existingCell = existingRow[day];
+        const merged = mergeCellDoctorsPreservingRemplacants(
+          existingCell,
+          genVals,
+          rowKey,
+          day,
+        );
         // Proposition solveur / pattern : pending (admin valide ensuite)
         mergedRow[day] = {
+          ...(existingCell || {}),
           ...genCell,
-          value: [...genVals],
+          value: merged.value,
+          remplacant: merged.remplacant,
           type: "doctor",
           status: genCell.status === "validated" ? "validated" : "pending",
         };

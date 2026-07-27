@@ -29,7 +29,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "Congés depuis doctor_vacations + retrait absents",
   "NCT calendrier (W/M)",
   "LFB Jeudi rotation B/Z/A",
-  "CH = Astreinte ATL Nuit Lun–Ven (roulement) + ATL Matin/Midi/Nuit weekend (semaines impaires)",
+  "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines impaires) — jamais Garde Matin/Midi/Nuit",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
   "Blocages créneau : congés, ½-off, 1 tâche/matin|apm (sauf ATL+Coro, ETT 1+2), LFB/CDL hors garde J/J+1 ; doublon Cs=2× case, ETT=2 salles",
@@ -109,7 +109,8 @@ function removeDoctorFromCell(
 /**
  * CH : uniquement Astreinte ATL **Nuit** Lun–Ven (selon roulement),
  * et Astreinte ATL Matin+Midi+Nuit Sam/Dim les semaines impaires.
- * Retire CH des ATL Matin/Midi en semaine et des créneaux hors roulement.
+ * Retire CH des ATL Matin/Midi en semaine, des créneaux hors roulement,
+ * et **de toutes les lignes Garde** (Matin/Midi/Nuit, y compris week-end).
  */
 export function applyChAstreinteConstraints(
   schedule: ScheduleData,
@@ -128,10 +129,6 @@ export function applyChAstreinteConstraints(
     } else {
       next = removeDoctorFromCell(next, "Astreintes ATL Nuit", day, "CH")
     }
-    // CH n’est pas sur les lignes Garde en semaine
-    for (const period of ["Matin", "Midi", "Nuit"] as const) {
-      next = removeDoctorFromCell(next, `Garde ${period}`, day, "CH")
-    }
   }
 
   for (const day of WEEKEND) {
@@ -143,6 +140,13 @@ export function applyChAstreinteConstraints(
       for (const row of ATL_ROWS) {
         next = removeDoctorFromCell(next, row, day, "CH")
       }
+    }
+  }
+
+  // CH n’est jamais sur une ligne Garde (semaine + week-end)
+  for (const day of DAYS) {
+    for (const period of ["Matin", "Midi", "Nuit"] as const) {
+      next = removeDoctorFromCell(next, `Garde ${period}`, day, "CH")
     }
   }
 
