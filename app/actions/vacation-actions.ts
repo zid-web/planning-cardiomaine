@@ -19,13 +19,13 @@ export async function getAllVacations(): Promise<DoctorVacation[]> {
 
     if (error) {
       console.error('[app] Error fetching vacations:', error)
-      return []
+      throw new Error(error.message || 'Failed to fetch vacations')
     }
 
     return data || []
   } catch (error) {
     console.error('[app] Error in getAllVacations:', error)
-    return []
+    throw error
   }
 }
 

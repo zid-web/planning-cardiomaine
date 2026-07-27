@@ -37,7 +37,7 @@ import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
 import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays } from "@/lib/schedule-utils"
 import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
 import { calculateWorkloadStats } from "@/lib/scheduler-algo"
-import { canAssignDoctor, detectConflict } from "@/lib/assignment-validation"
+import { canAssignDoctor, detectConflict, isDoctorUnavailable } from "@/lib/assignment-validation"
 import {
   getCellDisplayAssignees,
   isListedDoctor,
@@ -621,27 +621,34 @@ export function ScheduleApp({
     if (alreadyCount >= 1) return
 
     // Vérifier congés / créneau / exclusions (date alignée sur contraintes structurelles)
-    if (DAYS.includes(selectedCell.day as (typeof DAYS)[number]) && isListedDoctor(doctor)) {
-      const dateStr = dateStrForWeekDay(weekKey, selectedCell.day)
-      if (dateStr) {
-        const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations, {
-          schedule,
-          day: selectedCell.day,
-        })
-        if (!validation.allowed) {
-          toast.error(validation.reason || "Assignation impossible")
-          return
-        }
+    const dateStr =
+      DAYS.includes(selectedCell.day as (typeof DAYS)[number]) && isListedDoctor(doctor)
+        ? dateStrForWeekDay(weekKey, selectedCell.day)
+        : null
+    if (dateStr) {
+      const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations, {
+        schedule,
+        day: selectedCell.day,
+      })
+      if (!validation.allowed) {
+        toast.error(validation.reason || "Assignation impossible")
+        return
       }
     }
 
     const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
     patchSelectedCell((cell) => {
-      const newValues = [...(cell.value || []), doctor]
+      const congesToday = schedule["Congés"]?.[selectedCell.day]?.value || []
+      let base = [...(cell.value || [])].filter((d) => {
+        if (congesToday.includes(d)) return false
+        if (dateStr && isDoctorUnavailable(d, dateStr, vacations)) return false
+        return true
+      })
+      if (!base.includes(doctor)) base = [...base, doctor]
       return {
         ...cell,
-        value: newValues,
-        type: newValues.length > 0 ? "doctor" : "empty",
+        value: base,
+        type: base.length > 0 ? "doctor" : "empty",
         status: newStatus,
         remplacant: cell.remplacant,
         request:

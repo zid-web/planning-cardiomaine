@@ -81,7 +81,8 @@ function setDoctors(
 
 /**
  * Assignation fixe uniquement si le médecin est présent (pas en congés).
- * Sinon : retire l’initiale de la case (la contrainte saute).
+ * Sinon : la contrainte saute — on retire l’initiale fixe et la case reste libre
+ * (les éventuels remplaçants manuels, ex. P sur Rythmo mercredi, sont conservés).
  */
 function assignIfAvailable(
   schedule: ScheduleData,
@@ -90,6 +91,7 @@ function assignIfAvailable(
   doctor: string,
   weekKey: string,
   vacations: DoctorVacation[],
+  opts?: { vacationsReady?: boolean },
 ): void {
   const dateStr = dateStrForWeekDay(weekKey, day)
   if (!dateStr) return
@@ -103,7 +105,15 @@ function assignIfAvailable(
         current.filter((d) => d !== doctor),
       )
     }
+    // Case libre : ne rien réinjecter
     return
+  }
+  const current = schedule[rowKey]?.[day]?.value || []
+  // Congés pas encore chargés : ne pas écraser une couverture manuelle (ex. P)
+  if (opts?.vacationsReady === false) {
+    const onlyFixedOrEmpty =
+      current.length === 0 || current.every((d) => d === doctor)
+    if (!onlyFixedOrEmpty) return
   }
   setDoctors(schedule, rowKey, day, [doctor])
 }
@@ -114,49 +124,51 @@ function assignIfAvailable(
  * - FV : Garde Nuit chaque Lundi ; Coro chaque Jeudi après-midi ; hors vacances
  * - DAAS : uniquement Apm - EE2 chaque Lundi, hors vacances
  * - Rythmo : P mardi (matin+apm), U mercredi apm, A lundi+jeudi apm —
- *   **uniquement si le médecin n’est pas en congés** (sinon case laissée / vidée)
+ *   **uniquement si le médecin n’est pas en congés** (sinon contrainte sautée, case libre)
  * - Visite : uniquement U/A/B en rotation hebdomadaire, hors vacances
  */
 export function applyFixedClinicalAssignments(
   schedule: ScheduleData,
   weekKey: string,
   vacations: DoctorVacation[] = [],
+  opts?: { vacationsReady?: boolean },
 ): ScheduleData {
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
+  const assignOpts = { vacationsReady: opts?.vacationsReady }
 
   // --- IRM : seul S, Lundi + Vendredi (ligne jour = créneau ouvert) ---
   if (schedule["Hors site - IRM"]) {
     for (const day of DAYS) {
       setDoctors(schedule, "Hors site - IRM", day, [])
     }
-    assignIfAvailable(schedule, "Hors site - IRM", "LUNDI", "S", weekKey, vacations)
-    assignIfAvailable(schedule, "Hors site - IRM", "VENDREDI", "S", weekKey, vacations)
+    assignIfAvailable(schedule, "Hors site - IRM", "LUNDI", "S", weekKey, vacations, assignOpts)
+    assignIfAvailable(schedule, "Hors site - IRM", "VENDREDI", "S", weekKey, vacations, assignOpts)
   }
 
-  // --- Rythmo (saute si le médecin est en congés ce jour-là) ---
+  // --- Rythmo (saute si le médecin est en congés ce jour-là → case libre) ---
   // P : Mardi matin + apm
-  assignIfAvailable(schedule, "Matin - Rythmo", "MARDI", "P", weekKey, vacations)
-  assignIfAvailable(schedule, "Apm - Rythmo", "MARDI", "P", weekKey, vacations)
+  assignIfAvailable(schedule, "Matin - Rythmo", "MARDI", "P", weekKey, vacations, assignOpts)
+  assignIfAvailable(schedule, "Apm - Rythmo", "MARDI", "P", weekKey, vacations, assignOpts)
   // U : Mercredi apm
-  assignIfAvailable(schedule, "Apm - Rythmo", "MERCREDI", "U", weekKey, vacations)
+  assignIfAvailable(schedule, "Apm - Rythmo", "MERCREDI", "U", weekKey, vacations, assignOpts)
   // A : Lundi + Jeudi après-midi
-  assignIfAvailable(schedule, "Apm - Rythmo", "LUNDI", "A", weekKey, vacations)
-  assignIfAvailable(schedule, "Apm - Rythmo", "JEUDI", "A", weekKey, vacations)
+  assignIfAvailable(schedule, "Apm - Rythmo", "LUNDI", "A", weekKey, vacations, assignOpts)
+  assignIfAvailable(schedule, "Apm - Rythmo", "JEUDI", "A", weekKey, vacations, assignOpts)
 
   // --- Visite : U → A → B par semaine ---
   if (schedule["Matin - Visite"]) {
     const visiteUser = VISITE_ROTATION[((weekNum % 3) + 3) % 3]
     for (const day of DAYS) {
-      assignIfAvailable(schedule, "Matin - Visite", day, visiteUser, weekKey, vacations)
+      assignIfAvailable(schedule, "Matin - Visite", day, visiteUser, weekKey, vacations, assignOpts)
     }
   }
 
   // --- FV ---
-  assignIfAvailable(schedule, "Garde Nuit", "LUNDI", "FV", weekKey, vacations)
-  assignIfAvailable(schedule, "Apm - Coro", "JEUDI", "FV", weekKey, vacations)
+  assignIfAvailable(schedule, "Garde Nuit", "LUNDI", "FV", weekKey, vacations, assignOpts)
+  assignIfAvailable(schedule, "Apm - Coro", "JEUDI", "FV", weekKey, vacations, assignOpts)
 
   // --- DAAS : EE lundi après-midi uniquement ---
-  assignIfAvailable(schedule, "Apm - EE2", "LUNDI", "DAAS", weekKey, vacations)
+  assignIfAvailable(schedule, "Apm - EE2", "LUNDI", "DAAS", weekKey, vacations, assignOpts)
 
   return schedule
 }

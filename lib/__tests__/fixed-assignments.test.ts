@@ -107,6 +107,38 @@ function main() {
     "A sur Congés → Rythmo lundi sauté même sans liste vacations",
   )
 
+  // U en congés mercredi → case libre ; P manuel conservé après ré-injection
+  const uOffWed: DoctorVacation[] = [
+    {
+      id: "u2",
+      doctor_id: "U",
+      start_date: "2026-07-22",
+      end_date: "2026-07-22",
+      reason: "test",
+    },
+  ]
+  let freeWed = generateWeekSchedule(weekKey, [])
+  freeWed = applyFixedClinicalAssignments(freeWed, weekKey, uOffWed)
+  assert.deepEqual(freeWed["Apm - Rythmo"].MERCREDI.value, [], "U absent → Rythmo mercredi libre")
+  freeWed["Apm - Rythmo"].MERCREDI = { value: ["P"], type: "doctor", status: "validated" }
+  freeWed["Congés"].MERCREDI = { value: ["U"], type: "doctor", status: "validated" }
+  freeWed = applyFixedClinicalAssignments(freeWed, weekKey, uOffWed)
+  assert.deepEqual(
+    freeWed["Apm - Rythmo"].MERCREDI.value,
+    ["P"],
+    "P manuel conservé quand U est en congés",
+  )
+
+  // Avant chargement congés : ne pas écraser P par U
+  let beforeReady = generateWeekSchedule(weekKey, [])
+  beforeReady["Apm - Rythmo"].MERCREDI = { value: ["P"], type: "doctor", status: "validated" }
+  beforeReady = applyFixedClinicalAssignments(beforeReady, weekKey, [], { vacationsReady: false })
+  assert.deepEqual(
+    beforeReady["Apm - Rythmo"].MERCREDI.value,
+    ["P"],
+    "vacationsReady=false → ne pas écraser P",
+  )
+
   const cleared = clearFixedAssigneesOnVacation(schedule, weekKey, vacations)
   assert.ok(!cleared["Hors site - IRM"].LUNDI.value.includes("S"))
   assert.ok(!cleared["Garde Nuit"].LUNDI.value.includes("FV"))
