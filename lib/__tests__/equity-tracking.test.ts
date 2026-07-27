@@ -7,7 +7,12 @@
 import assert from "node:assert/strict"
 import {
   accumulateEquityFromSchedules,
+  computeWeeklyCoro,
   computeWeeklyEquity,
+  equityRollingWindowStart,
+  EQUITY_ROLLING_MONTHS,
+  isWeekKeyInEquityWindow,
+  isoWeekKeyToMonday,
 } from "@/lib/equity-tracking"
 import type { ScheduleData } from "@/lib/types"
 
@@ -27,6 +32,13 @@ const sampleWeek: ScheduleData = {
   },
   "Hors site - NCT": {
     MERCREDI: cell(["P"]),
+  },
+  "Matin - Coro": {
+    LUNDI: cell(["W"]),
+    MARDI: cell(["O"]),
+  },
+  "Apm - Coro": {
+    LUNDI: cell(["M"]),
   },
   "Matin - Cs PSS": {
     LUNDI: cell(["Z"]), // must be ignored (not equity row)
@@ -52,6 +64,12 @@ function main() {
   assert.equal(week.Z, undefined, "consultations ignored")
   assert.equal(week.SHOULD_IGNORE, undefined, "legacy cell.doctor ignored")
 
+  const coro = computeWeeklyCoro(sampleWeek)
+  assert.equal(coro.W, 1, "W Matin Coro")
+  assert.equal(coro.O, 1, "O Matin Coro")
+  assert.equal(coro.M, 1, "M Apm Coro")
+  assert.equal(coro.Z, undefined, "Cs not coro")
+
   // Broken historical reader simulation: cell.doctor only → would yield 0
   let brokenZero = 0
   Object.values(sampleWeek).forEach((row) => {
@@ -75,6 +93,38 @@ function main() {
     { week_key: "full_schedule", schedule_data: sampleWeek },
   ])
   assert.equal(acc.W?.astreinte_count, 1, "full_schedule blob excluded")
+
+  // Fenêtre glissante 6 mois
+  assert.equal(EQUITY_ROLLING_MONTHS, 6)
+  const now = new Date(Date.UTC(2026, 6, 27)) // 2026-07-27
+  const start = equityRollingWindowStart(now)
+  assert.equal(start.getUTCFullYear(), 2026)
+  assert.equal(start.getUTCMonth(), 0) // janvier
+  assert.ok(isoWeekKeyToMonday("2026-W30"))
+  assert.equal(isWeekKeyInEquityWindow("2026-W30", now), true)
+  assert.equal(isWeekKeyInEquityWindow("2026-W06", now), true) // début février 2026
+  assert.equal(isWeekKeyInEquityWindow("2026-W05", now), false, "lundi W05 = 26 jan < 27 jan")
+  assert.equal(isWeekKeyInEquityWindow("2026-W01", now), false, "lundi W01 = fin 2025, hors fenêtre")
+  assert.equal(isWeekKeyInEquityWindow("2025-W20", now), false, "plus vieux que 6 mois")
+  assert.equal(isWeekKeyInEquityWindow("full_schedule", now), false)
+
+  const filtered = accumulateEquityFromSchedules(
+    [
+      { week_key: "2026-W29", schedule_data: sampleWeek },
+      { week_key: "2025-W10", schedule_data: sampleWeek },
+    ],
+    { now },
+  )
+  assert.equal(filtered.W?.astreinte_count, 1, "old week dropped by rolling window")
+
+  const unfiltered = accumulateEquityFromSchedules(
+    [
+      { week_key: "2026-W29", schedule_data: sampleWeek },
+      { week_key: "2025-W10", schedule_data: sampleWeek },
+    ],
+    { rollingWindow: false },
+  )
+  assert.equal(unfiltered.W?.astreinte_count, 2, "rollingWindow:false keeps all")
 
   console.log("✅ equity-tracking regression tests passed")
 }

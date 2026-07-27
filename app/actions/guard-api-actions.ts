@@ -6,6 +6,7 @@ import { DoctorVacation, ScheduleData } from "@/lib/types";
 import { generateWeekSchedule, getWeekNumber } from "@/lib/schedule-utils";
 import {
   accumulateEquityFromSchedules,
+  getCoroEquity,
   getCumulativeEquityFromTable,
   type EquityCounts,
 } from "@/lib/equity-tracking";
@@ -29,6 +30,8 @@ interface Doctor {
   points_garde: number;
   points_nct: number;
   points_weekend: number;
+  /** Fenêtre glissante 6 mois (même scope que les autres points). */
+  points_coro: number;
 }
 
 interface EquityPoints {
@@ -66,8 +69,11 @@ async function getDoctorsFromSupabase(): Promise<Doctor[]> {
     return [];
   }
 
-  // Récupère les points d'équité historiques pour chaque médecin
-  const equityPoints = await calculateEquityPoints();
+  // Récupère les points d'équité historiques pour chaque médecin (fenêtre 6 mois)
+  const [equityPoints, coroPoints] = await Promise.all([
+    calculateEquityPoints(),
+    getCoroEquity(),
+  ]);
 
   return doctors.map((doc) => ({
     id: doc.id,
@@ -77,6 +83,7 @@ async function getDoctorsFromSupabase(): Promise<Doctor[]> {
     points_garde: equityPoints.garde[doc.id] || 0,
     points_nct: equityPoints.nct[doc.id] || 0,
     points_weekend: equityPoints.weekend[doc.id] || 0,
+    points_coro: coroPoints[doc.id] || 0,
   }));
 }
 
@@ -95,13 +102,13 @@ async function calculateEquityPoints(): Promise<EquityPoints> {
 
   const supabase = await createClient();
 
-  // Repli : scan de l'historique JSON (exclut le blob full_schedule)
+  // Repli : scan de l'historique JSON (fenêtre ~6 mois, filtre exact dans accumulate)
   const { data: schedules, error } = await supabase
     .from("schedules")
     .select("week_key, schedule_data")
     .neq("week_key", "full_schedule")
     .order("week_key", { ascending: false })
-    .limit(52);
+    .limit(40);
 
   if (error || !schedules || schedules.length === 0) {
     if (error) {
@@ -251,6 +258,7 @@ export async function generateGuardsViaAPI(
         points_garde: doc.points_garde,
         points_nct: doc.points_nct,
         points_weekend: doc.points_weekend,
+        points_coro: doc.points_coro,
       })),
       historical_patterns: historicalPatterns,
     };
