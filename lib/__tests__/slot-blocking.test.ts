@@ -20,9 +20,13 @@ function main() {
   assert.equal(areCompatibleSamePeriod("Matin - Coro", "Astreintes ATL Matin"), true)
   assert.equal(areCompatibleSamePeriod("Matin - Cs PSS", "Matin - Cs Tessée"), false)
   assert.equal(areCompatibleSamePeriod("Matin - ETT salle 1", "Matin - ETT salle 2"), true)
+  assert.equal(areCompatibleSamePeriod("Matin - EE1", "Matin - EE2"), true)
+  assert.equal(areCompatibleSamePeriod("Apm - EE1", "Apm - EE2"), true)
+  assert.equal(areCompatibleSamePeriod("Matin - EE1", "Matin - EE1"), true)
+  assert.equal(areCompatibleSamePeriod("Matin - EE1", "Apm - EE2"), false)
   assert.equal(isDoublonEligibleRow("Matin - Cs PSS"), true)
-  assert.equal(isDoublonEligibleRow("Matin - EE1"), true)
-  assert.equal(isDoublonEligibleRow("Apm - EE2"), true)
+  assert.equal(isDoublonEligibleRow("Matin - EE1"), false)
+  assert.equal(isDoublonEligibleRow("Apm - EE2"), false)
   assert.equal(isDoublonEligibleRow("Matin - ETT salle 1"), false)
   assert.equal(isDoublonEligibleRow("Matin - Coro"), false)
 
@@ -66,10 +70,21 @@ function main() {
   assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "B", "Matin - Cs PSS"), "B²")
   assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "B", "Matin - Cs Tessée"), "B")
 
-  // Doublon EE1 / EE2
-  schedule["Matin - EE1"].LUNDI.value = ["G", "G"]
+  // Doublon EE = EE1 + EE2 (comme ETT), pas 2× dans la même case
+  schedule = generateWeekSchedule(weekKey, [])
+  schedule["Matin - EE1"].LUNDI.value = ["G"]
+  r = canAssignDoctorToSlot("G", "2026-07-20", "Matin - EE2", "LUNDI", schedule, [])
+  assert.equal(r.allowed, true, r.reason)
+  schedule["Matin - EE2"].LUNDI.value = ["G"]
   assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "G", "Matin - EE1"), "G²")
-  schedule["Apm - EE2"].LUNDI.value = ["DAAS", "DAAS"]
+  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "G", "Matin - EE2"), "G²")
+  // Une seule salle → pas encore doublon
+  schedule["Matin - EE2"].LUNDI.value = []
+  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "G", "Matin - EE1"), "G")
+  // Apm EE
+  schedule["Apm - EE1"].LUNDI.value = ["DAAS"]
+  schedule["Apm - EE2"].LUNDI.value = ["DAAS"]
+  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "DAAS", "Apm - EE1"), "DAAS²")
   assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "DAAS", "Apm - EE2"), "DAAS²")
 
   // Doublon ETT = salle 1 + salle 2
