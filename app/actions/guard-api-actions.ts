@@ -285,8 +285,8 @@ export async function generateGuardsViaAPI(
     const data = await response.json();
 
     // 7. Convertit la réponse : assignments solveur + règles fixes (IRM/FV/DAAS/…)
-    // Les Cs/ETT/EE/hors site doivent venir des assignments (alimentés côté OR-Tools
-    // via historical_patterns) — plus de fill client post-génération.
+    // Cs/ETT/EE/Stress + hors site (CDL/IRM/…) viennent des assignments Render
+    // (HIST:: / HORSSITE:: → activity suffixe) → pending via GENERATOR_PROPOSAL_ROW_KEYS.
     const weekKey = currentWeekKey;
     const scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations, {
       previousSundayGuardDoctor,

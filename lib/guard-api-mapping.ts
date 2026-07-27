@@ -95,9 +95,9 @@ export const ACTIVITY_TO_ROW: Record<string, Record<string, string>> = {
 };
 
 /**
- * Lignes que « Générer » peut proposer (équité / répartition).
- * Les contraintes structurelles (Congés, ½-off, Rythmo fixe, NCT calendrier, IRM…)
- * sont injectées hors Générer via `applyStructuralConstraints`.
+ * Lignes que « Générer » peut proposer (équité / historique / hors site).
+ * Structurel hors revue (Congés, ½-off, Rythmo fixe, NCT calendrier) :
+ * injecté via `applyStructuralConstraints` en `validated`.
  */
 export const GENERATOR_PROPOSAL_ROW_KEYS = new Set([
   "Astreintes ATL Matin",
@@ -110,6 +110,28 @@ export const GENERATOR_PROPOSAL_ROW_KEYS = new Set([
   "Apm - Coro",
   "Apm - RÉEDUCATION",
   "Pré-op",
+  // Fidélité historique (HIST::{row_key} côté guard-api-cardiomaine)
+  "Matin - Cs PSS",
+  "Matin - Cs Tessée",
+  "Matin - Stress",
+  "Matin - ETT salle 1",
+  "Matin - ETT salle 2",
+  "Matin - EE1",
+  "Matin - EE2",
+  "Apm - Cs PSS",
+  "Apm - Cs Tessée",
+  "Apm - Stress",
+  "Apm - ETT salle 1",
+  "Apm - ETT salle 2",
+  "Apm - EE1",
+  "Apm - EE2",
+  "Entrées PSS",
+  // Hors site solveur (HORSSITE::{row_key}) — revue admin ; NCT reste calendrier
+  "Hors site - CDL",
+  "Hors site - IRM",
+  "Hors site - Scinti",
+  "Hors site - LFB",
+  "Hors site - PSSL",
 ]);
 
 /** @deprecated alias — préférer GENERATOR_PROPOSAL_ROW_KEYS */
@@ -121,11 +143,22 @@ export const GENERATOR_OWNED_ROW_KEYS = GENERATOR_PROPOSAL_ROW_KEYS;
  */
 export function isSolverProposalCell(
   rowKey: string,
-  cell: { status?: string; request?: unknown } | null | undefined,
+  cell: { status?: string; request?: unknown; value?: string[] } | null | undefined,
 ): boolean {
   if (!cell || cell.status !== "pending") return false
   if (cell.request) return false
+  if (!Array.isArray(cell.value) || cell.value.length === 0) return false
   return GENERATOR_PROPOSAL_ROW_KEYS.has(rowKey)
+}
+
+/** Suffixes émis par le solveur pour HIST:: / HORSSITE:: (après split ` - `). */
+const HORS_SITE_ACTIVITY_TO_ROW: Record<string, string> = {
+  IRM: "Hors site - IRM",
+  CDL: "Hors site - CDL",
+  SCINTI: "Hors site - Scinti",
+  LFB: "Hors site - LFB",
+  PSSL: "Hors site - PSSL",
+  NCT: "Hors site - NCT",
 }
 
 export type GuardAssignment = {
@@ -250,7 +283,8 @@ export function scheduleToExistingSchedule(schedule: ScheduleData): Record<strin
 }
 
 export function resolveRowKey(slot: string, activity: string, dayKey: string): string | null {
-  const act = (activity || "").toUpperCase().trim();
+  const rawAct = (activity || "").trim();
+  const act = rawAct.toUpperCase();
   const sl = (slot || "").toLowerCase().trim();
 
   // Activités « journée entière » (indépendantes du créneau renvoyé par le solveur / Claude)
@@ -259,6 +293,23 @@ export function resolveRowKey(slot: string, activity: string, dayKey: string): s
   if (act === "VACANCES" || act === "CONGE" || act === "CONGES") return "Congés";
   if (act === "CONGRES") return "Congrès";
   if (act === "PRE_OP" || act === "PREOP") return "Pré-op";
+
+  // Hors site : le solveur émet activity = suffixe ("IRM", "CDL"…) avec note hors site
+  const horsSite = HORS_SITE_ACTIVITY_TO_ROW[act];
+  if (horsSite) return horsSite;
+  if (act === "ENTRÉES PSS" || act === "ENTREES PSS") return "Entrées PSS";
+
+  // Historique clinique : activity = suffixe de row_key ("Cs PSS", "ETT salle 1", "EE1", "Stress")
+  // reconstruite avec le slot matin/am → "Matin - …" / "Apm - …"
+  if (sl === "matin" || sl === "am") {
+    const prefix = sl === "matin" ? "Matin" : "Apm";
+    // Défensif : activity déjà égale à une row_key complète
+    if (GENERATOR_PROPOSAL_ROW_KEYS.has(rawAct)) return rawAct;
+    const candidate = `${prefix} - ${rawAct}`;
+    if (GENERATOR_PROPOSAL_ROW_KEYS.has(candidate)) return candidate;
+  } else if (GENERATOR_PROPOSAL_ROW_KEYS.has(rawAct)) {
+    return rawAct;
+  }
 
   // Weekend : ASTREINTE → ATL Matin ; GARDE → Garde Matin
   if (sl === "weekend") {
@@ -380,8 +431,9 @@ export function mergeAssignmentsIntoSchedule(
 }
 
 /**
- * Après « Générer » : fusionne les **propositions** (pending) sur les lignes d’équité,
- * préserve le reste (contraintes structurelles, Cs/ETT manuels, Notes).
+ * Après « Générer » : fusionne les **propositions** (pending) sur les lignes
+ * d’équité + historique clinique + hors site solveur ; préserve le reste
+ * (contraintes structurelles NCT/Rythmo, Notes, saisies hors périmètre).
  */
 export function mergeSolverWeekIntoExisting(
   existing: ScheduleData | undefined,

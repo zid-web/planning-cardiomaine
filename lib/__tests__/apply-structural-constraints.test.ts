@@ -179,6 +179,17 @@ function main() {
   pendingAtl = applyChAstreinteConstraints(pendingAtl, oddWeek)
   assert.equal(pendingAtl["Astreintes ATL Nuit"].MARDI.status, "pending")
 
+  // LFB : rotation Jeudi ne doit pas écraser une proposition solveur déjà présente
+  let lfbSched = generateWeekSchedule(oddWeek, [])
+  lfbSched["Hors site - LFB"].JEUDI = {
+    value: ["H"],
+    type: "doctor",
+    status: "pending",
+  }
+  lfbSched = applyStructuralConstraints(lfbSched, oddWeek, [])
+  assert.deepEqual(lfbSched["Hors site - LFB"].JEUDI.value, ["H"])
+  assert.equal(lfbSched["Hors site - LFB"].JEUDI.status, "pending")
+
   // ATL Matin/Midi Lun–Ven suivent Coro
   let coroSched = generateWeekSchedule(oddWeek, [])
   coroSched["Matin - Coro"].LUNDI = { value: ["W"], type: "doctor", status: "pending" }

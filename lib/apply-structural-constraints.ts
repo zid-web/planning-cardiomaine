@@ -251,7 +251,10 @@ export function applyNctCalendarConstraints(
   return next
 }
 
-/** LFB Jeudi : rotation B → Z → A. */
+/**
+ * LFB Jeudi : rotation B → Z → A en secours si la case est vide.
+ * Ne pas écraser une proposition solveur / saisie déjà présente (pending ou non).
+ */
 export function applyLfbThursdayRotation(
   schedule: ScheduleData,
   weekKey: string,
@@ -259,11 +262,9 @@ export function applyLfbThursdayRotation(
   if (!schedule["Hors site - LFB"]) return schedule
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
   const lfbUser = (["B", "Z", "A"] as const)[((weekNum % 3) + 3) % 3]
-  let next = schedule
-  for (const day of DAYS) {
-    next = setValidatedDoctors(next, "Hors site - LFB", day, day === "JEUDI" ? [lfbUser] : [])
-  }
-  return next
+  const cell = schedule["Hors site - LFB"].JEUDI
+  if ((cell?.value || []).length > 0) return schedule
+  return setValidatedDoctors(schedule, "Hors site - LFB", "JEUDI", [lfbUser])
 }
 
 export type ApplyStructuralConstraintsOptions = {
