@@ -70,17 +70,19 @@ function ensureDoctorInCell(
   if (!schedule[rowKey]?.[day]) return schedule
   const cell = schedule[rowKey][day]
   const values = cell.value || []
-  if (values.includes(doctor) && cell.status === "validated") return schedule
-  const nextVals = values.includes(doctor) ? [...values] : [...values, doctor]
+  // Déjà présent : ne pas toucher au status (sinon une proposition « Prop. »
+  // pending sur ATL Nuit / week-end serait forcée en validated et perdrait le violet).
+  if (values.includes(doctor)) return schedule
   return {
     ...schedule,
     [rowKey]: {
       ...schedule[rowKey],
       [day]: {
         ...cell,
-        value: nextVals,
+        value: [...values, doctor],
         type: "doctor",
-        status: "validated",
+        // Injection structurelle : préserver pending (proposition Générer), sinon validated.
+        status: cell.status === "pending" ? "pending" : "validated",
       },
     },
   }
@@ -249,7 +251,10 @@ export function applyNctCalendarConstraints(
   return next
 }
 
-/** LFB Jeudi : rotation B → Z → A. */
+/**
+ * LFB Jeudi : rotation B → Z → A en secours si la case est vide.
+ * Ne pas écraser une proposition solveur / saisie déjà présente (pending ou non).
+ */
 export function applyLfbThursdayRotation(
   schedule: ScheduleData,
   weekKey: string,
@@ -257,11 +262,9 @@ export function applyLfbThursdayRotation(
   if (!schedule["Hors site - LFB"]) return schedule
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
   const lfbUser = (["B", "Z", "A"] as const)[((weekNum % 3) + 3) % 3]
-  let next = schedule
-  for (const day of DAYS) {
-    next = setValidatedDoctors(next, "Hors site - LFB", day, day === "JEUDI" ? [lfbUser] : [])
-  }
-  return next
+  const cell = schedule["Hors site - LFB"].JEUDI
+  if ((cell?.value || []).length > 0) return schedule
+  return setValidatedDoctors(schedule, "Hors site - LFB", "JEUDI", [lfbUser])
 }
 
 export type ApplyStructuralConstraintsOptions = {

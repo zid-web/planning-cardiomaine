@@ -3,6 +3,7 @@
  */
 import assert from "node:assert/strict"
 import {
+  isSolverProposalCell,
   mergeAssignmentsIntoSchedule,
   mergeSolverWeekIntoExisting,
   resolveRowKey,
@@ -76,8 +77,74 @@ function main() {
   assert.ok(!merged["Congés"].LUNDI.value.includes("Z"), "Congés hors propositions Générer")
   assert.deepEqual(merged["Pré-op"].LUNDI.value, ["A"])
   assert.equal(merged["Pré-op"].LUNDI.status, "pending")
+  assert.equal(isSolverProposalCell("Matin - Coro", merged["Matin - Coro"].LUNDI), true)
+  assert.equal(isSolverProposalCell("Matin - Rythmo", { status: "validated", value: ["P"] }), false)
+  assert.equal(
+    isSolverProposalCell("Garde Nuit", {
+      status: "pending",
+      value: ["W"],
+      request: { requester: "W", status: "pending", timestamp: 1 },
+    }),
+    false,
+    "demande de changement ≠ proposition solveur",
+  )
 
-  // Merge Générer : préserve Cs déjà rempli, propose Coro en pending
+  // Historique Cs / ETT + hors site CDL (émis HIST:: / HORSSITE:: côté Render)
+  const histMerged = mergeAssignmentsIntoSchedule(generateWeekSchedule("2026-W30"), [
+    {
+      date: "2026-07-20",
+      day_name: "LUNDI",
+      slot: "matin",
+      activity: "Cs PSS",
+      doctor: "B",
+      note: "assigné par le solveur (historique)",
+    },
+    {
+      date: "2026-07-20",
+      day_name: "LUNDI",
+      slot: "matin",
+      activity: "ETT salle 1",
+      doctor: "S",
+      note: "assigné par le solveur (historique)",
+    },
+    {
+      date: "2026-07-20",
+      day_name: "LUNDI",
+      slot: "am",
+      activity: "Stress",
+      doctor: "G",
+      note: "assigné par le solveur (historique)",
+    },
+    {
+      date: "2026-07-21",
+      day_name: "MARDI",
+      slot: "matin",
+      activity: "CDL",
+      doctor: "V",
+      note: "assigné par le solveur (hors site)",
+    },
+    {
+      date: "2026-07-21",
+      day_name: "MARDI",
+      slot: "matin",
+      activity: "IRM",
+      doctor: "S",
+      note: "assigné par le solveur (hors site)",
+    },
+  ])
+  assert.deepEqual(histMerged["Matin - Cs PSS"].LUNDI.value, ["B"])
+  assert.equal(histMerged["Matin - Cs PSS"].LUNDI.status, "pending")
+  assert.equal(isSolverProposalCell("Matin - Cs PSS", histMerged["Matin - Cs PSS"].LUNDI), true)
+  assert.deepEqual(histMerged["Matin - ETT salle 1"].LUNDI.value, ["S"])
+  assert.equal(isSolverProposalCell("Matin - ETT salle 1", histMerged["Matin - ETT salle 1"].LUNDI), true)
+  assert.deepEqual(histMerged["Apm - Stress"].LUNDI.value, ["G"])
+  assert.deepEqual(histMerged["Hors site - CDL"].MARDI.value, ["V"])
+  assert.equal(isSolverProposalCell("Hors site - CDL", histMerged["Hors site - CDL"].MARDI), true)
+  assert.deepEqual(histMerged["Hors site - IRM"].MARDI.value, ["S"])
+  assert.equal(isSolverProposalCell("Hors site - IRM", histMerged["Hors site - IRM"].MARDI), true)
+
+  // Merge Générer : préserve Cs déjà rempli si le solveur ne propose rien sur cette case,
+  // propose Coro + Cs historique en pending
   const existing: ScheduleData = generateWeekSchedule("2026-W30")
   existing["Matin - Cs PSS"].LUNDI.value = ["B"]
   existing["Matin - Coro"].LUNDI.value = ["O"]
@@ -86,9 +153,12 @@ function main() {
   generated["Matin - Coro"].LUNDI = { value: ["W"], type: "doctor", status: "pending" }
   generated["Apm - Coro"].LUNDI = { value: ["M"], type: "doctor", status: "pending" }
   generated["Matin - Cs PSS"].LUNDI.value = []
+  generated["Matin - Cs Tessée"].MARDI = { value: ["P"], type: "doctor", status: "pending" }
 
   const after = mergeSolverWeekIntoExisting(existing, generated)
-  assert.deepEqual(after["Matin - Cs PSS"].LUNDI.value, ["B"], "Cs manuel préservé")
+  assert.deepEqual(after["Matin - Cs PSS"].LUNDI.value, ["B"], "Cs manuel préservé si solveur vide")
+  assert.deepEqual(after["Matin - Cs Tessée"].MARDI.value, ["P"], "Cs historique proposé")
+  assert.equal(after["Matin - Cs Tessée"].MARDI.status, "pending")
   assert.deepEqual(after["Matin - Coro"].LUNDI.value, ["W"], "Coro proposé par le solveur")
   assert.equal(after["Matin - Coro"].LUNDI.status, "pending")
   assert.deepEqual(after["Apm - Coro"].LUNDI.value, ["M"])
