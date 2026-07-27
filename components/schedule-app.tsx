@@ -47,6 +47,7 @@ import {
   countDoctorInCell,
   formatDoctorWithDoublon,
   isDoublonEligibleRow,
+  sisterRoomForDoublon,
 } from "@/lib/slot-blocking"
 import {
   applyStructuralConstraints,
@@ -600,14 +601,24 @@ export function ScheduleApp({
     const currentValues = schedule[selectedCell.row]?.[selectedCell.day]?.value || []
     const alreadyCount = currentValues.filter((d) => d === doctor).length
     const canDoublon = isDoublonEligibleRow(selectedCell.row) && isListedDoctor(doctor)
+    const sisterRow = sisterRoomForDoublon(selectedCell.row)
+    const onSister =
+      Boolean(sisterRow) &&
+      (schedule[sisterRow!]?.[selectedCell.day]?.value || []).includes(doctor)
 
-    // Déjà en doublon (2×) dans cette case
+    // Déjà en doublon Cs (2×) dans cette case
     if (alreadyCount >= 2) {
       toast.message(`${doctor} est déjà en doublon sur cette case`)
       return
     }
 
-    // 2ᵉ clic sur Cs/ETT = doublon dans la même case (pas de re-validation créneau)
+    // Déjà sur les deux salles ETT/EE
+    if (alreadyCount >= 1 && onSister) {
+      toast.message(`${doctor} est déjà en doublon sur les deux salles`)
+      return
+    }
+
+    // 2ᵉ clic sur Cs = doublon dans la même case (pas de re-validation créneau)
     if (alreadyCount === 1 && canDoublon) {
       const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
       patchSelectedCell((cell) => ({
@@ -617,6 +628,46 @@ export function ScheduleApp({
         status: newStatus,
       }))
       toast.success(`${doctor}² doublon sur ${selectedCell.row}`)
+      return
+    }
+
+    // 2ᵉ clic sur EE/ETT : placer aussi sur l’autre salle → badge ²
+    if (alreadyCount === 1 && sisterRow && isListedDoctor(doctor) && !onSister) {
+      const dateStr = dateStrForWeekDay(weekKey, selectedCell.day)
+      if (dateStr) {
+        const validation = canAssignDoctor(doctor, dateStr, sisterRow, vacations, {
+          schedule,
+          day: selectedCell.day,
+        })
+        if (!validation.allowed) {
+          toast.error(validation.reason || "Assignation impossible sur l’autre salle")
+          return
+        }
+      }
+      const newStatus = currentUser === "M" || currentUser === "Z" ? "validated" : "pending"
+      const sisterCell = schedule[sisterRow]?.[selectedCell.day] || {
+        value: [] as string[],
+        type: "empty" as const,
+        status: "validated" as const,
+      }
+      const sisterVals = [...(sisterCell.value || [])]
+      if (sisterVals.includes(doctor)) {
+        toast.message(`${doctor} est déjà en doublon sur les deux salles`)
+        return
+      }
+      void updateSchedule({
+        ...schedule,
+        [sisterRow]: {
+          ...(schedule[sisterRow] || {}),
+          [selectedCell.day]: {
+            ...sisterCell,
+            value: [...sisterVals, doctor],
+            type: "doctor",
+            status: newStatus,
+          },
+        },
+      })
+      toast.success(`${doctor}² doublon ${selectedCell.row} + ${sisterRow}`)
       return
     }
 
@@ -1735,7 +1786,9 @@ export function ScheduleApp({
                                                   conflict.message ||
                                                   (listed
                                                     ? label.includes("²")
-                                                      ? `${doc} en doublon (même case)`
+                                                      ? sisterRoomForDoublon(rowKey)
+                                                        ? `${doc} en doublon (les deux salles)`
+                                                        : `${doc} en doublon (même case)`
                                                       : doc
                                                     : `Remplaçant : ${doc}`)
                                                 }
@@ -1836,16 +1889,25 @@ export function ScheduleApp({
                   const values = schedule[selectedCell.row]?.[selectedCell.day]?.value || []
                   const firstIndex = values.indexOf(doc)
                   const occ = values.filter((d) => d === doc).length
+                  const sister = sisterRoomForDoublon(selectedCell.row)
+                  const onSister =
+                    Boolean(sister) &&
+                    (schedule[sister!]?.[selectedCell.day]?.value || []).includes(doc)
+                  const isRoomDoublon = Boolean(sister && onSister)
+                  const isSameCellDoublon =
+                    listed && occ >= 2 && isDoublonEligibleRow(selectedCell.row)
                   const label =
-                    listed && occ >= 2 && isDoublonEligibleRow(selectedCell.row) ? `${doc}²` : doc
+                    listed && (isSameCellDoublon || isRoomDoublon) ? `${doc}²` : doc
                   return (
                     <div
                       key={doc}
                       title={
                         listed
-                          ? occ >= 2
+                          ? isSameCellDoublon
                             ? `${doc} en doublon (même case)`
-                            : doc
+                            : isRoomDoublon
+                              ? `${doc} en doublon (les deux salles)`
+                              : doc
                           : `Remplaçant : ${doc}`
                       }
                       className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${
@@ -1896,9 +1958,18 @@ export function ScheduleApp({
                       schedule && selectedCell
                         ? countDoctorInCell(schedule, selectedCell.row, selectedCell.day, doc)
                         : 0
-                    const canPromoteDoublon =
+                    const sister =
+                      selectedCell ? sisterRoomForDoublon(selectedCell.row) : null
+                    const onSister =
+                      Boolean(sister && schedule) &&
+                      (schedule![sister!]?.[selectedCell!.day]?.value || []).includes(doc)
+                    const canPromoteSameCell =
                       Boolean(selectedCell && isDoublonEligibleRow(selectedCell.row) && occ === 1)
-                    const fullyInCell = occ >= 2 || (occ >= 1 && !canPromoteDoublon)
+                    const canPromoteSister =
+                      Boolean(sister && occ === 1 && !onSister && isListedDoctor(doc))
+                    const canPromoteDoublon = canPromoteSameCell || canPromoteSister
+                    const fullyInCell =
+                      occ >= 2 || (occ >= 1 && onSister) || (occ >= 1 && !canPromoteDoublon)
 
                     let blockReason: string | undefined
                     if (occ === 0 && selectedCell && schedule) {
@@ -1920,13 +1991,15 @@ export function ScheduleApp({
                         disabled={fullyInCell || blocked}
                         title={
                           blockReason ||
-                          (occ >= 2
+                          (occ >= 2 || (occ >= 1 && onSister)
                             ? "Déjà en doublon"
-                            : canPromoteDoublon
+                            : canPromoteSameCell
                               ? `Cliquer pour doublon ${doc}² (même case)`
-                              : occ >= 1
-                                ? "Déjà dans la case"
-                                : undefined)
+                              : canPromoteSister
+                                ? `Cliquer pour doublon ${doc}² (aussi sur ${sister})`
+                                : occ >= 1
+                                  ? "Déjà dans la case"
+                                  : undefined)
                         }
                         className={`
                       flex h-10 items-center justify-center rounded-lg font-bold transition-all

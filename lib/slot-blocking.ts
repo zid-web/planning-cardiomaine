@@ -1,8 +1,9 @@
 /**
  * Règles d’assignation bloquantes (matin / après-midi / garde / ½-off / congés).
  * Exception : cumul Astreinte ATL Matin/Midi + Coro correspondant.
- * Doublon Cs / EE : 2× le même médecin dans la **même** case → ².
- * Doublon ETT : présent sur **ETT salle 1 et salle 2** le même créneau → ².
+ * Doublon Cs : 2× le même médecin dans la **même** case → ².
+ * Doublon ETT / EE : présent sur **les deux salles** du même créneau → ²
+ *   (ETT salle 1+2, EE1+EE2).
  * Jamais Cs PSS + Cs Tessée le même matin/apm.
  * Interne **I** sur Garde Matin : le médecin associé peut aussi faire Cs / ETT / EE
  * le même matin (pas Coro / Rythmo / Rééducation). **S+I** peut aussi garder l’IRM.
@@ -54,16 +55,12 @@ export function cellHasRemplacant(
   return (cell.value || []).some((v) => Boolean(v) && !isListedDoctor(v))
 }
 
-/** Doublon même cellule (2ᵉ clic) : Cs + EE1/EE2. */
+/** Doublon même cellule (2ᵉ clic) : Cs uniquement. */
 export const SAME_CELL_DOUBLON_ROWS = new Set([
   "Matin - Cs PSS",
   "Matin - Cs Tessée",
   "Apm - Cs PSS",
   "Apm - Cs Tessée",
-  "Matin - EE1",
-  "Matin - EE2",
-  "Apm - EE1",
-  "Apm - EE2",
 ])
 
 /** @deprecated alias — préférer SAME_CELL_DOUBLON_ROWS */
@@ -72,6 +69,12 @@ export const CS_SAME_CELL_DOUBLON_ROWS = SAME_CELL_DOUBLON_ROWS
 export const ETT_DOUBLON_PAIRS: Record<"Matin" | "Apm", [string, string]> = {
   Matin: ["Matin - ETT salle 1", "Matin - ETT salle 2"],
   Apm: ["Apm - ETT salle 1", "Apm - ETT salle 2"],
+}
+
+/** Doublon EE = présent sur EE1 et EE2 le même créneau (comme ETT). */
+export const EE_DOUBLON_PAIRS: Record<"Matin" | "Apm", [string, string]> = {
+  Matin: ["Matin - EE1", "Matin - EE2"],
+  Apm: ["Apm - EE1", "Apm - EE2"],
 }
 
 /** @deprecated alias — préférer SAME_CELL_DOUBLON_ROWS */
@@ -85,9 +88,33 @@ export function isEttRow(rowKey: string): boolean {
   return /ETT salle [12]/.test(rowKey)
 }
 
+export function isEeRow(rowKey: string): boolean {
+  return rowKey === "Matin - EE1" || rowKey === "Matin - EE2" || rowKey === "Apm - EE1" || rowKey === "Apm - EE2"
+}
+
 function ettPairForRow(rowKey: string): [string, string] | null {
   if (rowKey.startsWith("Matin - ETT")) return ETT_DOUBLON_PAIRS.Matin
   if (rowKey.startsWith("Apm - ETT")) return ETT_DOUBLON_PAIRS.Apm
+  return null
+}
+
+function eePairForRow(rowKey: string): [string, string] | null {
+  if (rowKey === "Matin - EE1" || rowKey === "Matin - EE2") return EE_DOUBLON_PAIRS.Matin
+  if (rowKey === "Apm - EE1" || rowKey === "Apm - EE2") return EE_DOUBLON_PAIRS.Apm
+  return null
+}
+
+/** Paire de salles pour un doublon croisé (ETT ou EE), sinon null. */
+export function roomDoublonPairForRow(rowKey: string): [string, string] | null {
+  return ettPairForRow(rowKey) || eePairForRow(rowKey)
+}
+
+/** Autre salle d’une paire ETT/EE (pour doublon croisé), sinon null. */
+export function sisterRoomForDoublon(rowKey: string): string | null {
+  const pair = roomDoublonPairForRow(rowKey)
+  if (!pair) return null
+  if (pair[0] === rowKey) return pair[1]
+  if (pair[1] === rowKey) return pair[0]
   return null
 }
 
@@ -198,9 +225,11 @@ function isAtlCoroPair(a: string, b: string): boolean {
   )
 }
 
-function isEttDoublonPair(a: string, b: string): boolean {
-  for (const [x, y] of Object.values(ETT_DOUBLON_PAIRS)) {
-    if ((a === x && b === y) || (a === y && b === x)) return true
+function isRoomDoublonPair(a: string, b: string): boolean {
+  for (const pairs of [ETT_DOUBLON_PAIRS, EE_DOUBLON_PAIRS]) {
+    for (const [x, y] of Object.values(pairs)) {
+      if ((a === x && b === y) || (a === y && b === x)) return true
+    }
   }
   return false
 }
@@ -224,7 +253,7 @@ export function areCompatibleSamePeriod(
 ): boolean {
   if (rowA === rowB) return true
   if (isAtlCoroPair(rowA, rowB)) return true
-  if (isEttDoublonPair(rowA, rowB)) return true
+  if (isRoomDoublonPair(rowA, rowB)) return true
 
   if (ctx && wouldBePairedWithIntern(ctx.schedule, ctx.day, ctx.doctorId, ctx.targetRow || "Garde Matin")) {
     const hasGardeMatin = rowA === "Garde Matin" || rowB === "Garde Matin"
@@ -431,7 +460,7 @@ export function canAssignDoctorToSlot(
       if (gardeDisplacesIrm(rowKey, otherRow)) continue
       return {
         allowed: false,
-        reason: `${doctorId} est déjà sur « ${otherRow} » — pas deux tâches sur le même créneau (sauf ATL+Coro, ETT 1+2, ou Garde Matin+I).`,
+        reason: `${doctorId} est déjà sur « ${otherRow} » — pas deux tâches sur le même créneau (sauf ATL+Coro, ETT/EE 1+2, ou Garde Matin+I).`,
       }
     }
   }
@@ -439,7 +468,7 @@ export function canAssignDoctorToSlot(
   return { allowed: true }
 }
 
-/** Doublon Cs/EE (2× même case) ou ETT (salle 1 + salle 2) → exposant ². */
+/** Doublon Cs (2× même case) ou ETT/EE (les deux salles) → exposant ². */
 export function isDoctorDoublonInCell(
   schedule: ScheduleData,
   day: string,
@@ -452,7 +481,7 @@ export function isDoctorDoublonInCell(
     return countDoctorInCell(schedule, rowKey, day, doctorId) >= 2
   }
 
-  const pair = ettPairForRow(rowKey)
+  const pair = roomDoublonPairForRow(rowKey)
   if (pair) {
     const [a, b] = pair
     return doctorOnRow(schedule, a, day, doctorId) && doctorOnRow(schedule, b, day, doctorId)
