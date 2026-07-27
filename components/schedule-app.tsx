@@ -193,14 +193,25 @@ export function ScheduleApp({
     void loadVacations()
   }, [])
 
-  const loadVacations = async () => {
+  const loadVacations = async (): Promise<DoctorVacation[]> => {
     try {
       const data = await getAllVacations()
       setVacations(data)
+      return data
     } catch (error) {
       console.error("[app] Error loading vacations:", error)
+      return []
     }
   }
+
+  /** Refresh congés → planning immédiat (liste optimiste si fournie par la modale). */
+  const handleVacationsUpdated = useCallback(async (next?: DoctorVacation[]) => {
+    if (next) {
+      setVacations(next)
+      return
+    }
+    await loadVacations()
+  }, [])
 
   const refreshRequests = useCallback(async () => {
     const { data } = await supabase
@@ -306,13 +317,14 @@ export function ScheduleApp({
     return applyStructuralConstraints(scheduleToUse, weekKey, vacations)
   }, [fullSchedule, weekKey, vacations])
 
-  // Persiste les contraintes quand la semaine ou les congés changent (debounce, sans toast)
+  // Persiste les contraintes quand la semaine ou les congés changent (debounce court)
+  // → toutes les semaines déjà en mémoire + la semaine affichée (répercussion immédiate CRUD)
   const constraintsPersistGenRef = React.useRef(0)
   const weekLoaded = Boolean(fullSchedule[weekKey])
   const vacationsSig = useMemo(
     () =>
       vacations
-        .map((v) => `${v.doctor_id}:${v.start_date}:${v.end_date}`)
+        .map((v) => `${v.id}:${v.doctor_id}:${v.start_date}:${v.end_date}`)
         .sort()
         .join("|"),
     [vacations],
@@ -324,32 +336,48 @@ export function ScheduleApp({
       void (async () => {
         if (gen !== constraintsPersistGenRef.current) return
         try {
-          const base = fullSchedule[weekKey]
-            ? structuredClone(fullSchedule[weekKey])
-            : generateWeekSchedule(weekKey, vacations)
-          DAYS.forEach((day) => {
-            if (!base["Notes du jour"]?.[day]) {
-              if (!base["Notes du jour"]) base["Notes du jour"] = {}
-              base["Notes du jour"][day] = { value: [], type: "empty", status: "validated" }
-            }
-          })
-          const injected = applyStructuralConstraints(base, weekKey, vacations)
-          if (!schedulesDiffer(fullSchedule[weekKey], injected)) return
-          if (gen !== constraintsPersistGenRef.current) return
-          setFullSchedule((prev) => ({ ...prev, [weekKey]: injected }))
-          await saveScheduleToDb(weekKey, injected, currentUser || "system", {
-            source: "constraints",
-          })
+          const weekKeys = new Set<string>(
+            Object.keys(fullSchedule).filter((k) => /-W\d{2}$/.test(k)),
+          )
+          weekKeys.add(weekKey)
+
+          let nextFull: FullSchedule | null = null
+
+          for (const wk of weekKeys) {
+            if (gen !== constraintsPersistGenRef.current) return
+            const source = (nextFull || fullSchedule)[wk]
+            const base = source
+              ? structuredClone(source)
+              : generateWeekSchedule(wk, vacations)
+            DAYS.forEach((day) => {
+              if (!base["Notes du jour"]?.[day]) {
+                if (!base["Notes du jour"]) base["Notes du jour"] = {}
+                base["Notes du jour"][day] = { value: [], type: "empty", status: "validated" }
+              }
+            })
+            const injected = applyStructuralConstraints(base, wk, vacations)
+            if (!schedulesDiffer(source, injected)) continue
+
+            if (!nextFull) nextFull = { ...fullSchedule }
+            nextFull[wk] = injected
+            await saveScheduleToDb(wk, injected, currentUser || "system", {
+              source: "constraints",
+            })
+          }
+
+          if (nextFull && gen === constraintsPersistGenRef.current) {
+            setFullSchedule(nextFull)
+          }
         } catch (error) {
           console.warn("[schedule-app] Persistance contraintes structurelles ignorée:", error)
         }
       })()
-    }, 350)
+    }, 150)
 
     return () => {
       window.clearTimeout(timer)
     }
-    // Pas de dépendance à l’identité de fullSchedule[weekKey] (évite courses à l’ajout congés)
+    // Pas de dépendance à l’identité de fullSchedule (évite courses à l’ajout congés)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekKey, vacationsSig, weekLoaded, currentUser])
 
@@ -2362,7 +2390,7 @@ export function ScheduleApp({
           doctorCode={doctorCode}
           isOpen={vacationsModalOpen}
           onClose={() => setVacationsModalOpen(false)}
-          onVacationsUpdated={loadVacations}
+          onVacationsUpdated={handleVacationsUpdated}
         />
       </Suspense>
     </div>

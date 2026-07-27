@@ -56,10 +56,17 @@ export function mergeVacancesIntoConges(schedule: ScheduleData): ScheduleData {
   return next
 }
 
+function sameDoctorLists(a: string[] | undefined, b: string[] | undefined): boolean {
+  const left = [...(a || [])].filter(Boolean).sort()
+  const right = [...(b || [])].filter(Boolean).sort()
+  if (left.length !== right.length) return false
+  return left.every((doc, i) => doc === right[i])
+}
+
 /**
- * Remplir automatiquement la ligne "Congés" avec les initiales des médecins en vacances
- * RÈGLE ABSOLUE: Chaque médecin en vacances doit avoir son initiale dans la case "Congés"
- * correspondant à chaque jour de sa période de vacances
+ * Remplir automatiquement la ligne "Congés" avec les initiales des médecins en vacances.
+ * Source de vérité = `doctor_vacations` : chaque jour est **reconstruit** (ajout ET retrait)
+ * pour que modifier / supprimer des dates se répercute immédiatement sur le planning.
  *
  * Note: `schedule` is a **week** ScheduleData (not FullSchedule).
  * Retourne une nouvelle structure (immuable).
@@ -71,10 +78,10 @@ export function populateCongesRowFromVacations(
 ): ScheduleData {
   let next = mergeVacancesIntoConges(schedule)
   if (!next[LEAVE_ROW_KEY]) {
-    return next
-  }
-  if (!vacations.length) {
-    return next
+    next = {
+      ...next,
+      [LEAVE_ROW_KEY]: Object.fromEntries(DAYS.map((d) => [d, emptyCell()])),
+    }
   }
 
   next = { ...next, [LEAVE_ROW_KEY]: { ...next[LEAVE_ROW_KEY] } }
@@ -97,18 +104,16 @@ export function populateCongesRowFromVacations(
       }
     }
 
-    if (doctorsOnVacationThisDay.length === 0) continue
-
     const cell = next[LEAVE_ROW_KEY][dayName] ?? emptyCell()
     const currentValue = cell.value || []
-    const newValue = mergeDoctorLists(currentValue, doctorsOnVacationThisDay)
-    if (newValue.length === currentValue.length) continue
+    // Remplace (pas merge) : raccourcir / supprimer un congé retire l’initiale
+    if (sameDoctorLists(currentValue, doctorsOnVacationThisDay)) continue
 
     changed = true
     next[LEAVE_ROW_KEY][dayName] = {
       ...cell,
-      value: newValue,
-      type: cell.type || 'doctor',
+      value: [...doctorsOnVacationThisDay],
+      type: doctorsOnVacationThisDay.length ? 'doctor' : 'empty',
       status: cell.status || 'validated',
     }
   }
