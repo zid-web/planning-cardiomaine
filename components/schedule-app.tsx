@@ -52,7 +52,13 @@ import {
   applyStructuralConstraints,
   schedulesDiffer,
 } from "@/lib/apply-structural-constraints"
-import { placeNightGuardRecoveryOff } from "@/lib/half-day-off"
+import {
+  extractSundayNightGuardDoctor,
+  nextIsoWeekKey,
+  placeMondayRecoveryFromSundayNight,
+  placeNightGuardRecoveryOff,
+  previousIsoWeekKey,
+} from "@/lib/half-day-off"
 import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -63,6 +69,7 @@ import {
 } from "@/app/actions/schedule-actions"
 import type { ScheduleSaveSource } from "@/lib/schedule-diff"
 import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
+import { getLastSundayGuardDoctor } from "@/app/actions/guard-api-actions"
 import { getAllVacations } from "@/app/actions/vacation-actions"
 import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions"
 import { VacationsButton } from "@/components/vacations-button"
@@ -153,6 +160,8 @@ export function ScheduleApp({
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
   /** false tant que getAllVacations n’a pas répondu — évite d’écraser Congés/Rythmo avec []. */
   const [vacationsReady, setVacationsReady] = useState(false)
+  /** Garde nuit dimanche semaine précédente → ½ off lundi (apm / matin si habituel). */
+  const [previousSundayGuardDoctor, setPreviousSundayGuardDoctor] = useState<string | null>(null)
   const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
@@ -190,6 +199,23 @@ export function ScheduleApp({
   const weekKey = useMemo(() => formatWeekKey(currentDate), [currentDate])
   const weekDates = useMemo(() => getWeekDates(currentDate), [currentDate])
   const isoWeekStart = useMemo(() => getIsoWeekStartDate(currentDate), [currentDate])
+
+  // Garde nuit dimanche de la semaine précédente (mémoire d’abord, sinon DB)
+  useEffect(() => {
+    const prevKey = previousIsoWeekKey(weekKey)
+    const fromMemory = prevKey ? extractSundayNightGuardDoctor(fullSchedule[prevKey]) : null
+    if (fromMemory) {
+      setPreviousSundayGuardDoctor(fromMemory)
+      return
+    }
+    let cancelled = false
+    void getLastSundayGuardDoctor(isoWeekStart).then((doc) => {
+      if (!cancelled) setPreviousSundayGuardDoctor(doc)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [weekKey, isoWeekStart, fullSchedule])
 
   // Load vacations on mount
   useEffect(() => {
@@ -283,6 +309,10 @@ export function ScheduleApp({
       mergedWeekSchedule,
       currentWeekKey,
       vacations,
+      {
+        vacationsReady,
+        previousSundayGuardDoctor,
+      },
     )
 
     const updatedFullSchedule = { ...fullSchedule, [currentWeekKey]: mergedWeekSchedule }
@@ -322,8 +352,9 @@ export function ScheduleApp({
 
     return applyStructuralConstraints(scheduleToUse, weekKey, vacations, {
       vacationsReady,
+      previousSundayGuardDoctor,
     })
-  }, [fullSchedule, weekKey, vacations, vacationsReady])
+  }, [fullSchedule, weekKey, vacations, vacationsReady, previousSundayGuardDoctor])
 
   // Persiste les contraintes quand la semaine ou les congés changent (debounce court)
   // → toutes les semaines déjà en mémoire + la semaine affichée (répercussion immédiate CRUD)
@@ -364,8 +395,16 @@ export function ScheduleApp({
                 base["Notes du jour"][day] = { value: [], type: "empty", status: "validated" }
               }
             })
+            const prevKey = previousIsoWeekKey(wk)
+            const sundayDoc =
+              wk === weekKey
+                ? previousSundayGuardDoctor
+                : prevKey
+                  ? extractSundayNightGuardDoctor((nextFull || fullSchedule)[prevKey])
+                  : null
             const injected = applyStructuralConstraints(base, wk, vacations, {
               vacationsReady: true,
+              previousSundayGuardDoctor: sundayDoc,
             })
             if (!schedulesDiffer(source, injected)) continue
 
@@ -390,7 +429,7 @@ export function ScheduleApp({
     }
     // Pas de dépendance à l’identité de fullSchedule (évite courses à l’ajout congés)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekKey, vacationsSig, weekLoaded, currentUser, vacationsReady])
+  }, [weekKey, vacationsSig, weekLoaded, currentUser, vacationsReady, previousSundayGuardDoctor])
 
   const workloadStats = useMemo(() => calculateWorkloadStats(schedule), [schedule])
 
@@ -506,12 +545,42 @@ export function ScheduleApp({
     }
 
     // Garde Nuit → 1/2 off apm lendemain (matin si off habituel apm) ; pas le samedi
+    // Dimanche → ½ off lundi de la semaine suivante
     const addedListed = nextCell.value.filter(
       (d) => isListedDoctor(d) && !(prevCell.value || []).includes(d),
     )
     if (row.includes("Garde Nuit") && addedListed.length > 0) {
-      for (const doctor of addedListed) {
-        newSchedule = placeNightGuardRecoveryOff(newSchedule, day, doctor)
+      if (day === "DIMANCHE") {
+        const nextWk = nextIsoWeekKey(weekKey)
+        if (nextWk) {
+          const nextWeekBase =
+            fullSchedule[nextWk] || generateWeekSchedule(nextWk, vacations)
+          let nextWeekSched = structuredClone(nextWeekBase)
+          for (const doctor of addedListed) {
+            nextWeekSched = placeMondayRecoveryFromSundayNight(nextWeekSched, doctor)
+          }
+          const updatedFull: FullSchedule = {
+            ...fullSchedule,
+            [weekKey]: newSchedule,
+            [nextWk]: nextWeekSched,
+          }
+          setFullSchedule(updatedFull)
+          void saveScheduleToDb(weekKey, newSchedule, currentUser || "unknown", {
+            source: "ui",
+          })
+          void saveScheduleToDb(nextWk, nextWeekSched, currentUser || "unknown", {
+            source: "constraints",
+          })
+          if (opts?.closeModal) {
+            setSelectedCell(null)
+            setRemplacantInput("")
+          }
+          return
+        }
+      } else {
+        for (const doctor of addedListed) {
+          newSchedule = placeNightGuardRecoveryOff(newSchedule, day, doctor)
+        }
       }
     }
 

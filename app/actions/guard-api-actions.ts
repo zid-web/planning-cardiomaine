@@ -133,9 +133,9 @@ async function calculateEquityPoints(): Promise<EquityPoints> {
  * Retrouve le médecin ayant fait la garde OU l'astreinte de nuit dimanche dernier
  * (semaine précédant immédiatement weekStartISO), pour appliquer la règle
  * "garde de nuit dimanche -> 1/2 journée off lundi".
- * CH (structure externe) est exclu.
+ * CH (structure externe) est exclu. Priorité Garde Nuit puis ATL Nuit.
  */
-async function getLastSundayGuardDoctor(weekStartISO: string): Promise<string | null> {
+export async function getLastSundayGuardDoctor(weekStartISO: string): Promise<string | null> {
   const supabase = await createClient();
 
   const previousMonday = subDays(parseISO(weekStartISO), 7);
@@ -151,16 +151,8 @@ async function getLastSundayGuardDoctor(weekStartISO: string): Promise<string | 
   if (error || !row) return null;
 
   const scheduleData = row.schedule_data as ScheduleData;
-  const nightRows = ["Astreintes ATL Nuit", "Garde Nuit"];
-
-  for (const rowKey of nightRows) {
-    const cell = scheduleData?.[rowKey]?.["DIMANCHE"];
-    const doctors = (cell as { value?: string[] } | undefined)?.value || [];
-    const realDoctor = doctors.find((d) => d !== "CH");
-    if (realDoctor) return realDoctor;
-  }
-
-  return null;
+  const { extractSundayNightGuardDoctor } = await import("@/lib/half-day-off");
+  return extractSundayNightGuardDoctor(scheduleData);
 }
 
 /**

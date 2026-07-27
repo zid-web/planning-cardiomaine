@@ -4,9 +4,14 @@
 import assert from "node:assert/strict"
 import {
   applyNightGuardRecoveryOffs,
+  extractSundayNightGuardDoctor,
+  nextIsoWeekKey,
+  placeMondayRecoveryFromSundayNight,
   placeNightGuardRecoveryOff,
+  previousIsoWeekKey,
   targetOffSlotAfterNightGuard,
 } from "@/lib/half-day-off"
+import { applyStructuralConstraints } from "@/lib/apply-structural-constraints"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
 
 function main() {
@@ -50,6 +55,13 @@ function main() {
   const afterSat = placeNightGuardRecoveryOff(schedule, "SAMEDI", "B")
   assert.equal(afterSat, schedule)
 
+  // Dimanche in-week : no-op (récupération = lundi semaine suivante)
+  schedule = generateWeekSchedule(weekKey)
+  schedule["Garde Nuit"].DIMANCHE.value = ["B"]
+  const afterSun = placeNightGuardRecoveryOff(schedule, "DIMANCHE", "B")
+  assert.equal(afterSun, schedule)
+  assert.ok(!schedule["1/2 journée off Après-midi"].LUNDI.value.includes("B"))
+
   // Vendredi nuit → samedi apm OK
   schedule = generateWeekSchedule(weekKey)
   schedule["Garde Nuit"].VENDREDI.value = ["B"]
@@ -61,6 +73,34 @@ function main() {
   schedule = applyNightGuardRecoveryOffs(schedule, { previousSundayGuardDoctor: "Z" })
   assert.ok(schedule["1/2 journée off Matin"].LUNDI.value.includes("Z"))
   assert.ok(schedule["1/2 journée off Après-midi"].LUNDI.value.includes("Z"))
+
+  // Dimanche précédent → lundi apm (B n’a pas d’off habituel lundi)
+  schedule = generateWeekSchedule(weekKey)
+  schedule = placeMondayRecoveryFromSundayNight(schedule, "B")
+  assert.ok(schedule["1/2 journée off Après-midi"].LUNDI.value.includes("B"))
+  assert.ok(!schedule["1/2 journée off Matin"].LUNDI.value.includes("B"))
+
+  // Structural : previousSundayGuardDoctor propagé
+  schedule = applyStructuralConstraints(generateWeekSchedule(weekKey, []), weekKey, [], {
+    previousSundayGuardDoctor: "B",
+  })
+  assert.ok(
+    schedule["1/2 journée off Après-midi"].LUNDI.value.includes("B"),
+    "½ off apm lundi après garde nuit dimanche",
+  )
+
+  // extractSundayNightGuardDoctor préfère Garde Nuit
+  schedule = generateWeekSchedule(weekKey)
+  schedule["Astreintes ATL Nuit"].DIMANCHE.value = ["O"]
+  schedule["Garde Nuit"].DIMANCHE.value = ["B"]
+  assert.equal(extractSundayNightGuardDoctor(schedule), "B")
+  schedule["Garde Nuit"].DIMANCHE.value = []
+  assert.equal(extractSundayNightGuardDoctor(schedule), "O")
+  schedule["Astreintes ATL Nuit"].DIMANCHE.value = ["CH"]
+  assert.equal(extractSundayNightGuardDoctor(schedule), null)
+
+  assert.equal(previousIsoWeekKey("2026-W30"), "2026-W29")
+  assert.equal(nextIsoWeekKey("2026-W30"), "2026-W31")
 
   // Correction : mauvais créneau matin → déplacé vers apm si pas d'off habituel
   schedule = generateWeekSchedule(weekKey)

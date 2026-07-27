@@ -29,8 +29,7 @@ required service is the Next.js dev server; the backend is Supabase.
 - **Écriture congés** : `addVacation` / `updateVacation` n’écrivent que `doctor_id` + dates ; le motif `reason` est patché en best-effort (projets Supabase sans colonne → erreur PostgREST « schema cache »). Migration `20250726000000_doctor_vacations_reason_column.sql` pour l’ajouter côté SQL.
 
 ### 1/2 journée off après Garde Nuit
-- Règle (`lib/half-day-off.ts`) : après Garde Nuit → **apm du lendemain** (tous les jours sauf **samedi**). Si ce créneau est déjà l’off **habituel** du médecin → **matin** du lendemain. Dimanche précédent → lundi via `previous_sunday_guard_doctor`.
-- Appliqué à l’édition UI (`placeNightGuardRecoveryOff`), après « Générer » (`applyNightGuardRecoveryOffs`), et dans `guard-api/solver.py` (contrainte + `DEMI_JOURNEE_LIBRE`). Offs habituels = `HABITUAL_HALF_DAYS_OFF` (seed `generateWeekSchedule`).
+- Règle (`lib/half-day-off.ts`) : après Garde Nuit → **apm du lendemain** (tous les jours sauf **samedi**). Si ce créneau est déjà l’off **habituel** du médecin → **matin** du lendemain. **Dimanche → lundi semaine suivante** via `previousSundayGuardDoctor` / `placeMondayRecoveryFromSundayNight` (lu depuis la semaine précédente en mémoire ou `getLastSundayGuardDoctor`). Appliqué à l’édition UI (`placeNightGuardRecoveryOff` + cross-week dimanche), après « Générer », et dans `applyStructuralConstraints` (affichage + persist). Offs habituels = `HABITUAL_HALF_DAYS_OFF` (seed `generateWeekSchedule`).
 
 ### Contraintes structurelles vs « Générer »
 - **Toujours injectées** (sans Générer) via `applyStructuralConstraints` (`lib/apply-structural-constraints.ts`) : IRM/FV/DAAS/Rythmo/Visite, ½-off habituelles, récupération garde nuit, Congés + strip absents, NCT calendrier, LFB, **CH**, **ATL←Coro**. Appliqué à l’affichage + persisté (`source: "constraints"`, debounce).
