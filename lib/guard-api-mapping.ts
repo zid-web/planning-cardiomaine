@@ -142,6 +142,17 @@ export type GuardMedecin = {
   points_weekend?: number;
 };
 
+/** Slot historique pour le solveur (`historical_patterns`). */
+export type HistoricalPatternSlotPayload = {
+  eligible_doctors: string[];
+  frequency: Record<string, number>;
+};
+
+export type HistoricalPatternsRequestPayload = Record<
+  string,
+  Record<string, HistoricalPatternSlotPayload>
+>;
+
 export type GenerateWeekRequestPayload = {
   week_start_date: string;
   week_type: number;
@@ -150,7 +161,13 @@ export type GenerateWeekRequestPayload = {
   congres?: Array<{ doctor_id: string; start_date: string; end_date: string }>;
   weekend_mode?: "CH" | "ROTATION";
   last_nct_doctor?: string | null;
+  previous_sunday_guard_doctor?: string | null;
   existing_schedule?: Record<string, string[]> | null;
+  /**
+   * Fréquences / éligibilité déduites de l’historique (Cs/ETT/EE/hors site…).
+   * Le solveur OR-Tools consomme ce champ ; le front ne remplit plus ces cases après coup.
+   */
+  historical_patterns?: HistoricalPatternsRequestPayload;
 };
 
 /** Monday (ISO YYYY-MM-DD) for the week containing `date`. */

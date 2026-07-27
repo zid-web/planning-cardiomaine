@@ -39,13 +39,12 @@ export function GuardGenerationButton({
       }
 
       if (result.schedule) {
-        const pf = result.patternFill
+        const meta = result.historicalPatternsMeta
         const patternNote =
-          pf && pf.applied > 0
-            ? ` · ${pf.applied} vacation(s) Cs/ETT/EE depuis l’historique`
+          meta && meta.slotsSent > 0
+            ? ` · ${meta.slotsSent} créneau(x) historiques envoyés au solveur (${meta.weeksScanned} sem.)`
             : ''
 
-        // Afficher les warnings s'il y en a
         if (result.warnings && result.warnings.length > 0) {
           toast.warning(
             `Alertes de génération${patternNote}:\n` + result.warnings.join('\n'),
@@ -60,7 +59,6 @@ export function GuardGenerationButton({
           })
         }
 
-        // Appeler la callback avec les résultats
         onGenerationComplete(result.schedule, result.warnings || [])
       }
     } catch (error) {
@@ -77,7 +75,7 @@ export function GuardGenerationButton({
       disabled={disabled || isLoading}
       size="sm"
       className={`h-7 gap-1 bg-gradient-to-r from-blue-600 to-blue-700 px-2 text-[11px] hover:from-blue-700 hover:to-blue-800 ${className}`}
-      title="Propose gardes/astreintes/Coro (pending, à valider) + Cs/ETT/EE historiques — les contraintes fixes sont déjà dans le planning"
+      title="Une seule génération : gardes/astreintes/Coro + Cs/ETT/EE/hors site (historical_patterns) — pending à valider"
     >
       {isLoading ? (
         <>

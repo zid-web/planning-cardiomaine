@@ -11,7 +11,7 @@ import {
 } from "@/lib/equity-tracking";
 import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
-import { fillClinicalVacationsFromPatterns } from "@/lib/pattern-analysis";
+import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
 
 // Configuration
 const GUARD_API_URL =
@@ -190,7 +190,42 @@ export async function generateGuardsViaAPI(
       getLastSundayGuardDoctor(weekStartDate),
     ]);
 
-    // 4. Construit le payload pour Render
+    // 4. Historique Cs/ETT/EE/hors site → `historical_patterns` pour le solveur
+    // (même exclusions que pattern-analysis : SOLVER_MANAGED + Rythmo + meta).
+    const lookbackWeeks = 12;
+    const currentWeekKey = `${wnEarly.year}-W${String(wnEarly.week).padStart(2, "0")}`;
+    let historicalPatterns = buildHistoricalPatternsPayload([]);
+    let historicalWeeksScanned = 0;
+    try {
+      const supabaseHist = await createClient();
+      const { data: histRows, error: histError } = await supabaseHist
+        .from("schedules")
+        .select("week_key, schedule_data")
+        .neq("week_key", "full_schedule")
+        .neq("week_key", currentWeekKey)
+        .order("week_key", { ascending: false })
+        .limit(lookbackWeeks);
+
+      if (!histError && histRows?.length) {
+        const historical = histRows
+          .map((r) => r.schedule_data as ScheduleData)
+          .filter((s) => s && typeof s === "object");
+        historicalWeeksScanned = historical.length;
+        historicalPatterns = buildHistoricalPatternsPayload(historical);
+      } else if (histError) {
+        console.warn(
+          "[generateGuardsViaAPI] Lecture historique pour patterns:",
+          histError.message,
+        );
+      }
+    } catch (histErr) {
+      console.warn(
+        "[generateGuardsViaAPI] historical_patterns ignoré (historique indisponible):",
+        histErr,
+      );
+    }
+
+    // 5. Construit le payload pour Render
     const payload = {
       week_start_date: weekStartDate,
       week_type: resolvedWeekType,
@@ -217,10 +252,10 @@ export async function generateGuardsViaAPI(
         points_nct: doc.points_nct,
         points_weekend: doc.points_weekend,
       })),
+      historical_patterns: historicalPatterns,
     };
 
-
-    // 5. Appel à l'API Render
+    // 6. Appel à l'API Render
     const response = await fetch(`${GUARD_API_URL}/generate-week`, {
       method: "POST",
       headers: {
@@ -241,50 +276,18 @@ export async function generateGuardsViaAPI(
 
     const data = await response.json();
 
-    // 6. Convertit la réponse : assignments solveur + règles fixes (IRM/FV/DAAS/…)
-    // weekStartDate est le lundi ISO (yyyy-MM-dd) passé par GuardGenerationButton.
-    const wn = getWeekNumber(parseISO(weekStartDate));
-    const weekKey = `${wn.year}-W${String(wn.week).padStart(2, "0")}`;
-    let scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations, {
+    // 7. Convertit la réponse : assignments solveur + règles fixes (IRM/FV/DAAS/…)
+    // Les Cs/ETT/EE/hors site doivent venir des assignments (alimentés côté OR-Tools
+    // via historical_patterns) — plus de fill client post-génération.
+    const weekKey = currentWeekKey;
+    const scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations, {
       previousSundayGuardDoctor,
     });
 
-    // 7. Vacations cliniques Cs/ETT/EE : même analyse de fréquence qu’Historique+,
-    // appliquée automatiquement sur les cellules encore vides (statut pending).
-    let patternFill = { applied: 0, skippedTies: 0, weeksScanned: 0 };
-    try {
-      const supabase = await createClient();
-      const { data: histRows, error: histError } = await supabase
-        .from("schedules")
-        .select("week_key, schedule_data")
-        .neq("week_key", "full_schedule")
-        .neq("week_key", weekKey)
-        .order("week_key", { ascending: false })
-        .limit(12);
-
-      if (!histError && histRows?.length) {
-        const historical = histRows
-          .map((r) => r.schedule_data as ScheduleData)
-          .filter((s) => s && typeof s === "object");
-        const filled = fillClinicalVacationsFromPatterns(scheduleData, historical, {
-          acceptTies: false,
-          status: "pending",
-        });
-        scheduleData = applyStructuralConstraints(filled.next, weekKey, vacations, {
-          previousSundayGuardDoctor,
-        });
-        patternFill = {
-          applied: filled.applied,
-          skippedTies: filled.skippedTies,
-          weeksScanned: historical.length,
-        };
-      }
-    } catch (patternError) {
-      console.warn(
-        "[generateGuardsViaAPI] Remplissage Cs/ETT/EE depuis l’historique ignoré:",
-        patternError,
-      );
-    }
+    const patternSlots = Object.values(historicalPatterns).reduce(
+      (n, days) => n + Object.keys(days).length,
+      0,
+    );
 
     return {
       success: true,
@@ -292,7 +295,10 @@ export async function generateGuardsViaAPI(
       // Alias attendu par GuardGenerationButton / ScheduleApp
       schedule: scheduleData,
       warnings: Array.isArray(data?.warnings) ? data.warnings : [],
-      patternFill,
+      historicalPatternsMeta: {
+        weeksScanned: historicalWeeksScanned,
+        slotsSent: patternSlots,
+      },
       raw: data,
     };
   } catch (error) {

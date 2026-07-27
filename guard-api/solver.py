@@ -35,6 +35,11 @@ class Vacation(BaseModel):
     start_date: str
     end_date: str
 
+class HistoricalPatternSlot(BaseModel):
+    """Éligibilité + fréquences déduites de l'historique (front → solveur)."""
+    eligible_doctors: List[str] = []
+    frequency: Dict[str, int] = {}
+
 class GenerateWeekRequest(BaseModel):
     week_start_date: str              # YYYY-MM-DD (lundi)
     week_type: int                    # 1 = impaire, 2 = paire
@@ -46,6 +51,9 @@ class GenerateWeekRequest(BaseModel):
     # Garde/astreinte nuit dimanche semaine précédente → 1/2 off lundi
     previous_sunday_guard_doctor: Optional[str] = None
     existing_schedule: Optional[Dict[str, List[str]]] = None  # clé "row_key||day_name" -> [doctors]
+    # row_key → day_name → { eligible_doctors, frequency } — consommé par OR-Tools
+    # (fidélité historique Cs/ETT/EE/hors site). Le front ne remplit plus ces cases après coup.
+    historical_patterns: Optional[Dict[str, Dict[str, HistoricalPatternSlot]]] = None
 
 class Assignment(BaseModel):
     date: str

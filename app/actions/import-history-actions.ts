@@ -8,7 +8,6 @@ import {
   type PdfWeekExtraction,
   type WeekImportPreview,
 } from "@/lib/history-import"
-import { computeRowPatternsFromSchedules, type PatternProposal } from "@/lib/pattern-analysis"
 import type { ScheduleData } from "@/lib/types"
 import { getScheduleFromDb, saveScheduleToDb } from "@/app/actions/schedule-actions"
 
@@ -92,37 +91,4 @@ export async function commitHistoryImport(
     weekKeys,
     errors,
   }
-}
-
-/**
- * Patterns de fréquence sur les N dernières semaines (hors lignes solveur/RYTHMO).
- * Si `forWeekKey` + schedule courant fourni côté client, filtrer les cellules déjà remplies
- * est fait côté client via `applyPatternProposals`.
- */
-export async function fetchHistoricalPatterns(
-  lookbackWeeks = 12,
-): Promise<{ success: boolean; patterns: PatternProposal[]; weeksScanned: number; error?: string }> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { success: false, patterns: [], weeksScanned: 0, error: "Non authentifié" }
-
-  const { data, error } = await supabase
-    .from("schedules")
-    .select("week_key, schedule_data")
-    .neq("week_key", "full_schedule")
-    .order("week_key", { ascending: false })
-    .limit(Math.max(4, Math.min(lookbackWeeks, 26)))
-
-  if (error) {
-    return { success: false, patterns: [], weeksScanned: 0, error: error.message }
-  }
-
-  const schedules = (data || [])
-    .map((r) => r.schedule_data as ScheduleData)
-    .filter((s) => s && typeof s === "object")
-
-  const patterns = computeRowPatternsFromSchedules(schedules)
-  return { success: true, patterns, weeksScanned: schedules.length }
 }
