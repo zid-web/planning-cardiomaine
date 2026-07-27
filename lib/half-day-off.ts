@@ -10,17 +10,23 @@ export const HALF_DAY_OFF_APM_ROW = "1/2 journée off Après-midi"
 
 /**
  * Demi-journées libres habituelles (règle fixe métier).
- * Source unique aussi pour `applyHabitualHalfDaysOff` / récupération garde nuit.
+ * Source unique pour `applyHabitualHalfDaysOff` / récupération garde nuit.
  *
- * **H / S (mardi)** : ½ off **après-midi uniquement** — pas le matin
- * (le matin n’apparaît que via récupération après Garde Nuit la veille).
+ * **½ off après-midi fixes** :
+ * - Mardi : S
+ * - Mercredi : M, W, G, Z, H, B
+ * - Jeudi : U, P
+ * - Vendredi : O, A, K, R, T
+ *
+ * Matin : uniquement offs matin listés ci-dessous, ou récupération
+ * après Garde Nuit la veille (si le médecin a déjà un off apm habituel).
  */
 export const HABITUAL_HALF_DAYS_OFF: Record<string, Partial<Record<HalfDaySlot, string[]>>> = {
-  LUNDI: { matin: ["R", "K"], am: ["R", "K", "Z"] },
-  MARDI: { am: ["H", "S"] }, // pas de ½ off matin habituel pour H/S
-  MERCREDI: { am: ["B", "W", "M", "G"] },
-  JEUDI: { am: ["P", "U"] },
-  VENDREDI: { matin: ["K"], am: ["O", "K", "A"] },
+  LUNDI: { matin: ["R", "K"] },
+  MARDI: { am: ["S"] },
+  MERCREDI: { am: ["M", "W", "G", "Z", "H", "B"] },
+  JEUDI: { am: ["U", "P"] },
+  VENDREDI: { matin: ["K"], am: ["O", "A", "K", "R", "T"] },
 }
 
 export function halfDayOffRowForSlot(slot: HalfDaySlot): string {
