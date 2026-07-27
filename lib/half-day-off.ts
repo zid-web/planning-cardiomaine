@@ -10,11 +10,14 @@ export const HALF_DAY_OFF_APM_ROW = "1/2 journée off Après-midi"
 
 /**
  * Demi-journées libres habituelles (règle fixe métier).
- * Aligné sur le seed de `generateWeekSchedule`.
+ * Source unique aussi pour `applyHabitualHalfDaysOff` / récupération garde nuit.
+ *
+ * **H / S (mardi)** : ½ off **après-midi uniquement** — pas le matin
+ * (le matin n’apparaît que via récupération après Garde Nuit la veille).
  */
 export const HABITUAL_HALF_DAYS_OFF: Record<string, Partial<Record<HalfDaySlot, string[]>>> = {
   LUNDI: { matin: ["R", "K"], am: ["R", "K", "Z"] },
-  MARDI: { matin: ["H", "S"], am: ["H", "S"] },
+  MARDI: { am: ["H", "S"] }, // pas de ½ off matin habituel pour H/S
   MERCREDI: { am: ["B", "W", "M", "G"] },
   JEUDI: { am: ["P", "U"] },
   VENDREDI: { matin: ["K"], am: ["O", "K", "A"] },
@@ -102,36 +105,29 @@ export function nightGuardDoctorsOnDay(schedule: ScheduleData, nightDay: string)
 
 /**
  * Remplit les lignes 1/2 journée off avec les règles habituelles.
+ * Pour chaque jour : aligne matin **et** apm sur `HABITUAL_HALF_DAYS_OFF`
+ * (slot absent → case vide), afin de retirer définitivement d’anciennes
+ * initiales erronées (ex. H/S mardi matin).
  */
 export function applyHabitualHalfDaysOff(schedule: ScheduleData): ScheduleData {
   let next = schedule
-  for (const [dayName, slots] of Object.entries(HABITUAL_HALF_DAYS_OFF)) {
+  for (const dayName of DAYS) {
     for (const slot of ["matin", "am"] as HalfDaySlot[]) {
-      const doctors = slots[slot]
-      if (!doctors?.length) continue
+      const doctors = HABITUAL_HALF_DAYS_OFF[dayName]?.[slot] || []
       const rowKey = halfDayOffRowForSlot(slot)
       if (!next[rowKey]?.[dayName]) continue
       const cell = next[rowKey][dayName]
-      const merged = [...(cell.value || [])]
-      let changed = false
-      for (const doc of doctors) {
-        if (!merged.includes(doc)) {
-          merged.push(doc)
-          changed = true
-        }
-      }
-      // Seed attendu = liste habituelle (ordre stable)
       const expected = [...doctors]
       const same =
-        cell.value?.length === expected.length &&
+        (cell.value || []).length === expected.length &&
         expected.every((d, i) => cell.value?.[i] === d)
-      if (!changed && same) continue
+      if (same) continue
       if (next === schedule) next = { ...schedule }
       if (next[rowKey] === schedule[rowKey]) next[rowKey] = { ...schedule[rowKey] }
       next[rowKey][dayName] = {
         ...cell,
         value: expected,
-        type: "doctor",
+        type: expected.length > 0 ? "doctor" : "empty",
       }
     }
   }
