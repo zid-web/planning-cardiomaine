@@ -23,9 +23,11 @@ function main() {
   assert.equal(resolveRowKey("matin", "CORO", "LUNDI"), "Matin - Coro")
   assert.equal(resolveRowKey("am", "CORO", "LUNDI"), "Apm - Coro")
 
-  // Weekend ASTREINTE reste sur Garde Matin ; VACANCES ne doit PAS y aller
-  assert.equal(resolveRowKey("weekend", "ASTREINTE", "SAMEDI"), "Garde Matin")
+  // Weekend ASTREINTE → ATL Matin ; GARDE → Garde Matin ; VACANCES ne doit PAS y aller
+  assert.equal(resolveRowKey("weekend", "ASTREINTE", "SAMEDI"), "Astreintes ATL Matin")
+  assert.equal(resolveRowKey("weekend", "GARDE", "SAMEDI"), "Garde Matin")
   assert.notEqual(resolveRowKey("weekend", "VACANCES", "SAMEDI"), "Garde Matin")
+  assert.notEqual(resolveRowKey("weekend", "ASTREINTE", "SAMEDI"), "Garde Matin")
 
   const base = generateWeekSchedule("2026-W30")
   const merged = mergeAssignmentsIntoSchedule(base, [
@@ -90,6 +92,39 @@ function main() {
   assert.deepEqual(after["Matin - Coro"].LUNDI.value, ["W"], "Coro proposé par le solveur")
   assert.equal(after["Matin - Coro"].LUNDI.status, "pending")
   assert.deepEqual(after["Apm - Coro"].LUNDI.value, ["M"])
+
+  // Week-end garde : préserver le remplaçant quand le solveur propose un médecin
+  existing["Garde Matin"].SAMEDI = {
+    value: ["Dr Martin"],
+    remplacant: "Dr Martin",
+    type: "doctor",
+    status: "validated",
+  }
+  generated["Garde Matin"].SAMEDI = { value: ["B"], type: "doctor", status: "pending" }
+  const afterWe = mergeSolverWeekIntoExisting(existing, generated)
+  assert.ok(afterWe["Garde Matin"].SAMEDI.value.includes("Dr Martin"), "remplacant préservé")
+  assert.ok(afterWe["Garde Matin"].SAMEDI.value.includes("B"), "médecin solveur ajouté")
+  assert.equal(afterWe["Garde Matin"].SAMEDI.remplacant, "Dr Martin")
+
+  // CH jamais écrit sur une ligne Garde via merge assignments
+  const withCh = mergeAssignmentsIntoSchedule(generateWeekSchedule("2026-W30"), [
+    {
+      date: "2026-07-25",
+      day_name: "SAMEDI",
+      slot: "weekend",
+      activity: "GARDE",
+      doctor: "CH",
+    },
+    {
+      date: "2026-07-25",
+      day_name: "SAMEDI",
+      slot: "weekend",
+      activity: "GARDE",
+      doctor: "O",
+    },
+  ])
+  assert.ok(!withCh["Garde Matin"].SAMEDI.value.includes("CH"), "CH exclu des gardes")
+  assert.ok(withCh["Garde Matin"].SAMEDI.value.includes("O"))
 
   console.log("✅ guard-api-mapping vacation/coro tests passed")
 }

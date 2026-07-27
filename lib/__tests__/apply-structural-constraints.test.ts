@@ -100,6 +100,15 @@ function main() {
   assert.ok(chSchedule["Astreintes ATL Midi"].DIMANCHE.value.includes("CH"))
   assert.ok(chSchedule["Astreintes ATL Nuit"].DIMANCHE.value.includes("CH"))
 
+  // CH jamais sur une ligne Garde (semaine + week-end)
+  chSchedule["Garde Matin"].LUNDI.value = ["CH"]
+  chSchedule["Garde Midi"].SAMEDI.value = ["CH"]
+  chSchedule["Garde Nuit"].DIMANCHE.value = ["CH"]
+  chSchedule = applyChAstreinteConstraints(chSchedule, oddWeek)
+  assert.ok(!chSchedule["Garde Matin"].LUNDI.value.includes("CH"))
+  assert.ok(!chSchedule["Garde Midi"].SAMEDI.value.includes("CH"))
+  assert.ok(!chSchedule["Garde Nuit"].DIMANCHE.value.includes("CH"))
+
   const evenWeek = "2026-W30"
   chSchedule = applyChAstreinteConstraints(generateWeekSchedule(evenWeek, []), evenWeek)
   assert.ok(chSchedule["Astreintes ATL Nuit"].MERCREDI.value.includes("CH"))

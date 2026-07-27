@@ -3,7 +3,7 @@ export const DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"
 // DOCTORS list includes both internal (with login accounts) and external doctors (no login)
 // External doctors: FV, CH (Centre Hospitalier), DAAS, D (no Supabase account, no authentication)
 // FV: Garde Nuit chaque lundi + Coro chaque jeudi après-midi (hors vacances)
-// CH: Centre Hospitalier externe (astreinte/garde)
+// CH: Centre Hospitalier externe — astreintes ATL uniquement (jamais de garde)
 // DAAS: uniquement EE (Apm - EE2) chaque lundi après-midi (hors vacances)
 // D: Echo PSS stress consultation externe (jeudi)
 // IRM: uniquement S — lundi matin + vendredi après-midi (hors vacances)
@@ -218,7 +218,7 @@ export const DOCTOR_METADATA: Record<
   CH: {
     name: 'Centre Hospitalier',
     is_externe: true,
-    can_be_assigned_to_guards: true,
+    can_be_assigned_to_guards: false, // Astreintes ATL uniquement — jamais Garde Matin/Midi/Nuit
     can_be_assigned_to_astreinte: true,
     can_be_assigned_to_nct: false,
     can_have_vacations: false,

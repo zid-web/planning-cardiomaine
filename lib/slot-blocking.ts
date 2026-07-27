@@ -21,9 +21,38 @@ const GARDE_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
 const LFB_ROW = "Hors site - LFB"
 const CDL_ROW = "Hors site - CDL"
 const IRM_ROW = "Hors site - IRM"
+const ATL_ROWS = [
+  "Astreintes ATL Matin",
+  "Astreintes ATL Midi",
+  "Astreintes ATL Nuit",
+] as const
 
 /** Code de l’interne (associé à un médecin sur Garde Matin). */
 export const INTERN_CODE = "I"
+
+export function isGardeRow(rowKey: string): boolean {
+  return (GARDE_ROWS as readonly string[]).includes(rowKey)
+}
+
+export function isWeekendDay(day: string): boolean {
+  return day === "SAMEDI" || day === "DIMANCHE"
+}
+
+export function isAtlRow(rowKey: string): boolean {
+  return (ATL_ROWS as readonly string[]).includes(rowKey)
+}
+
+/** Case garde qui contient déjà un remplaçant (texte libre). */
+export function cellHasRemplacant(
+  schedule: ScheduleData,
+  rowKey: string,
+  day: string,
+): boolean {
+  const cell = schedule[rowKey]?.[day]
+  if (!cell) return false
+  if (cell.remplacant?.trim()) return true
+  return (cell.value || []).some((v) => Boolean(v) && !isListedDoctor(v))
+}
 
 /** Doublon même cellule (2ᵉ clic) : Cs + EE1/EE2. */
 export const SAME_CELL_DOUBLON_ROWS = new Set([
@@ -281,8 +310,26 @@ export function canAssignDoctorToSlot(
   schedule: ScheduleData,
   vacations: DoctorVacation[],
 ): { allowed: boolean; reason?: string } {
-  if (!isListedDoctor(doctorId) || doctorId === "CH") {
+  // Remplaçant texte libre : pas de règles listées
+  if (!isListedDoctor(doctorId)) {
     return { allowed: true }
+  }
+
+  // CH : astreintes ATL uniquement — jamais de garde
+  if (doctorId === "CH") {
+    if (isGardeRow(rowKey)) {
+      return {
+        allowed: false,
+        reason: "CH n’est autorisé que pour les astreintes ATL — jamais de garde.",
+      }
+    }
+    if (isAtlRow(rowKey) || rowKey === "Congés" || rowKey === "Vacances") {
+      return { allowed: true }
+    }
+    return {
+      allowed: false,
+      reason: "CH n’est assignable que sur les lignes Astreintes ATL.",
+    }
   }
 
   // Interne I : uniquement Garde Matin (associé à un médecin)
@@ -307,6 +354,12 @@ export function canAssignDoctorToSlot(
   }
   // Note: la ligne Congés est reconstruite depuis doctor_vacations ; on ne bloque
   // plus sur une case Congés orpheline (sinon S reste inutilisable après modification).
+
+  // Garde week-end avec remplaçant : toujours autoriser l’association avec un médecin listé
+  // (ignore ½-off et exclusion mutuelle de créneau pour cette case).
+  if (isGardeRow(rowKey) && isWeekendDay(day) && cellHasRemplacant(schedule, rowKey, day)) {
+    return { allowed: true }
+  }
 
   // Coro / Rythmo / Rééducation interdits si déjà Garde Matin + I
   if (wouldBePairedWithIntern(schedule, day, doctorId, rowKey) && isInternForbiddenClinical(rowKey)) {
@@ -458,6 +511,10 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
         for (const row of Object.keys(next)) {
           const p = periodOfRow(row, day)
           if (p === "matin" || p === "day") {
+            // Garde week-end + remplaçant : conserver l’association
+            if (isGardeRow(row) && isWeekendDay(day) && cellHasRemplacant(next, row, day)) {
+              continue
+            }
             next = stripDoctorFromRow(next, row, day, doctorId)
           }
         }
@@ -467,6 +524,9 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
         for (const row of Object.keys(next)) {
           const p = periodOfRow(row, day)
           if (p === "apm" || p === "day") {
+            if (isGardeRow(row) && isWeekendDay(day) && cellHasRemplacant(next, row, day)) {
+              continue
+            }
             next = stripDoctorFromRow(next, row, day, doctorId)
           }
         }
@@ -591,6 +651,11 @@ function resolvePeriodConflicts(
         doctorId === "S" &&
         isPairedWithInternOnGardeMatin(next, day, doctorId)
       ) {
+        keep.add(row)
+        continue
+      }
+      // Garde week-end + remplaçant : ne pas retirer le médecin associé
+      if (isGardeRow(row) && isWeekendDay(day) && cellHasRemplacant(next, row, day)) {
         keep.add(row)
         continue
       }

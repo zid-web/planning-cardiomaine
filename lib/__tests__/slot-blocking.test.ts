@@ -187,6 +187,47 @@ function main() {
   schedule = applySlotBlockingStrips(schedule)
   assert.ok(!schedule["Matin - Coro"].JEUDI.value.includes("U"))
 
+  // CH : jamais de garde ; ATL OK
+  schedule = generateWeekSchedule(weekKey, [])
+  r = canAssignDoctorToSlot("CH", "2026-07-20", "Garde Matin", "LUNDI", schedule, [])
+  assert.equal(r.allowed, false, "CH interdit sur Garde Matin")
+  r = canAssignDoctorToSlot("CH", "2026-07-25", "Garde Midi", "SAMEDI", schedule, [])
+  assert.equal(r.allowed, false, "CH interdit sur Garde week-end")
+  r = canAssignDoctorToSlot("CH", "2026-07-20", "Astreintes ATL Nuit", "LUNDI", schedule, [])
+  assert.equal(r.allowed, true, "CH autorisé sur ATL")
+
+  // Week-end : remplaçant de garde → association médecin toujours OK
+  schedule = generateWeekSchedule(weekKey, [])
+  schedule["Garde Matin"].SAMEDI = {
+    value: ["Dr Martin"],
+    remplacant: "Dr Martin",
+    type: "doctor",
+    status: "validated",
+  }
+  // Médecin déjà sur une autre tâche matin (excluait normalement)
+  schedule["Matin - Cs PSS"].SAMEDI = { value: ["B"], type: "doctor", status: "validated" }
+  r = canAssignDoctorToSlot("B", "2026-07-25", "Garde Matin", "SAMEDI", schedule, [])
+  assert.equal(r.allowed, true, `remplacant+médecin week-end: ${r.reason}`)
+
+  // Sans remplaçant : exclusion mutuelle normale (ATL week-end bloque Garde)
+  schedule["Garde Matin"].DIMANCHE = { value: [], type: "empty", status: "validated" }
+  r = canAssignDoctorToSlot("O", "2026-07-26", "Garde Matin", "DIMANCHE", schedule, [])
+  assert.equal(r.allowed, false, "sans remplacant, ATL week-end bloque Garde")
+
+  schedule["Garde Matin"].DIMANCHE = {
+    value: ["Dr Dupont"],
+    remplacant: "Dr Dupont",
+    type: "doctor",
+    status: "validated",
+  }
+  schedule["1/2 journée off Matin"].DIMANCHE = {
+    value: ["O"],
+    type: "doctor",
+    status: "validated",
+  }
+  r = canAssignDoctorToSlot("O", "2026-07-26", "Garde Matin", "DIMANCHE", schedule, [])
+  assert.equal(r.allowed, true, "½-off n’empêche pas association remplacant week-end")
+
   console.log("✅ slot-blocking tests passed")
 }
 
