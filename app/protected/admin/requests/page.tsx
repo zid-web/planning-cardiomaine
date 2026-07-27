@@ -433,8 +433,9 @@ export default function AdminRequestsPage() {
   if (!authorized) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <div className="mx-auto max-w-7xl space-y-4">
+    // Root layout = overflow-hidden : scroller ici sinon la liste est tronquée.
+    <div className="h-full overflow-y-auto overscroll-y-contain bg-slate-50">
+      <div className="mx-auto max-w-7xl space-y-4 p-4 pb-20 md:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Demandes de changement</h1>

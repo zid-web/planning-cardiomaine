@@ -17,6 +17,7 @@ required service is the Next.js dev server; the backend is Supabase.
 - UI moderne dans `components/today-view.tsx` et `components/week-view.tsx` (montées par `ScheduleApp`).
 - **Notes du jour** (onglet Aujourd’hui) : carte cliquable → modale texte → `saveScheduleToDb` via `updateSchedule` sur la ligne `Notes du jour`.
 - Toolbar admin : **Journal** = audit `schedule_history` (qui a changé quoi). Boutons outline : forcer `!text-slate-900` + fond blanc (sinon icônes transparentes).
+- **Pages admin** (`/protected/admin/users|requests|feedback`) : le layout racine est `overflow-hidden` — chaque page doit scroller avec `h-full overflow-y-auto` (sinon liste tronquée / emails invisibles).
 - **Couleurs / modales** : dans `app/globals.css`, les tokens doivent être des couleurs CSS complètes (`hsl(...)`), pas des triplets HSL nus — sinon `bg-card` / `bg-background` → transparent (Notes du jour, Cards). Dialogs/Cards/Textarea : préférer `bg-white text-slate-900` en secours.
 
 ### Congés (ligne unique absences)
