@@ -1,5 +1,6 @@
 import { parseISO, isAfter, isBefore } from "date-fns"
 import { DAYS } from "@/lib/constants"
+import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 
 /** Rotation Visite : uniquement U, A, B — une semaine chacun. */
@@ -126,6 +127,8 @@ function assignIfAvailable(
  * - Rythmo : P mardi (matin+apm), U mercredi apm, A lundi+jeudi apm —
  *   **uniquement si le médecin n’est pas en congés** (sinon contrainte sautée, case libre)
  * - Visite : uniquement U/A/B en rotation hebdomadaire, hors vacances
+ * - DOC022 : ETT Poret lun matin, écho enfants S mer apm, EE2 V lun matin /
+ *   O ven matin, Scinti T lun+mer / R mar
  */
 export function applyFixedClinicalAssignments(
   schedule: ScheduleData,
@@ -170,6 +173,12 @@ export function applyFixedClinicalAssignments(
   // --- DAAS : EE lundi après-midi uniquement ---
   assignIfAvailable(schedule, "Apm - EE2", "LUNDI", "DAAS", weekKey, vacations, assignOpts)
 
+  // --- DOC022 : créneaux cliniques / hors site additionnels ---
+  for (const slot of DOC022_FIXED_CLINICAL_SLOTS) {
+    if (!schedule[slot.row]) continue
+    assignIfAvailable(schedule, slot.row, slot.day, slot.doctor, weekKey, vacations, assignOpts)
+  }
+
   return schedule
 }
 
@@ -195,6 +204,11 @@ export function clearFixedAssigneesOnVacation(
     { row: "Matin - Rythmo", day: "MARDI", doctor: "P" },
     { row: "Apm - Rythmo", day: "MARDI", doctor: "P" },
     { row: "Apm - Rythmo", day: "MERCREDI", doctor: "U" },
+    ...DOC022_FIXED_CLINICAL_SLOTS.map((s) => ({
+      row: s.row,
+      day: s.day,
+      doctor: s.doctor,
+    })),
   ]
 
   for (const day of DAYS) {
