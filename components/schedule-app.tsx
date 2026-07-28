@@ -56,6 +56,7 @@ import {
 import {
   applyStructuralConstraints,
   schedulesDiffer,
+  twinCoroAtlRow,
 } from "@/lib/apply-structural-constraints"
 import {
   extractSundayNightGuardDoctor,
@@ -110,7 +111,6 @@ import {
   isSolverProposalCell,
   countSolverProposalCells,
 } from "@/lib/guard-api-mapping"
-import { twinCoroAtlRow } from "@/lib/apply-structural-constraints"
 import { toast } from "sonner"
 import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
 import { applyNctAssignmentsToFullSchedule, type NctAssignment, weekKeyFromIsoDate } from "@/lib/nct-command"
