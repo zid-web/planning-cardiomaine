@@ -52,8 +52,8 @@ export const DOC022_CLINICAL_ELIGIBILITY = {
   coro: ["W", "M", "O", "FV"],
   /** Rythmologie */
   rythmo: ["A", "U", "P"],
-  /** Rééducation */
-  reeduc: ["Z", "B", "S", "G", "H", "K"],
+  /** Rééducation — R éligible (DOC022 + rules_config mercredi) */
+  reeduc: ["Z", "B", "S", "G", "H", "K", "R"],
   /** Contrôle pace-maker */
   controle_pm: ["A", "U", "P"],
   /** IRM cœur */

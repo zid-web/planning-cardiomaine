@@ -17,6 +17,7 @@ function main() {
   assert.ok(DOC022_CLINICAL_ELIGIBILITY.irm.includes("S"))
   assert.ok(DOC022_CLINICAL_ELIGIBILITY.coro.includes("W"))
   assert.ok(!DOC022_CLINICAL_ELIGIBILITY.stress.includes("W"), "W non éligible Stress")
+  assert.ok(DOC022_CLINICAL_ELIGIBILITY.reeduc.includes("R"), "R éligible rééducation")
   assert.ok(DOC022_FIXED_CLINICAL_SLOTS.length >= 5)
 
   const payload = toSolverClinicalRulesPayload()
