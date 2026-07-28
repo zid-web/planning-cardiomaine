@@ -175,7 +175,7 @@ export type ParsedVoiceCommand = {
   slot: string;
   activity: string;
   doctor_out?: string | null;
-  doctor_in: string;
+  doctor_in?: string | null;
   confidence?: string;
 };
 
