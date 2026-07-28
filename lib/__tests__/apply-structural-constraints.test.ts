@@ -199,11 +199,34 @@ function main() {
   assert.deepEqual(coroSched["Astreintes ATL Matin"].LUNDI.value, ["W"])
   assert.equal(coroSched["Astreintes ATL Matin"].LUNDI.status, "pending")
   assert.deepEqual(coroSched["Astreintes ATL Midi"].LUNDI.value, ["O"])
-  // Coro vide → ATL vidé
+
+  // Coro vide + ATL validated → ATL vidé
   coroSched["Matin - Coro"].MARDI = { value: [], type: "empty", status: "validated" }
-  coroSched["Astreintes ATL Matin"].MARDI = { value: ["M"], type: "doctor", status: "pending" }
+  coroSched["Astreintes ATL Matin"].MARDI = { value: ["M"], type: "doctor", status: "validated" }
   coroSched = applyAtlFollowsCoroConstraints(coroSched)
   assert.deepEqual(coroSched["Astreintes ATL Matin"].MARDI.value, [])
+
+  // Générer : ATL pending sans Coro → remonter vers Coro (Prop. visibles)
+  let genSched = generateWeekSchedule(oddWeek, [])
+  genSched["Matin - Coro"].MERCREDI = { value: [], type: "empty", status: "validated" }
+  genSched["Astreintes ATL Matin"].MERCREDI = {
+    value: ["W"],
+    type: "doctor",
+    status: "pending",
+  }
+  genSched["Apm - Coro"].MERCREDI = { value: [], type: "empty", status: "validated" }
+  genSched["Astreintes ATL Midi"].MERCREDI = {
+    value: ["O"],
+    type: "doctor",
+    status: "pending",
+  }
+  genSched = applyAtlFollowsCoroConstraints(genSched)
+  assert.deepEqual(genSched["Matin - Coro"].MERCREDI.value, ["W"])
+  assert.equal(genSched["Matin - Coro"].MERCREDI.status, "pending")
+  assert.deepEqual(genSched["Astreintes ATL Matin"].MERCREDI.value, ["W"])
+  assert.equal(genSched["Astreintes ATL Matin"].MERCREDI.status, "pending")
+  assert.deepEqual(genSched["Apm - Coro"].MERCREDI.value, ["O"])
+  assert.deepEqual(genSched["Astreintes ATL Midi"].MERCREDI.value, ["O"])
 
   console.log("✅ apply-structural-constraints tests passed")
 }

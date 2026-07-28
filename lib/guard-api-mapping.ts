@@ -151,6 +151,19 @@ export function isSolverProposalCell(
   return GENERATOR_PROPOSAL_ROW_KEYS.has(rowKey)
 }
 
+/** Nombre de cellules « Prop. » (pending solveur) dans une semaine. */
+export function countSolverProposalCells(schedule: ScheduleData | null | undefined): number {
+  if (!schedule) return 0
+  let n = 0
+  for (const [rowKey, row] of Object.entries(schedule)) {
+    if (!GENERATOR_PROPOSAL_ROW_KEYS.has(rowKey) || !row) continue
+    for (const day of DAYS) {
+      if (isSolverProposalCell(rowKey, row[day])) n++
+    }
+  }
+  return n
+}
+
 /** Suffixes émis par le solveur pour HIST:: / HORSSITE:: (après split ` - `). */
 const HORS_SITE_ACTIVITY_TO_ROW: Record<string, string> = {
   IRM: "Hors site - IRM",

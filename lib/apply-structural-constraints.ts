@@ -198,25 +198,63 @@ function setCellDoctors(
 }
 
 /**
- * Lun–Ven : Astreintes ATL Matin / Midi suivent Coro matin / Coro apm
- * (même médecin). Si Coro est vide, l’ATL correspondante est vidée.
- * Le statut (pending/validated) est repris de la cellule Coro.
+ * Lun–Ven : Astreintes ATL Matin / Midi ↔ Coro matin / Coro apm (même médecin).
+ *
+ * - Si Coro est rempli → ATL suit Coro (règle métier).
+ * - Si Coro est vide mais ATL a une **proposition pending** (solveur ASTREINTE
+ *   sans CORO) → remonter ATL → Coro pour afficher les Prop. violettes, puis
+ *   ATL reste aligné.
+ * - Sinon (Coro vide, ATL vide ou validated) → ATL vidée.
  */
 export function applyAtlFollowsCoroConstraints(schedule: ScheduleData): ScheduleData {
   let next = schedule
   for (const day of WEEKDAYS) {
-    const coroMatin = schedule["Matin - Coro"]?.[day]
-    const coroApm = schedule["Apm - Coro"]?.[day]
-    if (coroMatin || schedule["Astreintes ATL Matin"]?.[day]) {
-      const status = (coroMatin?.status || "validated") as "validated" | "pending"
-      next = setCellDoctors(next, "Astreintes ATL Matin", day, coroMatin?.value || [], status)
-    }
-    if (coroApm || schedule["Astreintes ATL Midi"]?.[day]) {
-      const status = (coroApm?.status || "validated") as "validated" | "pending"
-      next = setCellDoctors(next, "Astreintes ATL Midi", day, coroApm?.value || [], status)
-    }
+    next = syncAtlCoroPair(
+      next,
+      day,
+      "Matin - Coro",
+      "Astreintes ATL Matin",
+    )
+    next = syncAtlCoroPair(
+      next,
+      day,
+      "Apm - Coro",
+      "Astreintes ATL Midi",
+    )
   }
   return next
+}
+
+function syncAtlCoroPair(
+  schedule: ScheduleData,
+  day: string,
+  coroRow: string,
+  atlRow: string,
+): ScheduleData {
+  const coro = schedule[coroRow]?.[day]
+  const atl = schedule[atlRow]?.[day]
+  if (!coro && !atl) return schedule
+
+  const coroVals = coro?.value || []
+  const atlVals = atl?.value || []
+
+  if (coroVals.length > 0) {
+    const status = (coro?.status || "validated") as "validated" | "pending"
+    return setCellDoctors(schedule, atlRow, day, coroVals, status)
+  }
+
+  // Coro vide : proposition solveur sur ATL → synchroniser vers Coro
+  if (atlVals.length > 0 && atl?.status === "pending") {
+    let next = setCellDoctors(schedule, coroRow, day, atlVals, "pending")
+    next = setCellDoctors(next, atlRow, day, atlVals, "pending")
+    return next
+  }
+
+  // Coro vide + ATL non-proposition → vider ATL
+  if (atl) {
+    return setCellDoctors(schedule, atlRow, day, [], "validated")
+  }
+  return schedule
 }
 
 /** NCT calendrier pour la semaine courante. */
