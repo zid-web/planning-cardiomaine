@@ -22,6 +22,10 @@ import {
   parseNctAssignmentsFromText,
 } from '@/lib/nct-command'
 import {
+  isDoctorInValidationError,
+  parseVoiceCommandLocally,
+} from '@/lib/voice-local-parse'
+import {
   uploadPlanningPdfDirect,
   uploadPlanningPdfViaProxy,
 } from '@/lib/pdf-upload-client'
@@ -293,6 +297,29 @@ export function VoiceAndUploadPanel({
       if (!response.ok) {
         const detail = data.error || data.detail || data.message
         const msg = typeof detail === 'string' ? detail : JSON.stringify(detail)
+
+        // Repli local : bug backend fréquent doctor_in=null (Pydantic) —
+        // on applique quand même une interprétation heuristique si possible.
+        if (isDoctorInValidationError(msg)) {
+          const local = parseVoiceCommandLocally(trimmed, payload.reference_date, knownDoctors)
+          if (local?.doctor_in) {
+            const successMessage =
+              `Interprétation locale : ${local.doctor_in} → ${local.activity} le ${local.date}` +
+              ` (le serveur n’a pas renvoyé doctor_in)`
+            setStatus({ type: "success", message: successMessage })
+            toast.success(successMessage)
+            setTranscript("")
+            setEditedTranscript("")
+            onCommandExecuted?.({
+              parsed_command: local,
+              message: successMessage,
+              local_fallback: true,
+            })
+            setTimeout(() => setStatus({ type: "idle", message: "" }), 3000)
+            return
+          }
+        }
+
         throw new Error(msg || 'Erreur lors du traitement de la commande')
       }
 
