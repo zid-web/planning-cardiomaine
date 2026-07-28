@@ -214,6 +214,8 @@ export type GenerateWeekRequestPayload = {
    * Le solveur OR-Tools consomme ce champ ; le front ne remplit plus ces cases après coup.
    */
   historical_patterns?: HistoricalPatternsRequestPayload;
+  /** Surcharge partielle de rules_config (DOC022 / consignes groupe). */
+  rules_override?: Record<string, unknown>;
 };
 
 /** Monday (ISO YYYY-MM-DD) for the week containing `date`. */

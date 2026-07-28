@@ -75,7 +75,7 @@ export const DOCTOR_METADATA: Record<
   }
 > = {
   P: {
-    name: 'P',
+    name: 'Poret',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -84,7 +84,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   Z: {
-    name: 'Z',
+    name: 'Denizet',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -93,7 +93,7 @@ export const DOCTOR_METADATA: Record<
     status: 'admin',
   },
   B: {
-    name: 'B',
+    name: 'Braun',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -102,7 +102,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   G: {
-    name: 'G',
+    name: 'Terrien',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -111,7 +111,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   W: {
-    name: 'W',
+    name: 'Ben Amara',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -120,7 +120,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   M: {
-    name: 'M',
+    name: 'Zid',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -129,7 +129,7 @@ export const DOCTOR_METADATA: Record<
     status: 'admin',
   },
   S: {
-    name: 'S',
+    name: 'Saint André',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -138,7 +138,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   O: {
-    name: 'O',
+    name: 'Bros',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -147,7 +147,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   H: {
-    name: 'H',
+    name: 'Bachelet',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -156,7 +156,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   U: {
-    name: 'U',
+    name: 'Kabalu',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -165,7 +165,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   A: {
-    name: 'A',
+    name: 'Amirault',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -174,7 +174,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   V: {
-    name: 'V',
+    name: 'Lefebvre',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -192,7 +192,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   K: {
-    name: 'K',
+    name: 'Dericbourg',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -201,7 +201,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   R: {
-    name: 'R',
+    name: 'Rousseau',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,
@@ -210,7 +210,7 @@ export const DOCTOR_METADATA: Record<
     status: 'internal',
   },
   T: {
-    name: 'T',
+    name: 'Cloitre',
     is_externe: false,
     can_be_assigned_to_guards: true,
     can_be_assigned_to_astreinte: true,

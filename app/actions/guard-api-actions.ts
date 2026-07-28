@@ -13,6 +13,7 @@ import {
 import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
+import { toSolverClinicalRulesPayload } from "@/lib/group-clinical-rules";
 
 // Configuration
 const GUARD_API_URL =
@@ -261,6 +262,8 @@ export async function generateGuardsViaAPI(
         points_coro: doc.points_coro,
       })),
       historical_patterns: historicalPatterns,
+      // Consignes DOC022 (éligibilités + créneaux) — merge côté solveur si supporté
+      rules_override: toSolverClinicalRulesPayload(),
     };
 
     // 6. Appel à l'API Render
