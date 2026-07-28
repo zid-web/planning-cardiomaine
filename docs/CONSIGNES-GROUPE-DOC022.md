@@ -28,8 +28,24 @@ Fichier agent : uploads `DOC022_*.pdf`. Encodage machine : `lib/group-clinical-r
 - **½-off** mercredi apm M/W/G/Z/H/B ; mardi apm S ; jeudi apm U/P ; vendredi apm O/A/… ; récupération après garde nuit
 - **IRM** S lundi matin + vendredi apm
 - **Visite** rotation U → A → B (1 semaine / 3)
-- **CORO** W/M/O/FV ; **ATL Matin/Midi/Soir** M/O/W/FV/CH (coronarographistes uniquement — **pas** R/V/T/G) ; **Rythmo** A/U/P ; **NCT** M/W ; **Rééducation** Z/B/S/G/H (+R/K mercredi)
+- **CORO** W/M/O/FV ; **ATL Matin/Midi/Soir** M/O/W/FV/CH (coronarographistes uniquement — **pas** R/V/T/G) ; **Rythmo** A/U/P (calendrier impair/pair — voir ci-dessous) ; **NCT** M/W ; **Rééducation** Z/B/S/G/H (+R/K mercredi)
 - **DAAS** Apm EE2 lundi ; **FV** garde nuit lundi + coro jeudi apm
+
+### Rythmo (parité semaine ISO)
+
+| | Impaire | Paire |
+|--|---------|-------|
+| A | Lun + Jeu apm | Lun + Jeu apm |
+| P | Mar matin + apm | Mar matin + apm |
+| U | Mer apm + **Ven apm** | Mer **matin + apm** |
+| Ven matin | — | Alternance **U / P** (parmi les semaines paires) |
+
+### Weekend Garde / ATL
+
+- Sam Garde Matin = Ven Garde Nuit (+ associé Sam Midi/Nuit)
+- Sam Garde Midi = Nuit (un médecin) ; Dim Garde Matin = Midi = Nuit (un médecin)
+- Sam/Dim ATL Matin = Midi = Nuit (un médecin / jour)
+- Lun–Ven ATL Matin/Midi = Coro matin/apm
 
 ## Ajouté depuis DOC022 (cette itération)
 
@@ -57,10 +73,12 @@ Ces fréquences restent soft (historique / calendrier NCT) — pas forcées chaq
 
 ## Backend
 
-Patch ATL coronarographistes : `patches/guard-api-astreinte-coronarographistes.patch`  
-(+ addon JSON `patches/rules_config-doc022-addon.json`)  
-à merger dans `guard-api-cardiomaine` (`rules_config.json` + `solver.py` + `config.py`).  
-Sans ce patch, le solveur autorise encore tous les `PERMANENT` sur `ASTREINTE` (d’où des Prop. R/V/T/G) — le front filtre déjà côté affichage.
+Patches à appliquer sur `guard-api-cardiomaine` (Cursor ne peut pas y pusher) :
+
+1. `patches/guard-api-astreinte-coronarographistes.patch` — ATL = M/O/W/FV/CH  
+2. `patches/guard-api-weekend-garde-atl-rythmo.patch` — couplages weekend Garde/ATL + calendrier Rythmo impair/pair  
+
+Sans ces patches, le front applique déjà les règles à l’affichage / après Générer.
 
 ## Hors scope solveur planning
 

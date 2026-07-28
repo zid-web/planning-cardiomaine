@@ -32,7 +32,24 @@ function main() {
   assert.deepEqual(schedule["Apm - Rythmo"].JEUDI.value, ["A"])
   assert.deepEqual(schedule["Matin - Rythmo"].MARDI.value, ["P"])
   assert.deepEqual(schedule["Apm - Rythmo"].MARDI.value, ["P"])
+  // W30 paire : U Mer matin+apm ; Ven matin U (alternance)
+  assert.deepEqual(schedule["Matin - Rythmo"].MERCREDI.value, ["U"])
   assert.deepEqual(schedule["Apm - Rythmo"].MERCREDI.value, ["U"])
+  assert.deepEqual(schedule["Matin - Rythmo"].VENDREDI.value, ["U"])
+  assert.deepEqual(schedule["Apm - Rythmo"].VENDREDI.value, [])
+
+  // W31 impaire : U Mer apm + Ven apm ; pas Mer matin / pas Ven matin
+  const odd = applyFixedClinicalAssignments(generateWeekSchedule("2026-W31"), "2026-W31")
+  assert.deepEqual(odd["Apm - Rythmo"].MERCREDI.value, ["U"])
+  assert.deepEqual(odd["Matin - Rythmo"].MERCREDI.value, [])
+  assert.deepEqual(odd["Apm - Rythmo"].VENDREDI.value, ["U"])
+  assert.deepEqual(odd["Matin - Rythmo"].VENDREDI.value, [])
+
+  // W32 paire : Ven matin = P (alternance)
+  const even32 = applyFixedClinicalAssignments(generateWeekSchedule("2026-W32"), "2026-W32")
+  assert.deepEqual(even32["Matin - Rythmo"].VENDREDI.value, ["P"])
+  assert.deepEqual(even32["Matin - Rythmo"].MERCREDI.value, ["U"])
+  assert.deepEqual(even32["Apm - Rythmo"].MERCREDI.value, ["U"])
 
   const visite = VISITE_ROTATION[30 % 3]
   assert.equal(visite, "U")

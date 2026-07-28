@@ -6,6 +6,48 @@ import type { DoctorVacation, ScheduleData } from "@/lib/types"
 /** Rotation Visite : uniquement U, A, B — une semaine chacun. */
 export const VISITE_ROTATION = ["U", "A", "B"] as const
 
+/** Semaine ISO impaire (week_type solveur = 1). */
+export function isOddIsoWeek(weekKey: string): boolean {
+  const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
+  return weekNum % 2 === 1
+}
+
+/**
+ * Créneaux Rythmo fixes selon parité de semaine.
+ * Impaire : A Lun+Jeu apm ; P Mar matin+apm ; U Mer apm + Ven apm.
+ * Paire : A Lun+Jeu apm ; P Mar matin+apm ; U Mer matin+apm ;
+ *         Ven matin en alternance U/P (parmi les semaines paires).
+ */
+export function rythmoFixedSlotsForWeek(
+  weekKey: string,
+): Array<{ row: string; day: string; doctor: string }> {
+  const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
+  const odd = weekNum % 2 === 1
+  const slots: Array<{ row: string; day: string; doctor: string }> = [
+    { row: "Apm - Rythmo", day: "LUNDI", doctor: "A" },
+    { row: "Apm - Rythmo", day: "JEUDI", doctor: "A" },
+    { row: "Matin - Rythmo", day: "MARDI", doctor: "P" },
+    { row: "Apm - Rythmo", day: "MARDI", doctor: "P" },
+  ]
+  if (odd) {
+    slots.push({ row: "Apm - Rythmo", day: "MERCREDI", doctor: "U" })
+    slots.push({ row: "Apm - Rythmo", day: "VENDREDI", doctor: "U" })
+  } else {
+    slots.push({ row: "Matin - Rythmo", day: "MERCREDI", doctor: "U" })
+    slots.push({ row: "Apm - Rythmo", day: "MERCREDI", doctor: "U" })
+    // Alternance U/P sur les semaines paires uniquement (W30→U, W32→P, …)
+    const evenHalf = Math.floor(weekNum / 2)
+    const venDoctor = evenHalf % 2 === 1 ? "U" : "P"
+    slots.push({ row: "Matin - Rythmo", day: "VENDREDI", doctor: venDoctor })
+  }
+  return slots
+}
+
+/** Cases Rythmo où A/P/U peuvent apparaître (pour nettoyage hors calendrier). */
+const RYTHMO_APU_DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"] as const
+const RYTHMO_APU_ROWS = ["Matin - Rythmo", "Apm - Rythmo"] as const
+const RYTHMO_FIXED_DOCTORS = new Set(["A", "P", "U"])
+
 /**
  * Contraintes fixes métier (vacations cliniques / hors site / FV / DAAS).
  * Appliquées à la création de semaine et lors de « Générer ».
@@ -124,7 +166,7 @@ function assignIfAvailable(
  * - IRM : uniquement S — Lundi (matin) + Vendredi (après-midi), hors vacances
  * - FV : Garde Nuit chaque Lundi ; Coro chaque Jeudi après-midi ; hors vacances
  * - DAAS : uniquement Apm - EE2 chaque Lundi, hors vacances
- * - Rythmo : P mardi (matin+apm), U mercredi apm, A lundi+jeudi apm —
+ * - Rythmo : calendrier A/P/U selon semaine impaire/paire (voir `rythmoFixedSlotsForWeek`) —
  *   **uniquement si le médecin n’est pas en congés** (sinon contrainte sautée, case libre)
  * - Visite : uniquement U/A/B en rotation hebdomadaire, hors vacances
  * - DOC022 : ETT Poret lun matin, écho enfants S mer apm, EE2 V lun matin /
@@ -148,15 +190,27 @@ export function applyFixedClinicalAssignments(
     assignIfAvailable(schedule, "Hors site - IRM", "VENDREDI", "S", weekKey, vacations, assignOpts)
   }
 
-  // --- Rythmo (saute si le médecin est en congés ce jour-là → case libre) ---
-  // P : Mardi matin + apm
-  assignIfAvailable(schedule, "Matin - Rythmo", "MARDI", "P", weekKey, vacations, assignOpts)
-  assignIfAvailable(schedule, "Apm - Rythmo", "MARDI", "P", weekKey, vacations, assignOpts)
-  // U : Mercredi apm
-  assignIfAvailable(schedule, "Apm - Rythmo", "MERCREDI", "U", weekKey, vacations, assignOpts)
-  // A : Lundi + Jeudi après-midi
-  assignIfAvailable(schedule, "Apm - Rythmo", "LUNDI", "A", weekKey, vacations, assignOpts)
-  assignIfAvailable(schedule, "Apm - Rythmo", "JEUDI", "A", weekKey, vacations, assignOpts)
+  // --- Rythmo (calendrier impair/pair ; saute si congés) ---
+  const rythmoSlots = rythmoFixedSlotsForWeek(weekKey)
+  const rythmoSlotKeys = new Set(rythmoSlots.map((s) => `${s.row}||${s.day}`))
+  // Retirer A/P/U des cases hors calendrier de la semaine (couvertures manuelles
+  // sur une case du calendrier — ex. P si U absent — sont conservées).
+  for (const row of RYTHMO_APU_ROWS) {
+    if (!schedule[row]) continue
+    for (const day of RYTHMO_APU_DAYS) {
+      if (rythmoSlotKeys.has(`${row}||${day}`)) continue
+      const cell = schedule[row][day]
+      if (!cell) continue
+      const values = cell.value || []
+      const filtered = values.filter((d) => !RYTHMO_FIXED_DOCTORS.has(d))
+      if (filtered.length !== values.length) {
+        setDoctors(schedule, row, day, filtered)
+      }
+    }
+  }
+  for (const slot of rythmoSlots) {
+    assignIfAvailable(schedule, slot.row, slot.day, slot.doctor, weekKey, vacations, assignOpts)
+  }
 
   // --- Visite : U → A → B par semaine ---
   if (schedule["Matin - Visite"]) {
@@ -199,11 +253,11 @@ export function clearFixedAssigneesOnVacation(
     { row: "Garde Nuit", day: "LUNDI", doctor: "FV" },
     { row: "Apm - Coro", day: "JEUDI", doctor: "FV" },
     { row: "Apm - EE2", day: "LUNDI", doctor: "DAAS" },
-    { row: "Apm - Rythmo", day: "LUNDI", doctor: "A" },
-    { row: "Apm - Rythmo", day: "JEUDI", doctor: "A" },
-    { row: "Matin - Rythmo", day: "MARDI", doctor: "P" },
-    { row: "Apm - Rythmo", day: "MARDI", doctor: "P" },
-    { row: "Apm - Rythmo", day: "MERCREDI", doctor: "U" },
+    ...rythmoFixedSlotsForWeek(weekKey).map((s) => ({
+      row: s.row,
+      day: s.day,
+      doctor: s.doctor,
+    })),
     ...DOC022_FIXED_CLINICAL_SLOTS.map((s) => ({
       row: s.row,
       day: s.day,
