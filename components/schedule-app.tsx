@@ -110,6 +110,7 @@ import {
   isSolverProposalCell,
   countSolverProposalCells,
 } from "@/lib/guard-api-mapping"
+import { twinCoroAtlRow } from "@/lib/apply-structural-constraints"
 import { toast } from "sonner"
 import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
 import { applyNctAssignmentsToFullSchedule, type NctAssignment, weekKeyFromIsoDate } from "@/lib/nct-command"
@@ -340,7 +341,7 @@ export function ScheduleApp({
     const propCount = countSolverProposalCells(mergedWeekSchedule)
     if (propCount > 0) {
       toast.success(
-        `${propCount} proposition${propCount > 1 ? "s" : ""} générée${propCount > 1 ? "s" : ""} (violet « Prop. ») — à valider.`,
+        `${propCount} proposition${propCount > 1 ? "s" : ""} générée${propCount > 1 ? "s" : ""} (violet « Prop. ») — à valider sur la vue Globale.`,
       )
     } else {
       toast.warning(
@@ -600,6 +601,18 @@ export function ScheduleApp({
       },
     }
 
+    // Coro ≡ ATL Matin/Midi (Lun–Ven) : même médecin sur les deux lignes
+    const twin = twinCoroAtlRow(row, day)
+    if (twin && (schedule[twin]?.[day] || newSchedule[twin])) {
+      newSchedule = {
+        ...newSchedule,
+        [twin]: {
+          ...(newSchedule[twin] || schedule[twin] || {}),
+          [day]: { ...nextCell },
+        },
+      }
+    }
+
     // Garde Nuit modifiée → reconstruire ½ off matin+apm du lendemain
     // (uniquement habituels + médecin(s) réellement de garde ; pas le samedi)
     // Dimanche → ½ off lundi de la semaine suivante
@@ -851,16 +864,35 @@ export function ScheduleApp({
     const { row, day } = selectedCell
     const cell = schedule[row]?.[day]
     if (!cell) return
-    const newSchedule: ScheduleData = {
+    const validated: CellData = {
+      ...cell,
+      status: "validated",
+      request: undefined,
+    }
+    let newSchedule: ScheduleData = {
       ...schedule,
       [row]: {
         ...schedule[row],
-        [day]: {
-          ...cell,
-          status: "validated",
-          request: undefined,
-        },
+        [day]: validated,
       },
+    }
+    // Coro ≡ ATL : valider les deux lignes ensemble
+    const twin = twinCoroAtlRow(row, day)
+    if (twin && schedule[twin]?.[day]) {
+      newSchedule = {
+        ...newSchedule,
+        [twin]: {
+          ...schedule[twin],
+          [day]: {
+            ...schedule[twin][day],
+            status: "validated",
+            request: undefined,
+            value: [...(validated.value || [])],
+            type: validated.type,
+            remplacant: validated.remplacant,
+          },
+        },
+      }
     }
 
     void updateSchedule(newSchedule)
