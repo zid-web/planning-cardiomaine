@@ -7,6 +7,7 @@ import {
   applyAtlFollowsCoroConstraints,
   applyChAstreinteConstraints,
   applyStructuralConstraints,
+  applyWeekendGardeAtlCoupling,
   schedulesDiffer,
 } from "@/lib/apply-structural-constraints"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
@@ -264,6 +265,29 @@ function main() {
   assert.deepEqual(badAtl["Astreintes ATL Midi"].MARDI.value, [])
   assert.deepEqual(badAtl["Astreintes ATL Nuit"].MERCREDI.value, ["W"])
   assert.deepEqual(badAtl["Matin - Coro"].JEUDI.value, [])
+
+  // Weekend Garde : Sam Midi=Nuit ; Dim all same ; Sam Matin = Ven Nuit + associé
+  let we = generateWeekSchedule(weekKey, [])
+  we["Garde Nuit"].VENDREDI = { value: ["B"], type: "doctor", status: "pending" }
+  we["Garde Midi"].SAMEDI = { value: ["G"], type: "doctor", status: "pending" }
+  we["Garde Nuit"].SAMEDI = { value: [], type: "empty", status: "validated" }
+  we["Garde Matin"].SAMEDI = { value: [], type: "empty", status: "validated" }
+  we["Garde Matin"].DIMANCHE = { value: ["S"], type: "doctor", status: "pending" }
+  we["Garde Midi"].DIMANCHE = { value: [], type: "empty", status: "validated" }
+  we["Garde Nuit"].DIMANCHE = { value: [], type: "empty", status: "validated" }
+  we["Astreintes ATL Matin"].SAMEDI = { value: ["W"], type: "doctor", status: "pending" }
+  we["Astreintes ATL Midi"].SAMEDI = { value: [], type: "empty", status: "validated" }
+  we["Astreintes ATL Nuit"].SAMEDI = { value: [], type: "empty", status: "validated" }
+  we = applyWeekendGardeAtlCoupling(we)
+  assert.deepEqual(we["Garde Midi"].SAMEDI.value, ["G"])
+  assert.deepEqual(we["Garde Nuit"].SAMEDI.value, ["G"])
+  assert.deepEqual(we["Garde Matin"].SAMEDI.value, ["B", "G"])
+  assert.deepEqual(we["Garde Matin"].DIMANCHE.value, ["S"])
+  assert.deepEqual(we["Garde Midi"].DIMANCHE.value, ["S"])
+  assert.deepEqual(we["Garde Nuit"].DIMANCHE.value, ["S"])
+  assert.deepEqual(we["Astreintes ATL Matin"].SAMEDI.value, ["W"])
+  assert.deepEqual(we["Astreintes ATL Midi"].SAMEDI.value, ["W"])
+  assert.deepEqual(we["Astreintes ATL Nuit"].SAMEDI.value, ["W"])
 
   console.log("✅ apply-structural-constraints tests passed")
 }

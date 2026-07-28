@@ -200,10 +200,14 @@ export function rebuildHalfDayOffsForDay(
 }
 
 /**
- * Jour suivant d’une nuit de garde (null si samedi / dimanche / inconnu).
+ * Jour suivant d’une nuit de garde pour la ½ off de récupération.
+ * - SAMEDI / DIMANCHE : pas de récup in-week
+ * - VENDREDI : pas de récup samedi (Sam Garde Matin = Ven Nuit)
  */
 export function nextDayAfterNightGuard(nightDayName: string): string | null {
-  if (nightDayName === "SAMEDI" || nightDayName === "DIMANCHE") return null
+  if (nightDayName === "SAMEDI" || nightDayName === "DIMANCHE" || nightDayName === "VENDREDI") {
+    return null
+  }
   const idx = DAYS.indexOf(nightDayName)
   if (idx < 0 || idx >= DAYS.length - 1) return null
   return DAYS[idx + 1]

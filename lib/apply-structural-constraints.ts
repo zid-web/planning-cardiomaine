@@ -4,6 +4,7 @@ import {
   applyFixedClinicalAssignments,
   clearFixedAssigneesOnVacation,
   dateStrForWeekDay,
+  isOddIsoWeek,
   mondayOfIsoWeekKey,
 } from "@/lib/fixed-assignments"
 import {
@@ -31,16 +32,18 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "IRM = S (Lundi + Vendredi)",
   "FV = Garde Nuit Lundi + Coro Jeudi apm",
   "DAAS = Apm EE2 Lundi",
-  "Rythmo = P mardi, U mercredi apm, A lundi/jeudi apm (uniquement si le médecin n’est pas en congés)",
+  "Rythmo = calendrier A/P/U selon semaine impaire/paire (voir rythmoFixedSlotsForWeek)",
   "Visite = rotation U → A → B",
   "½ journée off habituelles",
-  "½ journée off récupération après Garde Nuit",
+  "½ journée off récupération après Garde Nuit (pas Ven→Sam : Sam Matin = Ven Nuit)",
   "Congés depuis doctor_vacations + retrait absents",
   "NCT calendrier (W/M)",
   "LFB Jeudi rotation B/Z/A",
   "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines impaires) — jamais Garde Matin/Midi/Nuit",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
   "ATL Matin/Midi/Soir = coronarographistes uniquement (M, O, W, FV, CH) — R/V/T/G exclus",
+  "Weekend Garde : Sam Matin = Ven Nuit (+ associé Sam Midi/Nuit) ; Sam Midi=Nuit ; Dim Matin=Midi=Nuit",
+  "Weekend ATL : Sam Matin=Midi=Nuit ; Dim Matin=Midi=Nuit (un médecin / jour)",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
   "Blocages créneau : congés, ½-off, 1 tâche/matin|apm (sauf ATL+Coro, ETT 1+2, EE1+EE2), LFB/CDL hors garde J/J+1 ; doublon Cs=2× case, ETT/EE=2 salles",
 ] as const
@@ -48,6 +51,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
 const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"] as const
 const WEEKEND = ["SAMEDI", "DIMANCHE"] as const
 const ATL_ROWS = ["Astreintes ATL Matin", "Astreintes ATL Midi", "Astreintes ATL Nuit"] as const
+const GARDE_PERIOD_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
 
 /**
  * Roulement CH / WOM (aligné solveur week_type) :
@@ -56,10 +60,7 @@ const ATL_ROWS = ["Astreintes ATL Matin", "Astreintes ATL Midi", "Astreintes ATL
  * - semaine paire (week_type=2) : CH = nuits Mer/Jeu ;
  *   W/O/M = nuits Lun/Mar/Ven + weekend ATL complet
  */
-export function isOddIsoWeek(weekKey: string): boolean {
-  const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
-  return weekNum % 2 === 1
-}
+export { isOddIsoWeek }
 
 export function chNightWeekdaysForWeek(weekKey: string): Set<string> {
   return isOddIsoWeek(weekKey)
@@ -313,6 +314,113 @@ function syncAtlCoroPair(
   return next
 }
 
+function listedInCell(schedule: ScheduleData, row: string, day: string): string[] {
+  return (schedule[row]?.[day]?.value || []).filter((d) => isListedDoctor(d))
+}
+
+function remplacantsInCell(schedule: ScheduleData, row: string, day: string): string[] {
+  return (schedule[row]?.[day]?.value || []).filter((d) => d && !isListedDoctor(d))
+}
+
+function cellPendingStatus(
+  schedule: ScheduleData,
+  rows: readonly string[],
+  day: string,
+): "validated" | "pending" {
+  for (const row of rows) {
+    if (schedule[row]?.[day]?.status === "pending") return "pending"
+  }
+  return "validated"
+}
+
+/**
+ * Unifie plusieurs lignes d’un même jour sur le même pool de médecins listés.
+ * `priorityRows` : première ligne non vide gagne. Remplaçants par case conservés.
+ */
+function unifySameListedDoctors(
+  schedule: ScheduleData,
+  rows: readonly string[],
+  day: string,
+  priorityRows: readonly string[],
+): ScheduleData {
+  let chosen: string[] | null = null
+  for (const row of priorityRows) {
+    const listed = listedInCell(schedule, row, day)
+    if (listed.length > 0) {
+      chosen = listed
+      break
+    }
+  }
+  if (chosen === null) return schedule
+
+  const status = cellPendingStatus(schedule, rows, day)
+  let next = schedule
+  for (const row of rows) {
+    if (!next[row]?.[day]) continue
+    const remplacants = remplacantsInCell(next, row, day)
+    next = setCellDoctors(next, row, day, [...chosen, ...remplacants], status)
+  }
+  return next
+}
+
+/**
+ * Weekend Garde + ATL :
+ * - Sam Garde Midi = Nuit (un médecin)
+ * - Dim Garde Matin = Midi = Nuit (un médecin)
+ * - Sam Garde Matin = Ven Garde Nuit, associée au médecin Sam Midi/Nuit
+ * - Sam/Dim ATL Matin = Midi = Nuit (un médecin / jour)
+ */
+export function applyWeekendGardeAtlCoupling(schedule: ScheduleData): ScheduleData {
+  let next = schedule
+
+  // ATL weekend : un médecin pour Matin+Midi+Nuit par jour
+  for (const day of WEEKEND) {
+    next = unifySameListedDoctors(next, ATL_ROWS, day, [
+      "Astreintes ATL Nuit",
+      "Astreintes ATL Midi",
+      "Astreintes ATL Matin",
+    ])
+  }
+
+  // Sam Garde Midi = Nuit
+  next = unifySameListedDoctors(
+    next,
+    ["Garde Midi", "Garde Nuit"],
+    "SAMEDI",
+    ["Garde Midi", "Garde Nuit"],
+  )
+
+  // Dim Garde Matin = Midi = Nuit
+  next = unifySameListedDoctors(next, GARDE_PERIOD_ROWS, "DIMANCHE", [
+    "Garde Nuit",
+    "Garde Midi",
+    "Garde Matin",
+  ])
+
+  // Sam Garde Matin = Ven Nuit + associé Sam Midi/Nuit
+  const friNight = listedInCell(next, "Garde Nuit", "VENDREDI")
+  const satWeekendDoc = listedInCell(next, "Garde Midi", "SAMEDI")
+  const samMatinListed = [...new Set([...friNight, ...satWeekendDoc])]
+  if (samMatinListed.length > 0 && next["Garde Matin"]?.SAMEDI) {
+    const remplacants = remplacantsInCell(next, "Garde Matin", "SAMEDI")
+    const status =
+      next["Garde Nuit"]?.VENDREDI?.status === "pending" ||
+      next["Garde Midi"]?.SAMEDI?.status === "pending" ||
+      next["Garde Matin"]?.SAMEDI?.status === "pending"
+        ? "pending"
+        : "validated"
+    next = setCellDoctors(
+      next,
+      "Garde Matin",
+      "SAMEDI",
+      [...samMatinListed, ...remplacants],
+      status,
+    )
+  }
+
+  return next
+}
+
 /** NCT calendrier pour la semaine courante. */
 export function applyNctCalendarConstraints(
   schedule: ScheduleData,
@@ -412,6 +520,9 @@ export function applyStructuralConstraints(
   // 3) ATL Matin/Midi Lun–Ven = miroir Coro (après strip CH Matin/Midi)
   next = applyAtlFollowsCoroConstraints(next)
 
+  // 3bis) Weekend : couplage Garde + ATL (Sam/Dim)
+  next = applyWeekendGardeAtlCoupling(next)
+
   // 4) NCT calendrier + LFB
   next = applyNctCalendarConstraints(next, weekKey)
   next = applyLfbThursdayRotation(next, weekKey)
@@ -444,6 +555,9 @@ export function applyStructuralConstraints(
 
   // 10) Re-miroir Coro→ATL après strips (si Coro a perdu un médecin)
   next = applyAtlFollowsCoroConstraints(next)
+
+  // 11) Re-couplage weekend après strips
+  next = applyWeekendGardeAtlCoupling(next)
 
   return next
 }
