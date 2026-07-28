@@ -200,11 +200,19 @@ function main() {
   assert.equal(coroSched["Astreintes ATL Matin"].LUNDI.status, "pending")
   assert.deepEqual(coroSched["Astreintes ATL Midi"].LUNDI.value, ["O"])
 
-  // Coro vide + ATL validated → ATL vidé
+  // Coro vide + ATL validated → les deux restent avec le médecin (même affectation)
   coroSched["Matin - Coro"].MARDI = { value: [], type: "empty", status: "validated" }
   coroSched["Astreintes ATL Matin"].MARDI = { value: ["M"], type: "doctor", status: "validated" }
   coroSched = applyAtlFollowsCoroConstraints(coroSched)
-  assert.deepEqual(coroSched["Astreintes ATL Matin"].MARDI.value, [])
+  assert.deepEqual(coroSched["Matin - Coro"].MARDI.value, ["M"])
+  assert.deepEqual(coroSched["Astreintes ATL Matin"].MARDI.value, ["M"])
+
+  // Les deux vides → restent vides
+  coroSched["Matin - Coro"].JEUDI = { value: [], type: "empty", status: "validated" }
+  coroSched["Astreintes ATL Matin"].JEUDI = { value: [], type: "empty", status: "validated" }
+  coroSched = applyAtlFollowsCoroConstraints(coroSched)
+  assert.deepEqual(coroSched["Matin - Coro"].JEUDI.value, [])
+  assert.deepEqual(coroSched["Astreintes ATL Matin"].JEUDI.value, [])
 
   // Générer : ATL pending sans Coro → remonter vers Coro (Prop. visibles)
   let genSched = generateWeekSchedule(oddWeek, [])
