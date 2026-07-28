@@ -108,6 +108,7 @@ import {
   mergeAssignmentsIntoSchedule,
   mergeSolverWeekIntoExisting,
   isSolverProposalCell,
+  countSolverProposalCells,
 } from "@/lib/guard-api-mapping"
 import { toast } from "sonner"
 import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
@@ -336,9 +337,16 @@ export function ScheduleApp({
     }
 
     setGeneratedScheduleWarnings(warnings)
-    toast.success(
-      "Propositions générées (en attente de validation admin). Les contraintes fixes sont déjà appliquées.",
-    )
+    const propCount = countSolverProposalCells(mergedWeekSchedule)
+    if (propCount > 0) {
+      toast.success(
+        `${propCount} proposition${propCount > 1 ? "s" : ""} générée${propCount > 1 ? "s" : ""} (violet « Prop. ») — à valider.`,
+      )
+    } else {
+      toast.warning(
+        "Génération terminée mais aucune proposition à valider sur les cases vides. Vérifiez les alertes du solveur.",
+      )
+    }
   }
 
   // Planning affiché = données + contraintes structurelles (sans passer par Générer)
