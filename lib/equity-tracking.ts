@@ -23,7 +23,31 @@ export const GARDE_ROWS = new Set(["Garde Matin", "Garde Midi", "Garde Nuit"])
 export const NCT_ROWS = new Set(["Hors site - NCT"])
 /** CORO : compté à part (`getCoroEquity`) — pas de colonne `coro_count` en base. */
 export const CORO_ROWS = new Set(["Matin - Coro", "Apm - Coro"])
+/** Groupe 1 (échographistes) — Cs PSS + Tessée confondus. */
+export const CS_ROWS = new Set([
+  "Matin - Cs PSS",
+  "Matin - Cs Tessée",
+  "Apm - Cs PSS",
+  "Apm - Cs Tessée",
+])
+/** ETT salle 1 + salle 2 confondues. */
+export const ETT_ROWS = new Set([
+  "Matin - ETT salle 1",
+  "Matin - ETT salle 2",
+  "Apm - ETT salle 1",
+  "Apm - ETT salle 2",
+])
+/** Stress Matin + Apm. */
+export const STRESS_ROWS = new Set(["Matin - Stress", "Apm - Stress"])
+/** Médecins du groupe 1 (équité Cs/ETT/Stress côté solveur). */
+export const GROUPE1_ECHO_DOCTORS = new Set(["B", "Z", "H", "G", "S"])
 export const WEEKEND_DAYS = new Set(["SAMEDI", "DIMANCHE"])
+
+export type Groupe1EquityCounts = {
+  cs: number
+  ett: number
+  stress: number
+}
 
 function emptyCounts(): EquityCounts {
   return { astreinte_count: 0, garde_count: 0, nct_count: 0, weekend_count: 0 }
@@ -215,9 +239,46 @@ export async function getCumulativeEquityFromTable(
 
 /** Compte CORO (Matin/Apm) pour une semaine — hors table equity (pas de colonne DB). */
 export function computeWeeklyCoro(scheduleData: ScheduleData): Record<string, number> {
+  return computeWeeklyRowBucket(scheduleData, CORO_ROWS)
+}
+
+/** Compteurs Cs / ETT / Stress pour une semaine (vacations cliniques). */
+export function computeWeeklyGroupe1Clinical(
+  scheduleData: ScheduleData,
+): Record<string, Groupe1EquityCounts> {
+  const out: Record<string, Groupe1EquityCounts> = {}
+  const bump = (doc: string, key: keyof Groupe1EquityCounts) => {
+    if (!doc || doc === "CH" || doc === "I") return
+    if (!isListedDoctor(doc)) return
+    if (!out[doc]) out[doc] = { cs: 0, ett: 0, stress: 0 }
+    out[doc][key]++
+  }
+  for (const [rowKey, dayData] of Object.entries(scheduleData || {})) {
+    const kind: keyof Groupe1EquityCounts | null = CS_ROWS.has(rowKey)
+      ? "cs"
+      : ETT_ROWS.has(rowKey)
+        ? "ett"
+        : STRESS_ROWS.has(rowKey)
+          ? "stress"
+          : null
+    if (!kind) continue
+    for (const cell of Object.values(dayData || {})) {
+      const doctors = Array.isArray((cell as { value?: unknown })?.value)
+        ? ((cell as { value: string[] }).value as string[])
+        : []
+      for (const doc of doctors) bump(doc, kind)
+    }
+  }
+  return out
+}
+
+function computeWeeklyRowBucket(
+  scheduleData: ScheduleData,
+  rows: Set<string>,
+): Record<string, number> {
   const counts: Record<string, number> = {}
   for (const [rowKey, dayData] of Object.entries(scheduleData || {})) {
-    if (!CORO_ROWS.has(rowKey)) continue
+    if (!rows.has(rowKey)) continue
     for (const cell of Object.values(dayData || {})) {
       const doctors = Array.isArray((cell as { value?: unknown })?.value)
         ? ((cell as { value: string[] }).value as string[])
@@ -233,16 +294,17 @@ export function computeWeeklyCoro(scheduleData: ScheduleData): Record<string, nu
 }
 
 /**
- * Équité CORO sur la même fenêtre glissante 6 mois que le reste
- * (ex-`getMonthlyCoroEquity` mensuel — désormais uniformisé).
- * Scan des plannings JSON : pas de colonne `coro_count` en base.
+ * Scan générique des plannings JSON sur la fenêtre glissante 6 mois.
+ * ~40 semaines chargées puis filtrées par `isWeekKeyInEquityWindow`.
  */
-export async function getCoroEquity(
-  now: Date = new Date(),
-): Promise<Record<string, number>> {
+async function accumulateFromScheduleWindow<T>(
+  now: Date,
+  computeWeek: (scheduleData: ScheduleData) => Record<string, T>,
+  merge: (total: Record<string, T>, doc: string, weekVal: T) => void,
+  label: string,
+): Promise<Record<string, T>> {
   try {
     const supabase = await createClient()
-    // ~27 semaines ≈ 6 mois ; on prend large puis on filtre par date exacte
     const { data, error } = await supabase
       .from("schedules")
       .select("week_key, schedule_data")
@@ -252,25 +314,64 @@ export async function getCoroEquity(
 
     if (error || !data?.length) {
       if (error) {
-        console.warn("[equity-tracking] Lecture schedules pour CORO:", error.message)
+        console.warn(`[equity-tracking] Lecture schedules pour ${label}:`, error.message)
       }
       return {}
     }
 
-    const total: Record<string, number> = {}
+    const total: Record<string, T> = {}
     for (const row of data) {
       const weekKey = row.week_key as string
       if (!isWeekKeyInEquityWindow(weekKey, now)) continue
-      const week = computeWeeklyCoro(row.schedule_data as ScheduleData)
-      for (const [doc, n] of Object.entries(week)) {
-        total[doc] = (total[doc] || 0) + n
+      const week = computeWeek(row.schedule_data as ScheduleData)
+      for (const [doc, val] of Object.entries(week)) {
+        merge(total, doc, val as T)
       }
     }
     return total
   } catch (err) {
-    console.warn("[equity-tracking] Erreur getCoroEquity:", err)
+    console.warn(`[equity-tracking] Erreur ${label}:`, err)
     return {}
   }
+}
+
+/**
+ * Équité CORO sur la même fenêtre glissante 6 mois que le reste
+ * (ex-`getMonthlyCoroEquity` mensuel — désormais uniformisé).
+ * Scan des plannings JSON : pas de colonne `coro_count` en base.
+ */
+export async function getCoroEquity(
+  now: Date = new Date(),
+): Promise<Record<string, number>> {
+  return accumulateFromScheduleWindow(
+    now,
+    computeWeeklyCoro,
+    (total, doc, n) => {
+      total[doc] = (total[doc] || 0) + n
+    },
+    "CORO",
+  )
+}
+
+/**
+ * Équité Groupe 1 (Cs / ETT / Stress) — fenêtre glissante 6 mois.
+ * Scan JSON (pas de colonnes DB). Tous les médecins listés sont comptés ;
+ * le solveur n’utilise que B/Z/H/G/S.
+ */
+export async function getGroupe1Equity(
+  now: Date = new Date(),
+): Promise<Record<string, Groupe1EquityCounts>> {
+  return accumulateFromScheduleWindow(
+    now,
+    computeWeeklyGroupe1Clinical,
+    (total, doc, weekVal) => {
+      if (!total[doc]) total[doc] = { cs: 0, ett: 0, stress: 0 }
+      total[doc].cs += weekVal.cs
+      total[doc].ett += weekVal.ett
+      total[doc].stress += weekVal.stress
+    },
+    "Groupe1 Cs/ETT/Stress",
+  )
 }
 
 /** @deprecated Alias — préférer `getCoroEquity` (fenêtre 6 mois, plus mensuel). */

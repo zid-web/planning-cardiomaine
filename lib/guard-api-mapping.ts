@@ -199,6 +199,11 @@ export type GuardMedecin = {
   points_garde?: number;
   points_nct?: number;
   points_weekend?: number;
+  points_coro?: number;
+  /** Groupe 1 — vacations Cs / ETT / Stress (6 mois). */
+  points_cs?: number;
+  points_ett?: number;
+  points_stress?: number;
 };
 
 /** Slot historique pour le solveur (`historical_patterns`). */
@@ -278,6 +283,10 @@ export function buildMedecinsPayload(doctorIds: string[] = DOCTORS): GuardMedeci
     points_garde: 0,
     points_nct: 0,
     points_weekend: 0,
+    points_coro: 0,
+    points_cs: 0,
+    points_ett: 0,
+    points_stress: 0,
   }));
 }
 
