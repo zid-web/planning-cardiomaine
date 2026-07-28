@@ -12,6 +12,7 @@
 
 import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
+import { isAtlEligibleDoctor, isCoroEligibleDoctor } from "@/lib/group-clinical-rules"
 import { HALF_DAY_OFF_APM_ROW, HALF_DAY_OFF_MATIN_ROW } from "@/lib/half-day-off"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
@@ -358,6 +359,26 @@ export function canAssignDoctorToSlot(
     return {
       allowed: false,
       reason: "CH n’est assignable que sur les lignes Astreintes ATL.",
+    }
+  }
+
+  // ATL Matin/Midi/Soir = coronarographistes uniquement (M, O, W, FV ; CH géré ci-dessus)
+  if (isAtlRow(rowKey)) {
+    if (!isAtlEligibleDoctor(doctorId)) {
+      return {
+        allowed: false,
+        reason: "Astreinte ATL réservée aux coronarographistes (M, O, W, FV, CH).",
+      }
+    }
+  }
+
+  // Coro salle = M/O/W/FV (pas CH, pas R/V/T/G…)
+  if (rowKey === "Matin - Coro" || rowKey === "Apm - Coro") {
+    if (!isCoroEligibleDoctor(doctorId)) {
+      return {
+        allowed: false,
+        reason: "Coro réservé aux coronarographistes (M, O, W, FV).",
+      }
     }
   }
 

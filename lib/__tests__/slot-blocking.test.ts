@@ -211,6 +211,22 @@ function main() {
   r = canAssignDoctorToSlot("CH", "2026-07-20", "Astreintes ATL Nuit", "LUNDI", schedule, [])
   assert.equal(r.allowed, true, "CH autorisé sur ATL")
 
+  // ATL = coronarographistes uniquement (R/V/T/G exclus)
+  r = canAssignDoctorToSlot("R", "2026-07-20", "Astreintes ATL Matin", "LUNDI", schedule, [])
+  assert.equal(r.allowed, false, "R interdit sur ATL")
+  r = canAssignDoctorToSlot("V", "2026-07-20", "Astreintes ATL Midi", "LUNDI", schedule, [])
+  assert.equal(r.allowed, false, "V interdit sur ATL")
+  r = canAssignDoctorToSlot("T", "2026-07-20", "Astreintes ATL Nuit", "LUNDI", schedule, [])
+  assert.equal(r.allowed, false, "T interdit sur ATL")
+  r = canAssignDoctorToSlot("G", "2026-07-20", "Astreintes ATL Matin", "LUNDI", schedule, [])
+  assert.equal(r.allowed, false, "G interdit sur ATL")
+  r = canAssignDoctorToSlot("W", "2026-07-20", "Astreintes ATL Matin", "LUNDI", schedule, [])
+  assert.equal(r.allowed, true, "W autorisé sur ATL")
+  r = canAssignDoctorToSlot("R", "2026-07-20", "Matin - Coro", "LUNDI", schedule, [])
+  assert.equal(r.allowed, false, "R interdit sur Coro")
+  r = canAssignDoctorToSlot("M", "2026-07-20", "Matin - Coro", "LUNDI", schedule, [])
+  assert.equal(r.allowed, true, "M autorisé sur Coro")
+
   // Week-end : remplaçant de garde → association médecin toujours OK
   schedule = generateWeekSchedule(weekKey, [])
   schedule["Garde Matin"].SAMEDI = {

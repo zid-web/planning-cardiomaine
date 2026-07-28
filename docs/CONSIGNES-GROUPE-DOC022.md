@@ -28,7 +28,7 @@ Fichier agent : uploads `DOC022_*.pdf`. Encodage machine : `lib/group-clinical-r
 - **½-off** mercredi apm M/W/G/Z/H/B ; mardi apm S ; jeudi apm U/P ; vendredi apm O/A/… ; récupération après garde nuit
 - **IRM** S lundi matin + vendredi apm
 - **Visite** rotation U → A → B (1 semaine / 3)
-- **CORO** W/M/O/FV ; **Rythmo** A/U/P ; **NCT** M/W ; **Rééducation** Z/B/S/G/H (+R/K mercredi)
+- **CORO** W/M/O/FV ; **ATL Matin/Midi/Soir** M/O/W/FV/CH (coronarographistes uniquement — **pas** R/V/T/G) ; **Rythmo** A/U/P ; **NCT** M/W ; **Rééducation** Z/B/S/G/H (+R/K mercredi)
 - **DAAS** Apm EE2 lundi ; **FV** garde nuit lundi + coro jeudi apm
 
 ## Ajouté depuis DOC022 (cette itération)
@@ -57,8 +57,10 @@ Ces fréquences restent soft (historique / calendrier NCT) — pas forcées chaq
 
 ## Backend
 
-Patch optionnel : `patches/guard-api-rules-doc022.patch` / JSON `patches/rules_config-doc022-addon.json`  
-à merger dans `guard-api-cardiomaine` `rules_config.json` + consommation de `doc022_fixed_slots` / `clinical_eligibility` si absente.
+Patch ATL coronarographistes : `patches/guard-api-astreinte-coronarographistes.patch`  
+(+ addon JSON `patches/rules_config-doc022-addon.json`)  
+à merger dans `guard-api-cardiomaine` (`rules_config.json` + `solver.py` + `config.py`).  
+Sans ce patch, le solveur autorise encore tous les `PERMANENT` sur `ASTREINTE` (d’où des Prop. R/V/T/G) — le front filtre déjà côté affichage.
 
 ## Hors scope solveur planning
 

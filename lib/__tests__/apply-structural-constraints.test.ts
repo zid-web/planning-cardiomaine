@@ -3,6 +3,7 @@
  */
 import assert from "node:assert/strict"
 import {
+  applyAtlCoronarographisteEligibility,
   applyAtlFollowsCoroConstraints,
   applyChAstreinteConstraints,
   applyStructuralConstraints,
@@ -235,6 +236,34 @@ function main() {
   assert.equal(genSched["Astreintes ATL Matin"].MERCREDI.status, "pending")
   assert.deepEqual(genSched["Apm - Coro"].MERCREDI.value, ["O"])
   assert.deepEqual(genSched["Astreintes ATL Midi"].MERCREDI.value, ["O"])
+
+  // Prop. solveur hors pool (R/V/T/G) retirées des ATL
+  let badAtl = generateWeekSchedule(oddWeek, [])
+  badAtl["Astreintes ATL Matin"].LUNDI = {
+    value: ["R", "V"],
+    type: "doctor",
+    status: "pending",
+  }
+  badAtl["Astreintes ATL Midi"].MARDI = {
+    value: ["T"],
+    type: "doctor",
+    status: "pending",
+  }
+  badAtl["Astreintes ATL Nuit"].MERCREDI = {
+    value: ["G", "W"],
+    type: "doctor",
+    status: "pending",
+  }
+  badAtl["Matin - Coro"].JEUDI = {
+    value: ["R"],
+    type: "doctor",
+    status: "pending",
+  }
+  badAtl = applyAtlCoronarographisteEligibility(badAtl)
+  assert.deepEqual(badAtl["Astreintes ATL Matin"].LUNDI.value, [])
+  assert.deepEqual(badAtl["Astreintes ATL Midi"].MARDI.value, [])
+  assert.deepEqual(badAtl["Astreintes ATL Nuit"].MERCREDI.value, ["W"])
+  assert.deepEqual(badAtl["Matin - Coro"].JEUDI.value, [])
 
   console.log("✅ apply-structural-constraints tests passed")
 }

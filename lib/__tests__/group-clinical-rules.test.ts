@@ -18,10 +18,20 @@ function main() {
   assert.ok(DOC022_CLINICAL_ELIGIBILITY.coro.includes("W"))
   assert.ok(!DOC022_CLINICAL_ELIGIBILITY.stress.includes("W"), "W non éligible Stress")
   assert.ok(DOC022_CLINICAL_ELIGIBILITY.reeduc.includes("R"), "R éligible rééducation")
+  assert.deepEqual(
+    [...DOC022_CLINICAL_ELIGIBILITY.atl].sort(),
+    ["CH", "FV", "M", "O", "W"].sort(),
+    "ATL = coronarographistes uniquement",
+  )
+  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("R"))
+  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("V"))
+  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("T"))
+  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("G"))
   assert.ok(DOC022_FIXED_CLINICAL_SLOTS.length >= 5)
 
   const payload = toSolverClinicalRulesPayload()
   assert.ok(payload.clinical_eligibility)
+  assert.deepEqual(payload.astreinte_allowed.sort(), ["CH", "FV", "M", "O", "W"].sort())
   assert.ok(Array.isArray(payload.doc022_fixed_slots))
   assert.ok(payload.doc022_fixed_slots.some((s) => s.doctor === "P"))
 
