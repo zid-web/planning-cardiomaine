@@ -15,7 +15,10 @@ export function getAssignableDoctors(activity: string): string[] {
       activity === 'Astreinte Nuit' ||
       activity === 'Astreinte Matin' ||
       activity === 'Astreinte Midi' ||
-      activity === 'Astreinte Weekend'
+      activity === 'Astreinte Weekend' ||
+      activity === 'Astreintes ATL Matin' ||
+      activity === 'Astreintes ATL Midi' ||
+      activity === 'Astreintes ATL Nuit'
     ) {
       if (metadata.can_be_assigned_to_astreinte) {
         assignableList.push(doctorId)
@@ -24,7 +27,12 @@ export function getAssignableDoctors(activity: string): string[] {
       if (metadata.can_be_assigned_to_nct) {
         assignableList.push(doctorId)
       }
-    } else if (activity === 'CORO' || activity === 'CS' || activity === 'RYTHMO') {
+    } else if (activity === 'CORO' || activity === 'Matin - Coro' || activity === 'Apm - Coro') {
+      // Coronarographistes salle (pas CH)
+      if (doctorId === 'W' || doctorId === 'M' || doctorId === 'O' || doctorId === 'FV') {
+        assignableList.push(doctorId)
+      }
+    } else if (activity === 'CS' || activity === 'RYTHMO') {
       // Consultations - tous les médecins internes
       if (!metadata.is_externe) {
         assignableList.push(doctorId)
@@ -48,12 +56,17 @@ export function canAssignDoctorToActivity(doctorId: string, activity: string): b
     activity === 'Astreinte Nuit' ||
     activity === 'Astreinte Matin' ||
     activity === 'Astreinte Midi' ||
-    activity === 'Astreinte Weekend'
+    activity === 'Astreinte Weekend' ||
+    activity === 'Astreintes ATL Matin' ||
+    activity === 'Astreintes ATL Midi' ||
+    activity === 'Astreintes ATL Nuit'
   ) {
     return metadata.can_be_assigned_to_astreinte
   } else if (activity === 'NCT') {
     return metadata.can_be_assigned_to_nct
-  } else if (activity === 'CORO' || activity === 'CS' || activity === 'RYTHMO') {
+  } else if (activity === 'CORO' || activity === 'Matin - Coro' || activity === 'Apm - Coro') {
+    return doctorId === 'W' || doctorId === 'M' || doctorId === 'O' || doctorId === 'FV'
+  } else if (activity === 'CS' || activity === 'RYTHMO') {
     return !metadata.is_externe
   }
 

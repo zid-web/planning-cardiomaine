@@ -1,10 +1,15 @@
 import { DAYS } from "@/lib/constants"
+import { isListedDoctor } from "@/lib/doctor-code"
 import {
   applyFixedClinicalAssignments,
   clearFixedAssigneesOnVacation,
   dateStrForWeekDay,
   mondayOfIsoWeekKey,
 } from "@/lib/fixed-assignments"
+import {
+  isAtlEligibleDoctor,
+  isCoroEligibleDoctor,
+} from "@/lib/group-clinical-rules"
 import {
   applyHabitualHalfDaysOff,
   applyNightGuardRecoveryOffs,
@@ -35,6 +40,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "LFB Jeudi rotation B/Z/A",
   "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines impaires) — jamais Garde Matin/Midi/Nuit",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
+  "ATL Matin/Midi/Soir = coronarographistes uniquement (M, O, W, FV, CH) — R/V/T/G exclus",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
   "Blocages créneau : congés, ½-off, 1 tâche/matin|apm (sauf ATL+Coro, ETT 1+2, EE1+EE2), LFB/CDL hors garde J/J+1 ; doublon Cs=2× case, ETT/EE=2 salles",
 ] as const
@@ -156,6 +162,51 @@ export function applyChAstreinteConstraints(
     }
   }
 
+  return next
+}
+
+/**
+ * ATL Matin/Midi/Soir = coronarographistes (M, O, W, FV, CH) uniquement.
+ * Retire les propositions/saisies listées hors pool (ex. R, V, T, G).
+ * Les remplaçants texte libre sont conservés.
+ * Coro salle : même filtre hors CH (pool coro = M/O/W/FV).
+ */
+export function applyAtlCoronarographisteEligibility(schedule: ScheduleData): ScheduleData {
+  let next = schedule
+  for (const day of DAYS) {
+    for (const row of ATL_ROWS) {
+      const cell = next[row]?.[day]
+      if (!cell) continue
+      const values = Array.isArray(cell.value) ? cell.value : []
+      if (!values.length) continue
+      const filtered = values.filter((d) => !isListedDoctor(d) || isAtlEligibleDoctor(d))
+      if (filtered.length !== values.length) {
+        next = setCellDoctors(
+          next,
+          row,
+          day,
+          filtered,
+          (cell.status || "validated") as "validated" | "pending",
+        )
+      }
+    }
+    for (const row of ["Matin - Coro", "Apm - Coro"] as const) {
+      const cell = next[row]?.[day]
+      if (!cell) continue
+      const values = Array.isArray(cell.value) ? cell.value : []
+      if (!values.length) continue
+      const filtered = values.filter((d) => !isListedDoctor(d) || isCoroEligibleDoctor(d))
+      if (filtered.length !== values.length) {
+        next = setCellDoctors(
+          next,
+          row,
+          day,
+          filtered,
+          (cell.status || "validated") as "validated" | "pending",
+        )
+      }
+    }
+  }
   return next
 }
 
@@ -355,6 +406,9 @@ export function applyStructuralConstraints(
   // 2) CH astreintes (nuit semaine + ATL weekend selon roulement)
   next = applyChAstreinteConstraints(next, weekKey)
 
+  // 2bis) ATL/Coro : uniquement coronarographistes (filtre Prop. solveur hors pool)
+  next = applyAtlCoronarographisteEligibility(next)
+
   // 3) ATL Matin/Midi Lun–Ven = miroir Coro (après strip CH Matin/Midi)
   next = applyAtlFollowsCoroConstraints(next)
 
@@ -384,6 +438,9 @@ export function applyStructuralConstraints(
 
   // 9) Strips bloquants (½-off, exclusion créneau, LFB/CDL vs garde)
   next = applySlotBlockingStrips(next)
+
+  // 9bis) Re-filtre ATL/Coro après strips
+  next = applyAtlCoronarographisteEligibility(next)
 
   // 10) Re-miroir Coro→ATL après strips (si Coro a perdu un médecin)
   next = applyAtlFollowsCoroConstraints(next)

@@ -48,8 +48,13 @@ export const DOC022_CLINICAL_ELIGIBILITY = {
   stress: ["A", "H", "B", "Z", "K", "G", "S"],
   /** ETO */
   eto: ["H", "Z", "G"],
-  /** CORO / angioplastie */
+  /** CORO / angioplastie (salle) — pas CH */
   coro: ["W", "M", "O", "FV"],
+  /**
+   * Astreintes ATL Matin / Midi / Soir (Nuit) = coronarographistes uniquement.
+   * CH = ATL structurelle (nuits / weekend), pas Coro salle.
+   */
+  atl: ["M", "O", "W", "FV", "CH"],
   /** Rythmologie */
   rythmo: ["A", "U", "P"],
   /** Rééducation — R éligible (DOC022 + rules_config mercredi) */
@@ -165,9 +170,21 @@ export const DOC022_EXTERNAL_SITES = {
   nct_plus: { doctors: ["M", "W"], cadence: "calendrier_nct" },
 } as const
 
+/** Codes ATL autorisés (alias stable pour front / tests). */
+export const DOC022_ATL_ALLOWED: readonly string[] = DOC022_CLINICAL_ELIGIBILITY.atl
+
+export function isAtlEligibleDoctor(doctorId: string): boolean {
+  return (DOC022_ATL_ALLOWED as readonly string[]).includes(doctorId)
+}
+
+export function isCoroEligibleDoctor(doctorId: string): boolean {
+  return (DOC022_CLINICAL_ELIGIBILITY.coro as readonly string[]).includes(doctorId)
+}
+
 /**
  * Payload additionnel pour `rules_override` / merge rules_config solveur.
- * Le backend ignore les clés inconnues ; les clés supportées enrichissent la génération.
+ * Le backend ignore les clés inconnues tant qu’elles ne sont pas dans
+ * `rules_config.json` (sauf si `merge_rules` accepte les nouvelles clés — patch).
  */
 export function toSolverClinicalRulesPayload() {
   return {
@@ -182,6 +199,8 @@ export function toSolverClinicalRulesPayload() {
     // Aligné DOC022 + déjà en prod
     reeduc_allowed: [...DOC022_CLINICAL_ELIGIBILITY.reeduc],
     coro_allowed: [...DOC022_CLINICAL_ELIGIBILITY.coro],
+    /** ATL Matin/Midi/Soir = coronarographistes uniquement (R/V/T/G exclus) */
+    astreinte_allowed: [...DOC022_CLINICAL_ELIGIBILITY.atl],
     rythmo_allowed: [...DOC022_CLINICAL_ELIGIBILITY.rythmo],
     nct_allowed: ["M", "W"],
   }
