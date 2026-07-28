@@ -36,7 +36,11 @@ import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
 import { adminEditsAreValidated } from "@/lib/staff-admin"
 import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays } from "@/lib/schedule-utils"
 import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
-import { calculateWorkloadStats } from "@/lib/scheduler-algo"
+import {
+  calculateMonthlyWorkloadStats,
+  sortedTaskEntries,
+  sortedWorkloadEntries,
+} from "@/lib/scheduler-algo"
 import { canAssignDoctor, detectConflict, isDoctorUnavailable } from "@/lib/assignment-validation"
 import {
   getCellDisplayAssignees,
@@ -155,6 +159,10 @@ export function ScheduleApp({
   const [noteDay, setNoteDay] = useState("")
   const [learnMoreOpen, setLearnMoreOpen] = useState(false)
   const [showWorkloadStats, setShowWorkloadStats] = useState(false)
+  /** Mois affiché dans Stats (1–12), aligné sur currentDate à l’ouverture. */
+  const [statsMonth, setStatsMonth] = useState(() => new Date().getMonth() + 1)
+  const [statsYear, setStatsYear] = useState(() => new Date().getFullYear())
+  const [expandedWorkloadDoctor, setExpandedWorkloadDoctor] = useState<string | null>(null)
   const [guardProposals, setGuardProposals] = useState<Map<string, GuardProposal[]>>(new Map())
   const [showProposals, setShowProposals] = useState(false)
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
@@ -430,7 +438,36 @@ export function ScheduleApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekKey, vacationsSig, weekLoaded, currentUser, vacationsReady, previousSundayGuardDoctor])
 
-  const workloadStats = useMemo(() => calculateWorkloadStats(schedule), [schedule])
+  const monthlyWorkloadStats = useMemo(
+    () => calculateMonthlyWorkloadStats(fullSchedule, statsYear, statsMonth),
+    [fullSchedule, statsYear, statsMonth],
+  )
+  const workloadEntries = useMemo(
+    () => sortedWorkloadEntries(monthlyWorkloadStats),
+    [monthlyWorkloadStats],
+  )
+
+  const shiftStatsMonth = (delta: number) => {
+    setExpandedWorkloadDoctor(null)
+    let m = statsMonth + delta
+    let y = statsYear
+    if (m < 1) {
+      m = 12
+      y -= 1
+    } else if (m > 12) {
+      m = 1
+      y += 1
+    }
+    setStatsMonth(m)
+    setStatsYear(y)
+  }
+
+  const openWorkloadStats = () => {
+    setStatsMonth(currentDate.getMonth() + 1)
+    setStatsYear(currentDate.getFullYear())
+    setExpandedWorkloadDoctor(null)
+    setShowWorkloadStats(true)
+  }
 
   // Update full schedule when local schedule changes
   const updateSchedule = async (
@@ -1543,8 +1580,11 @@ export function ScheduleApp({
                           variant="outline"
                           size="sm"
                           className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
-                          onClick={() => setShowWorkloadStats(!showWorkloadStats)}
-                          title="Statistiques de charge"
+                          onClick={() => {
+                            if (showWorkloadStats) setShowWorkloadStats(false)
+                            else openWorkloadStats()
+                          }}
+                          title="Statistiques de charge mensuelles"
                         >
                           <BarChart3 className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden lg:inline">
@@ -2511,39 +2551,122 @@ export function ScheduleApp({
 
       {showWorkloadStats && (
         <Dialog open={showWorkloadStats} onOpenChange={setShowWorkloadStats}>
-          <DialogContent className="max-w-lg">
-            <div className="flex items-center justify-between sticky top-0 bg-slate-50 z-10 py-2">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Statistiques de Charge de Travail</h3>
+          <DialogContent className="max-h-[85vh] max-w-2xl overflow-hidden bg-white text-slate-900">
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white pb-3">
+              <div className="min-w-0">
+                <h3 className="text-xl font-bold text-slate-900">Statistiques de charge de travail</h3>
                 <p className="text-xs text-slate-500">
-                  Semaine {currentWeekInfo.week} - {currentWeekInfo.year}
+                  Détail des tâches par praticien — total mensuel
+                  {monthlyWorkloadStats.weeksScanned > 0
+                    ? ` · ${monthlyWorkloadStats.weeksScanned} semaine${monthlyWorkloadStats.weeksScanned > 1 ? "s" : ""} chargée${monthlyWorkloadStats.weeksScanned > 1 ? "s" : ""}`
+                    : " · aucune semaine en mémoire pour ce mois"}
+                </p>
+                <div className="mt-2 flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => shiftStatsMonth(-1)}
+                    aria-label="Mois précédent"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="min-w-[9rem] text-center text-sm font-semibold capitalize text-slate-800">
+                    {monthlyWorkloadStats.label}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => shiftStatsMonth(1)}
+                    aria-label="Mois suivant"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Hors stats : DAAS, T, V, D, I, FV, Val, R, CH — absences / ½-off non comptées
                 </p>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowWorkloadStats(false)}>
-                  Fermer
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowWorkloadStats(false)}>
+                Fermer
+              </Button>
             </div>
-            <div className="grid grid-cols-4 gap-4">
-              {Object.entries(workloadStats)
-                .sort(([, a], [, b]) => b - a)
-                .map(([initials, count]) => (
-                  <div key={initials} className="flex items-center justify-between p-2 bg-slate-50 rounded">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={cn(
-                          "w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold",
-                          DOCTOR_COLORS[initials],
-                        )}
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 pt-2">
+              {workloadEntries.every((e) => e.detail.total === 0) ? (
+                <p className="rounded-md bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
+                  Aucune tâche comptabilisée pour {monthlyWorkloadStats.label}.
+                </p>
+              ) : (
+                workloadEntries.map(({ doctor, detail }) => {
+                  const open = expandedWorkloadDoctor === doctor
+                  const tasks = sortedTaskEntries(detail.byTask)
+                  return (
+                    <div
+                      key={doctor}
+                      className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50/80"
+                    >
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-100/80"
+                        onClick={() =>
+                          setExpandedWorkloadDoctor((prev) => (prev === doctor ? null : doctor))
+                        }
+                        aria-expanded={open}
                       >
-                        {initials}
-                      </div>
-                      <span className="font-medium">{initials}</span>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={cn(
+                              "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white",
+                              DOCTOR_COLORS[doctor],
+                            )}
+                          >
+                            {doctor}
+                          </div>
+                          <span className="font-semibold text-slate-900">{doctor}</span>
+                          <span className="text-[11px] text-slate-500">
+                            {tasks.length} type{tasks.length > 1 ? "s" : ""} de tâche
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="tabular-nums">
+                            {detail.total}
+                          </Badge>
+                          <ChevronRight
+                            className={cn(
+                              "h-4 w-4 text-slate-400 transition-transform",
+                              open && "rotate-90",
+                            )}
+                          />
+                        </div>
+                      </button>
+                      {open && (
+                        <div className="border-t border-slate-200 bg-white px-3 py-2">
+                          {tasks.length === 0 ? (
+                            <p className="text-xs text-slate-400">Aucune tâche</p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {tasks.map(([rowKey, count]) => (
+                                <li
+                                  key={rowKey}
+                                  className="flex items-center justify-between gap-2 text-xs text-slate-700"
+                                >
+                                  <span className="min-w-0 truncate">{rowKey}</span>
+                                  <Badge variant="outline" className="shrink-0 tabular-nums">
+                                    {count}
+                                  </Badge>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <Badge variant="secondary">{count}</Badge>
-                  </div>
-                ))}
+                  )
+                })
+              )}
             </div>
           </DialogContent>
         </Dialog>
