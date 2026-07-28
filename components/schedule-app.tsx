@@ -2600,7 +2600,9 @@ export function ScheduleApp({
                   Aucune tâche comptabilisée pour {monthlyWorkloadStats.label}.
                 </p>
               ) : (
-                workloadEntries.map(({ doctor, detail }) => {
+                workloadEntries
+                  .filter((e) => e.detail.total > 0)
+                  .map(({ doctor, detail }) => {
                   const open = expandedWorkloadDoctor === doctor
                   const tasks = sortedTaskEntries(detail.byTask)
                   return (
