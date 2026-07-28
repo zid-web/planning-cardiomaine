@@ -8,6 +8,7 @@ import {
   accumulateEquityFromSchedules,
   getCoroEquity,
   getCumulativeEquityFromTable,
+  getGroupe1Equity,
   type EquityCounts,
 } from "@/lib/equity-tracking";
 import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
@@ -33,6 +34,10 @@ interface Doctor {
   points_weekend: number;
   /** Fenêtre glissante 6 mois (même scope que les autres points). */
   points_coro: number;
+  /** Groupe 1 (échographistes) — vacations Cs / ETT / Stress sur 6 mois. */
+  points_cs: number;
+  points_ett: number;
+  points_stress: number;
 }
 
 interface EquityPoints {
@@ -71,9 +76,10 @@ async function getDoctorsFromSupabase(): Promise<Doctor[]> {
   }
 
   // Récupère les points d'équité historiques pour chaque médecin (fenêtre 6 mois)
-  const [equityPoints, coroPoints] = await Promise.all([
+  const [equityPoints, coroPoints, groupe1Points] = await Promise.all([
     calculateEquityPoints(),
     getCoroEquity(),
+    getGroupe1Equity(),
   ]);
 
   return doctors.map((doc) => ({
@@ -85,6 +91,9 @@ async function getDoctorsFromSupabase(): Promise<Doctor[]> {
     points_nct: equityPoints.nct[doc.id] || 0,
     points_weekend: equityPoints.weekend[doc.id] || 0,
     points_coro: coroPoints[doc.id] || 0,
+    points_cs: groupe1Points[doc.id]?.cs || 0,
+    points_ett: groupe1Points[doc.id]?.ett || 0,
+    points_stress: groupe1Points[doc.id]?.stress || 0,
   }));
 }
 
@@ -260,6 +269,9 @@ export async function generateGuardsViaAPI(
         points_nct: doc.points_nct,
         points_weekend: doc.points_weekend,
         points_coro: doc.points_coro,
+        points_cs: doc.points_cs,
+        points_ett: doc.points_ett,
+        points_stress: doc.points_stress,
       })),
       historical_patterns: historicalPatterns,
       // Consignes DOC022 (éligibilités + créneaux) — merge côté solveur si supporté
