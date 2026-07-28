@@ -2,7 +2,7 @@
   "clinical_eligibility": {
     "echo": ["A", "H", "W", "B", "Z", "K", "P", "R", "G", "S", "M", "O", "V"],
     "ee": ["A", "H", "W", "B", "O", "T", "Z", "K", "U", "V", "G", "S", "M", "R"],
-    "stress": ["A", "H", "W", "B", "Z", "K", "G", "S"],
+    "stress": ["A", "H", "B", "Z", "K", "G", "S"],
     "eto": ["H", "Z", "G"],
     "coro": ["W", "M", "O", "FV"],
     "rythmo": ["A", "U", "P"],

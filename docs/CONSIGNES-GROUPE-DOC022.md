@@ -44,7 +44,7 @@ Créneaux fixes injectés via `applyFixedClinicalAssignments` :
 | Hors site - Scinti | Lun / Mer | T | Scinti Cloitre |
 | Hors site - Scinti | Mardi | R | Scinti Rousseau |
 
-Éligibilités cliniques (`clinical_eligibility`) envoyées en `rules_override` à `/generate-week` pour guider le solveur / Claude.
+- **Éligibilités cliniques** (`clinical_eligibility`) : **W n’est pas éligible au Stress** (EDS).
 
 ## Soft / hors génération forcée (sites externes)
 
