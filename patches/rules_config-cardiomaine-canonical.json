@@ -1,0 +1,51 @@
+{
+  "wom_pool": ["W", "O", "M"],
+  "reeduc_allowed": ["Z", "B", "S", "G", "H"],
+  "reeduc_allowed_extra_by_day": {
+    "MERCREDI": ["R", "K"]
+  },
+  "reeduc_days": ["LUNDI", "MERCREDI", "VENDREDI"],
+  "coro_allowed": ["W", "M", "O", "FV"],
+  "astreinte_allowed": ["M", "O", "W", "CH"],
+  "cs_type_allowed": {
+    "A": "PSS", "O": "PSS", "G": "PSS", "M": "PSS", "W": "PSS", "Z": "PSS", "H": "PSS", "P": "PSS",
+    "B": "Tessee", "S": "Tessee", "U": "Tessee", "T": "Tessee", "V": "Tessee"
+  },
+  "rythmo_allowed": ["A", "U", "P"],
+  "rythmo_schedule": {
+    "P": ["MARDI"],
+    "U": ["MERCREDI"],
+    "A": ["LUNDI", "JEUDI"]
+  },
+  "rythmo_slots": {
+    "P": ["matin", "am"],
+    "U": ["am"],
+    "A": ["am"]
+  },
+  "nct_allowed": ["M", "W"],
+  "garde_allowed": ["A", "Z", "B", "G", "S", "H", "M", "W", "O", "P", "U"],
+  "half_days_off": [
+    { "day": "LUNDI", "slot": "matin", "doctors": ["R", "K"] },
+    { "day": "LUNDI", "slot": "am", "doctors": ["K"] },
+    { "day": "MARDI", "slot": "am", "doctors": ["S"] },
+    { "day": "MERCREDI", "slot": "am", "doctors": ["M", "W", "G", "Z", "H", "B"] },
+    { "day": "JEUDI", "slot": "am", "doctors": ["U", "P"] },
+    { "day": "VENDREDI", "slot": "matin", "doctors": ["K"] },
+    { "day": "VENDREDI", "slot": "am", "doctors": ["O", "A", "K", "R", "T"] }
+  ],
+  "fixed_exclusions": {},
+  "nct_fixed_schedule": {
+    "2026-07-23": "M",
+    "2026-09-10": "M",
+    "2026-09-17": "W",
+    "2026-09-24": "M",
+    "2026-10-01": "W",
+    "2026-10-15": "M",
+    "2026-10-29": "W",
+    "2026-11-05": "M",
+    "2026-11-19": "W",
+    "2026-11-26": "M",
+    "2026-12-03": "W",
+    "2026-12-17": "M"
+  }
+}
