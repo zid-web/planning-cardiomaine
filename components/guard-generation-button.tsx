@@ -102,7 +102,15 @@ export function GuardGenerationButton({
               !/non disponible.*vacances\/congé/i.test(w) &&
               !/^FV\s*:.*non disponible/i.test(w),
           )
-          if (actionable.length > 0) {
+          const infeasible = actionable.some((w) =>
+            /aucune solution trouvée/i.test(w),
+          )
+          if (infeasible) {
+            toast.error(
+              `Solveur sans solution${patternNote}:\n` + actionable.join('\n'),
+              { id: 'guard-generation', duration: 12000 },
+            )
+          } else if (actionable.length > 0) {
             toast.warning(
               `Alertes de génération${patternNote}:\n` + actionable.join('\n'),
               {

@@ -24,5 +24,5 @@
     { "row_key": "Hors site - Scinti", "day_name": "MERCREDI", "doctor": "T", "note": "Scinti Cloitre" },
     { "row_key": "Hors site - Scinti", "day_name": "MARDI", "doctor": "R", "note": "Scinti Rousseau" }
   ],
-  "comment": "Addon DOC022 — merger dans rules_config.json de guard-api-cardiomaine. Le front envoie déjà ces clés via rules_override. Patch solver : patches/guard-api-astreinte-coronarographistes.patch (ATL = M/O/W/FV/CH uniquement)."
+  "comment": "Addon DOC022 — merger dans rules_config.json de guard-api-cardiomaine. Patches solver : (1) guard-api-astreinte-coronarographistes.patch (ATL = M/O/W/FV/CH) ; (2) guard-api-atl-coro-slot-exclusivity.patch OBLIGATOIRE avant d’envoyer FV dans rules_override (sinon INFEASIBLE). Contournement front actuel : astreinte_allowed sans FV."
 }

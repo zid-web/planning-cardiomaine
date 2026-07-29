@@ -77,7 +77,8 @@ Ces fréquences restent soft (historique / calendrier NCT) — pas forcées chaq
 
 Patches à appliquer sur `guard-api-cardiomaine` (Cursor ne peut pas y pusher) :
 
-1. `patches/guard-api-astreinte-coronarographistes.patch` — ATL = M/O/W/FV/CH  
+1. `patches/guard-api-astreinte-coronarographistes.patch` — ATL = M/O/W/FV/CH
+1b. `patches/guard-api-atl-coro-slot-exclusivity.patch` — **obligatoire** si FV est dans `astreinte_allowed` (sinon « Aucune solution trouvée » : CORO+ATL comptés 2×)  
 2. `patches/guard-api-weekend-garde-atl-rythmo.patch` — couplages weekend Garde/ATL + calendrier Rythmo impair/pair  
 
 Sans ces patches, le front applique déjà les règles à l’affichage / après Générer.
