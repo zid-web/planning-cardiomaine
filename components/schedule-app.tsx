@@ -209,6 +209,11 @@ export function ScheduleApp({
   const weekDates = useMemo(() => getWeekDates(currentDate), [currentDate])
   const isoWeekStart = useMemo(() => getIsoWeekStartDate(currentDate), [currentDate])
 
+  // Alertes « Générer » : liées à la semaine affichée uniquement
+  useEffect(() => {
+    setGeneratedScheduleWarnings([])
+  }, [weekKey])
+
   // Garde nuit dimanche de la semaine précédente (mémoire d’abord, sinon DB)
   useEffect(() => {
     const prevKey = previousIsoWeekKey(weekKey)
