@@ -5,7 +5,7 @@
     "stress": ["A", "H", "B", "Z", "K", "G", "S"],
     "eto": ["H", "Z", "G"],
     "coro": ["W", "M", "O", "FV"],
-    "atl": ["M", "O", "W", "FV", "CH"],
+    "atl": ["M", "O", "W", "CH"],
     "rythmo": ["A", "U", "P"],
     "reeduc": ["Z", "B", "S", "G", "H", "K", "R"],
     "controle_pm": ["A", "U", "P"],
@@ -13,7 +13,7 @@
     "scinti": ["T", "R"],
     "cs_tesse": ["B", "S", "V", "U"]
   },
-  "astreinte_allowed": ["M", "O", "W", "FV", "CH"],
+  "astreinte_allowed": ["M", "O", "W", "CH"],
   "coro_allowed": ["W", "M", "O", "FV"],
   "doc022_fixed_slots": [
     { "row_key": "Matin - ETT salle 1", "day_name": "LUNDI", "doctor": "P", "note": "ECHO1 Poret" },
@@ -24,5 +24,5 @@
     { "row_key": "Hors site - Scinti", "day_name": "MERCREDI", "doctor": "T", "note": "Scinti Cloitre" },
     { "row_key": "Hors site - Scinti", "day_name": "MARDI", "doctor": "R", "note": "Scinti Rousseau" }
   ],
-  "comment": "Addon DOC022 — merger dans rules_config.json de guard-api-cardiomaine. Patches solver : (1) guard-api-astreinte-coronarographistes.patch (ATL = M/O/W/FV/CH) ; (2) guard-api-atl-coro-slot-exclusivity.patch OBLIGATOIRE avant d’envoyer FV dans rules_override (sinon INFEASIBLE). Contournement front actuel : astreinte_allowed sans FV."
+  "comment": "Addon DOC022 — merger dans rules_config.json de guard-api-cardiomaine. ATL = M/O/W/CH (pas FV). Coro = W/M/O/FV. Patches : guard-api-astreinte-coronarographistes.patch + guard-api-atl-coro-slot-exclusivity.patch."
 }

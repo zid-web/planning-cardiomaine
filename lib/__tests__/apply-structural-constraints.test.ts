@@ -266,6 +266,32 @@ function main() {
   assert.deepEqual(badAtl["Astreintes ATL Nuit"].MERCREDI.value, ["W"])
   assert.deepEqual(badAtl["Matin - Coro"].JEUDI.value, [])
 
+  // FV en Coro jeudi ne doit PAS être copié sur ATL Midi
+  let fvCoro = generateWeekSchedule(oddWeek, [])
+  fvCoro["Apm - Coro"].JEUDI = { value: ["FV"], type: "doctor", status: "validated" }
+  fvCoro["Astreintes ATL Midi"].JEUDI = { value: ["M"], type: "doctor", status: "validated" }
+  fvCoro = applyAtlFollowsCoroConstraints(fvCoro)
+  assert.deepEqual(fvCoro["Apm - Coro"].JEUDI.value, ["FV"], "FV reste en Coro")
+  assert.deepEqual(
+    fvCoro["Astreintes ATL Midi"].JEUDI.value,
+    ["M"],
+    "ATL Midi conserve M — FV non poussé depuis Coro",
+  )
+  // FV seul en Coro + ATL vide → ATL reste vide
+  fvCoro["Astreintes ATL Midi"].VENDREDI = { value: [], type: "empty", status: "validated" }
+  fvCoro["Apm - Coro"].VENDREDI = { value: ["FV"], type: "doctor", status: "pending" }
+  fvCoro = applyAtlFollowsCoroConstraints(fvCoro)
+  assert.deepEqual(fvCoro["Astreintes ATL Midi"].VENDREDI.value, [])
+  // Eligibility retire FV d’une ligne ATL
+  let fvOnAtl = generateWeekSchedule(oddWeek, [])
+  fvOnAtl["Astreintes ATL Matin"].LUNDI = {
+    value: ["FV"],
+    type: "doctor",
+    status: "pending",
+  }
+  fvOnAtl = applyAtlCoronarographisteEligibility(fvOnAtl)
+  assert.deepEqual(fvOnAtl["Astreintes ATL Matin"].LUNDI.value, [], "FV retiré des ATL")
+
   // Weekend Garde : Sam Midi=Nuit ; Dim all same ; Sam Matin = Ven Nuit + associé
   let we = generateWeekSchedule(weekKey, [])
   we["Garde Nuit"].VENDREDI = { value: ["B"], type: "doctor", status: "pending" }
