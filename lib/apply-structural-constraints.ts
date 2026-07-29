@@ -1,6 +1,12 @@
 import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
 import {
+  ACTIVITY_MAINTENANCE_ROW_KEYS,
+  isActivitySuspendedInWeek,
+  isActivitySuspendedOnDate,
+  type ActivityMaintenanceActivity,
+} from "@/lib/activity-maintenance"
+import {
   applyFixedClinicalAssignments,
   clearFixedAssigneesOnVacation,
   dateStrForWeekDay,
@@ -38,8 +44,9 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "½ journée off récupération après Garde Nuit (pas Ven→Sam : Sam Matin = Ven Nuit)",
   "Congés depuis doctor_vacations + retrait absents",
   "NCT calendrier (W/M)",
-  "LFB Jeudi rotation H/S/G (désignable avant Générer)",
+  "LFB Jeudi rotation H/S/G (désignable avant Générer ; sautée si LFB suspendue)",
   "VISITE U/A/B + PSSL B(jeudi)/Z(mardi) désignables avant Générer",
+  "Suspensions activity_maintenance : NCT S31–S36 ; PSSL/LFB/CDL S28–S36 (2026)",
   "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines impaires) — jamais Garde Matin/Midi/Nuit",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
   "ATL Matin/Midi/Soir = M/O/W/CH ; FV = ATL Midi jeudi seulement (= Coro)",
@@ -449,7 +456,7 @@ export function applyWeekendGardeAtlCoupling(schedule: ScheduleData): ScheduleDa
   return next
 }
 
-/** NCT calendrier pour la semaine courante. */
+/** NCT calendrier pour la semaine courante (ignore les dates en suspension). */
 export function applyNctCalendarConstraints(
   schedule: ScheduleData,
   weekKey: string,
@@ -473,7 +480,18 @@ export function applyNctCalendarConstraints(
   }
 
   let next = schedule
+  // Si NCT suspendue toute la semaine : vider la ligne
+  if (isActivitySuspendedInWeek(weekKey, "NCT")) {
+    for (const day of DAYS) {
+      if (next["Hors site - NCT"]?.[day]) {
+        next = setValidatedDoctors(next, "Hors site - NCT", day, [])
+      }
+    }
+    return next
+  }
+
   for (const nct of nctList) {
+    if (isActivitySuspendedOnDate(nct.date, "NCT")) continue
     const dayName = Object.keys(dayToDate).find((d) => dayToDate[d] === nct.date)
     if (!dayName) continue
     next = setValidatedDoctors(next, "Hors site - NCT", dayName, [nct.user])
@@ -485,6 +503,7 @@ export function applyNctCalendarConstraints(
  * LFB Jeudi : rotation H → S → G (aligné solveur) en secours si la case est vide.
  * `lfbDoctorOverride` : désignation admin avant Générer (prioritaire).
  * Ne pas écraser une proposition solveur / saisie déjà présente (pending ou non).
+ * Suspendue via `activity_maintenance` → case vide.
  */
 export function applyLfbThursdayRotation(
   schedule: ScheduleData,
@@ -492,6 +511,9 @@ export function applyLfbThursdayRotation(
   lfbDoctorOverride?: string | null,
 ): ScheduleData {
   if (!schedule["Hors site - LFB"]) return schedule
+  if (isActivitySuspendedInWeek(weekKey, "LFB")) {
+    return setValidatedDoctors(schedule, "Hors site - LFB", "JEUDI", [])
+  }
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
   const fromOverride =
     lfbDoctorOverride === "H" || lfbDoctorOverride === "S" || lfbDoctorOverride === "G"
@@ -502,6 +524,29 @@ export function applyLfbThursdayRotation(
   const cell = schedule["Hors site - LFB"].JEUDI
   if ((cell?.value || []).length > 0) return schedule
   return setValidatedDoctors(schedule, "Hors site - LFB", "JEUDI", [lfbUser])
+}
+
+/**
+ * Vide les lignes hors site / NCT suspendues sur la semaine (PSSL, CDL, LFB, NCT).
+ */
+export function applyActivityMaintenanceClear(
+  schedule: ScheduleData,
+  weekKey: string,
+): ScheduleData {
+  let next = schedule
+  const acts: ActivityMaintenanceActivity[] = ["PSSL", "LFB", "CDL", "NCT"]
+  for (const act of acts) {
+    if (!isActivitySuspendedInWeek(weekKey, act)) continue
+    const row = ACTIVITY_MAINTENANCE_ROW_KEYS[act]
+    if (!next[row]) continue
+    for (const day of DAYS) {
+      if (!next[row]?.[day]) continue
+      const vals = next[row][day].value || []
+      if (vals.length === 0) continue
+      next = setValidatedDoctors(next, row, day, [])
+    }
+  }
+  return next
 }
 
 export type ApplyStructuralConstraintsOptions = {
@@ -568,6 +613,9 @@ export function applyStructuralConstraints(
   // 4) NCT calendrier + LFB
   next = applyNctCalendarConstraints(next, weekKey)
   next = applyLfbThursdayRotation(next, weekKey, opts.lfbDoctor)
+
+  // 4bis) Suspensions activity_maintenance (PSSL/LFB/CDL/NCT) — vider les cases
+  next = applyActivityMaintenanceClear(next, weekKey)
 
   // 5) Demi-journées libres habituelles
   if (opts.applyHabitualHalfDays !== false) {
