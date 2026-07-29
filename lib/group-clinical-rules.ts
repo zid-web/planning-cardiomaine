@@ -199,8 +199,17 @@ export function toSolverClinicalRulesPayload() {
     // Aligné DOC022 + déjà en prod
     reeduc_allowed: [...DOC022_CLINICAL_ELIGIBILITY.reeduc],
     coro_allowed: [...DOC022_CLINICAL_ELIGIBILITY.coro],
-    /** ATL Matin/Midi/Soir = coronarographistes uniquement (R/V/T/G exclus) */
-    astreinte_allowed: [...DOC022_CLINICAL_ELIGIBILITY.atl],
+    /**
+     * ATL Matin/Midi/Soir = coronarographistes (R/V/T/G exclus).
+     *
+     * Pool métier = M/O/W/FV/CH. **Sans FV dans le payload** tant que le patch
+     * `patches/guard-api-atl-coro-slot-exclusivity.patch` n’est pas appliqué sur
+     * `guard-api-cardiomaine` : avec FV + couplage ATL=Coro, l’exclusivité
+     * « 1 activité/créneau » compte CORO et ASTREINTE → INFEASIBLE
+     * (« Aucune solution trouvée », souvent avec un warning LFB en repli).
+     * Après le patch : remettre `"FV"` (ou `[...DOC022_CLINICAL_ELIGIBILITY.atl]`).
+     */
+    astreinte_allowed: ["M", "O", "W", "CH"],
     rythmo_allowed: [...DOC022_CLINICAL_ELIGIBILITY.rythmo],
     nct_allowed: ["M", "W"],
   }
