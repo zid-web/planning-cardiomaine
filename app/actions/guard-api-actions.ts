@@ -15,6 +15,7 @@ import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
 import { toSolverClinicalRulesPayload } from "@/lib/group-clinical-rules";
+import { buildActivityMaintenancePayload } from "@/lib/activity-maintenance";
 
 // Configuration
 const GUARD_API_URL =
@@ -282,6 +283,8 @@ export async function generateGuardsViaAPI(
       historical_patterns: historicalPatterns,
       // Consignes DOC022 (éligibilités + créneaux) — merge côté solveur si supporté
       rules_override: toSolverClinicalRulesPayload(),
+      // Suspensions NCT / PSSL / LFB / CDL (périodes calendrier — optionnel)
+      activity_maintenance: buildActivityMaintenancePayload(),
       // Rotations désignées admin (VISITE / LFB / PSSL) — optionnels
       ...(weekOverrides?.visite_doctor
         ? { visite_doctor: weekOverrides.visite_doctor }

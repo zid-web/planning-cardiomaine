@@ -182,15 +182,27 @@ function main() {
   assert.equal(pendingAtl["Astreintes ATL Nuit"].MARDI.status, "pending")
 
   // LFB : rotation Jeudi ne doit pas écraser une proposition solveur déjà présente
-  let lfbSched = generateWeekSchedule(oddWeek, [])
+  // (semaine hors suspension LFB S28–S36 — W37)
+  const lfbWeek = "2026-W37"
+  let lfbSched = generateWeekSchedule(lfbWeek, [])
   lfbSched["Hors site - LFB"].JEUDI = {
     value: ["H"],
     type: "doctor",
     status: "pending",
   }
-  lfbSched = applyStructuralConstraints(lfbSched, oddWeek, [])
+  lfbSched = applyStructuralConstraints(lfbSched, lfbWeek, [])
   assert.deepEqual(lfbSched["Hors site - LFB"].JEUDI.value, ["H"])
   assert.equal(lfbSched["Hors site - LFB"].JEUDI.status, "pending")
+
+  // LFB suspendue S31 → case vidée même si pré-remplie
+  let lfbSusp = generateWeekSchedule(oddWeek, [])
+  lfbSusp["Hors site - LFB"].JEUDI = {
+    value: ["H"],
+    type: "doctor",
+    status: "pending",
+  }
+  lfbSusp = applyStructuralConstraints(lfbSusp, oddWeek, [])
+  assert.deepEqual(lfbSusp["Hors site - LFB"].JEUDI.value, [], "LFB suspendue S31")
 
   // ATL Matin/Midi Lun–Ven suivent Coro
   let coroSched = generateWeekSchedule(oddWeek, [])

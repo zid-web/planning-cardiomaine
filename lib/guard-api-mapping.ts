@@ -247,6 +247,16 @@ export type GenerateWeekRequestPayload = {
   historical_patterns?: HistoricalPatternsRequestPayload;
   /** Surcharge partielle de rules_config (DOC022 / consignes groupe). */
   rules_override?: Record<string, unknown>;
+  /**
+   * Suspensions d’activité (NCT / PSSL / LFB / CDL) sur une période —
+   * bloque tout le monde (comme room_maintenance pour Coro).
+   */
+  activity_maintenance?: Array<{
+    start_date: string;
+    end_date: string;
+    activities: string[];
+    reason?: string;
+  }>;
 };
 
 /** Monday (ISO YYYY-MM-DD) for the week containing `date`. */
