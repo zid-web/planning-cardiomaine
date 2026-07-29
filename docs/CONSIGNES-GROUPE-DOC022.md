@@ -30,7 +30,7 @@ Fichier agent : uploads `DOC022_*.pdf`. Encodage machine : `lib/group-clinical-r
 - **Visite** rotation U → A → B (1 semaine / 3) — **désignable** avant Générer (`visite_doctor`)
 - **LFB** jeudi rotation **H → S → G** (1/3) — **désignable** (`lfb_doctor`) ; ancien pool B/Z/A abandonné
 - **PSSL** : B jeudi / Z mardi — cases à cocher avant Générer (`pssl_b_active` / `pssl_z_active`)
-- **CORO** W/M/O/FV ; **ATL Matin/Midi/Soir** M/O/W/CH (**pas FV**) ; **Rythmo** A/U/P (calendrier impair/pair — voir ci-dessous) ; **NCT** M/W ; **Rééducation** Z/B/S/G/H (+R/K mercredi)
+- **CORO** W/M/O/FV ; **ATL** M/O/W/CH + **FV Midi jeudi seulement** (= Coro) ; **Rythmo** A/U/P (calendrier impair/pair — voir ci-dessous) ; **NCT** M/W ; **Rééducation** Z/B/S/G/H (+R/K mercredi)
 - **DAAS** Apm EE2 lundi ; **FV** garde nuit lundi + coro jeudi apm
 
 ### Rythmo (parité semaine ISO)
@@ -77,8 +77,8 @@ Ces fréquences restent soft (historique / calendrier NCT) — pas forcées chaq
 
 Patches à appliquer sur `guard-api-cardiomaine` (Cursor ne peut pas y pusher) :
 
-1. `patches/guard-api-astreinte-coronarographistes.patch` — ATL = M/O/W/CH (**pas FV**)
-1b. `patches/guard-api-atl-coro-slot-exclusivity.patch` — exclusivité créneau : ne pas compter ASTREINTE+CORO (sinon M/O/W Coro bloqués / INFEASIBLE si FV était dans le pool ATL)  
+1. `patches/guard-api-astreinte-coronarographistes.patch` — ATL pool = M/O/W/CH (FV ATL = jeudi Midi via front / Coro, pas vars globales)
+1b. `patches/guard-api-atl-coro-slot-exclusivity.patch` — exclusivité créneau : ne pas compter ASTREINTE+CORO pour M/O/W  
 2. `patches/guard-api-weekend-garde-atl-rythmo.patch` — couplages weekend Garde/ATL + calendrier Rythmo impair/pair  
 
 Sans ces patches, le front applique déjà les règles à l’affichage / après Générer.

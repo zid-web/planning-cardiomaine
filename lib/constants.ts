@@ -231,7 +231,8 @@ export const DOCTOR_METADATA: Record<
     name: 'FV (Externe)',
     is_externe: true,
     can_be_assigned_to_guards: true, // Lundi nuit uniquement (contrainte métier)
-    can_be_assigned_to_astreinte: false, // Pas d’ATL — Coro jeudi apm + garde lundi nuit
+    // ATL générale non : seulement Midi jeudi via isAtlEligibleForCell / getAssignableDoctors
+    can_be_assigned_to_astreinte: false,
     can_be_assigned_to_nct: false,
     can_have_vacations: true, // Peut avoir des vacances
     status: 'externe_garde',

@@ -24,5 +24,5 @@
     { "row_key": "Hors site - Scinti", "day_name": "MERCREDI", "doctor": "T", "note": "Scinti Cloitre" },
     { "row_key": "Hors site - Scinti", "day_name": "MARDI", "doctor": "R", "note": "Scinti Rousseau" }
   ],
-  "comment": "Addon DOC022 — merger dans rules_config.json de guard-api-cardiomaine. ATL = M/O/W/CH (pas FV). Coro = W/M/O/FV. Patches : guard-api-astreinte-coronarographistes.patch + guard-api-atl-coro-slot-exclusivity.patch."
+  "comment": "Addon DOC022 — ATL pool M/O/W/CH ; FV = Coro + ATL Midi jeudi seulement (sync front). Patches : guard-api-astreinte-coronarographistes.patch + guard-api-atl-coro-slot-exclusivity.patch."
 }

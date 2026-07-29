@@ -12,7 +12,7 @@
 
 import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
-import { isAtlEligibleDoctor, isCoroEligibleDoctor } from "@/lib/group-clinical-rules"
+import { isAtlEligibleForCell, isCoroEligibleDoctor } from "@/lib/group-clinical-rules"
 import { HALF_DAY_OFF_APM_ROW, HALF_DAY_OFF_MATIN_ROW } from "@/lib/half-day-off"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
@@ -362,12 +362,15 @@ export function canAssignDoctorToSlot(
     }
   }
 
-  // ATL Matin/Midi/Soir = M/O/W/CH (pas FV ; CH géré ci-dessus)
+  // ATL : M/O/W/CH ; FV uniquement Midi jeudi (= Coro)
   if (isAtlRow(rowKey)) {
-    if (!isAtlEligibleDoctor(doctorId)) {
+    if (!isAtlEligibleForCell(doctorId, rowKey, day)) {
       return {
         allowed: false,
-        reason: "Astreinte ATL réservée à M, O, W et CH (pas FV).",
+        reason:
+          doctorId === "FV"
+            ? "FV n’est en ATL que le jeudi après-midi (avec Coro)."
+            : "Astreinte ATL réservée à M, O, W et CH (FV = Midi jeudi seulement).",
       }
     }
   }

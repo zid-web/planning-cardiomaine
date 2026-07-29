@@ -1,4 +1,5 @@
 import { DOCTOR_METADATA } from '@/lib/constants'
+import { FV_ATL_ROW } from '@/lib/group-clinical-rules'
 
 /**
  * Filtre les médecins pouvant être assignés à une activité spécifique
@@ -21,6 +22,10 @@ export function getAssignableDoctors(activity: string): string[] {
       activity === 'Astreintes ATL Nuit'
     ) {
       if (metadata.can_be_assigned_to_astreinte) {
+        assignableList.push(doctorId)
+      }
+      // FV : uniquement ATL Midi (jeudi en pratique — jour filtré à l’assignation)
+      if (doctorId === 'FV' && activity === FV_ATL_ROW) {
         assignableList.push(doctorId)
       }
     } else if (activity === 'NCT') {
@@ -61,7 +66,9 @@ export function canAssignDoctorToActivity(doctorId: string, activity: string): b
     activity === 'Astreintes ATL Midi' ||
     activity === 'Astreintes ATL Nuit'
   ) {
-    return metadata.can_be_assigned_to_astreinte
+    if (metadata.can_be_assigned_to_astreinte) return true
+    // FV listé sur ATL Midi ; le jour (jeudi) est contrôlé dans slot-blocking
+    return doctorId === 'FV' && activity === FV_ATL_ROW
   } else if (activity === 'NCT') {
     return metadata.can_be_assigned_to_nct
   } else if (activity === 'CORO' || activity === 'Matin - Coro' || activity === 'Apm - Coro') {

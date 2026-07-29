@@ -8,7 +8,7 @@ import {
   mondayOfIsoWeekKey,
 } from "@/lib/fixed-assignments"
 import {
-  isAtlEligibleDoctor,
+  isAtlEligibleForCell,
   isCoroEligibleDoctor,
 } from "@/lib/group-clinical-rules"
 import {
@@ -42,7 +42,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "VISITE U/A/B + PSSL B(jeudi)/Z(mardi) désignables avant Générer",
   "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines impaires) — jamais Garde Matin/Midi/Nuit",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
-  "ATL Matin/Midi/Soir = M/O/W/CH uniquement (FV exclu des ATL) — R/V/T/G exclus",
+  "ATL Matin/Midi/Soir = M/O/W/CH ; FV = ATL Midi jeudi seulement (= Coro)",
   "Weekend Garde : Sam Matin = Ven Nuit (+ associé Sam Midi/Nuit) ; Sam Midi=Nuit ; Dim Matin=Midi=Nuit",
   "Weekend ATL : Sam Matin=Midi=Nuit ; Dim Matin=Midi=Nuit (un médecin / jour)",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
@@ -168,8 +168,8 @@ export function applyChAstreinteConstraints(
 }
 
 /**
- * ATL Matin/Midi/Soir = M, O, W, CH uniquement (**pas FV**).
- * Retire les propositions/saisies listées hors pool (ex. R, V, T, G, FV).
+ * ATL Matin/Midi/Soir = M, O, W, CH ; **FV uniquement ATL Midi jeudi**.
+ * Retire les propositions/saisies listées hors pool (ex. R, V, T, G, FV hors jeudi Midi).
  * Les remplaçants texte libre sont conservés.
  * Coro salle : M/O/W/FV (pas CH).
  */
@@ -181,7 +181,9 @@ export function applyAtlCoronarographisteEligibility(schedule: ScheduleData): Sc
       if (!cell) continue
       const values = Array.isArray(cell.value) ? cell.value : []
       if (!values.length) continue
-      const filtered = values.filter((d) => !isListedDoctor(d) || isAtlEligibleDoctor(d))
+      const filtered = values.filter(
+        (d) => !isListedDoctor(d) || isAtlEligibleForCell(d, row, day),
+      )
       if (filtered.length !== values.length) {
         next = setCellDoctors(
           next,
@@ -252,11 +254,8 @@ function setCellDoctors(
 
 /**
  * Lun–Ven : Coro matin/apm et ATL Matin/Midi sont **la même affectation**
- * pour M/O/W (même médecin). **FV** peut être en Coro (ex. jeudi apm fixe)
- * sans être copié sur ATL — FV n’est pas concerné par les astreintes.
- * - priorité à Coro si rempli (côté ATL : seulement les médecins ATL-éligibles) ;
- * - sinon reprise depuis ATL vers Coro si le médecin est Coro-éligible ;
- * - sinon les deux vides / ATL inchangé si Coro = FV seul.
+ * pour M/O/W. **FV** : uniquement jeudi Apm Coro ↔ ATL Midi (jamais Matin/Nuit
+ * ni les autres AM). Hors ce créneau, FV en Coro n’écrit pas l’ATL.
  */
 export function applyAtlFollowsCoroConstraints(schedule: ScheduleData): ScheduleData {
   let next = schedule
@@ -295,7 +294,7 @@ function syncAtlCoroPair(
 
   const keepFreeText = (v: string) => Boolean(v) && !isListedDoctor(v)
   const coroEligible = (v: string) => keepFreeText(v) || isCoroEligibleDoctor(v)
-  const atlEligible = (v: string) => keepFreeText(v) || isAtlEligibleDoctor(v)
+  const atlEligible = (v: string) => keepFreeText(v) || isAtlEligibleForCell(v, atlRow, day)
 
   // --- Coro ---
   let coroOut: string[]
@@ -314,7 +313,7 @@ function syncAtlCoroPair(
     }
   }
 
-  // --- ATL : ne jamais y pousser FV (ni autre hors pool ATL) ---
+  // --- ATL : pool M/O/W/CH + FV uniquement ATL Midi jeudi ---
   let atlOut: string[]
   let atlStatus: "validated" | "pending"
   const fromCoroForAtl = coroVals.filter(atlEligible)
@@ -322,7 +321,7 @@ function syncAtlCoroPair(
     atlOut = fromCoroForAtl
     atlStatus = (coro?.status || "validated") as "validated" | "pending"
   } else if (coroVals.length > 0) {
-    // Coro rempli uniquement par non-ATL (ex. FV jeudi) → ne pas écraser ATL avec FV
+    // Coro rempli uniquement par non-ATL pour ce créneau → ne pas écraser ATL
     atlOut = atlVals.filter(atlEligible)
     atlStatus = (atl?.status || "validated") as "validated" | "pending"
   } else if (atlVals.length > 0) {
