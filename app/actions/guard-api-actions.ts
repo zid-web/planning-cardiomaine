@@ -180,6 +180,12 @@ export async function generateGuardsViaAPI(
   vacations: DoctorVacation[],
   weekendMode: "ROTATION" | "CH" = "ROTATION",
   weekType?: 1 | 2,
+  weekOverrides?: {
+    visite_doctor?: string | null
+    lfb_doctor?: string | null
+    pssl_b_active?: boolean
+    pssl_z_active?: boolean
+  },
 ) {
   try {
     // 1. Récupère la liste des médecins depuis Supabase
@@ -276,6 +282,19 @@ export async function generateGuardsViaAPI(
       historical_patterns: historicalPatterns,
       // Consignes DOC022 (éligibilités + créneaux) — merge côté solveur si supporté
       rules_override: toSolverClinicalRulesPayload(),
+      // Rotations désignées admin (VISITE / LFB / PSSL) — optionnels
+      ...(weekOverrides?.visite_doctor
+        ? { visite_doctor: weekOverrides.visite_doctor }
+        : {}),
+      ...(weekOverrides?.lfb_doctor
+        ? { lfb_doctor: weekOverrides.lfb_doctor }
+        : {}),
+      ...(typeof weekOverrides?.pssl_b_active === "boolean"
+        ? { pssl_b_active: weekOverrides.pssl_b_active }
+        : {}),
+      ...(typeof weekOverrides?.pssl_z_active === "boolean"
+        ? { pssl_z_active: weekOverrides.pssl_z_active }
+        : {}),
     };
 
     // 6. Appel à l'API Render

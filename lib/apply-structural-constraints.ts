@@ -38,7 +38,8 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "½ journée off récupération après Garde Nuit (pas Ven→Sam : Sam Matin = Ven Nuit)",
   "Congés depuis doctor_vacations + retrait absents",
   "NCT calendrier (W/M)",
-  "LFB Jeudi rotation B/Z/A",
+  "LFB Jeudi rotation H/S/G (désignable avant Générer)",
+  "VISITE U/A/B + PSSL B(jeudi)/Z(mardi) désignables avant Générer",
   "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines impaires) — jamais Garde Matin/Midi/Nuit",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
   "ATL Matin/Midi/Soir = coronarographistes uniquement (M, O, W, FV, CH) — R/V/T/G exclus",
@@ -454,16 +455,23 @@ export function applyNctCalendarConstraints(
 }
 
 /**
- * LFB Jeudi : rotation B → Z → A en secours si la case est vide.
+ * LFB Jeudi : rotation H → S → G (aligné solveur) en secours si la case est vide.
+ * `lfbDoctorOverride` : désignation admin avant Générer (prioritaire).
  * Ne pas écraser une proposition solveur / saisie déjà présente (pending ou non).
  */
 export function applyLfbThursdayRotation(
   schedule: ScheduleData,
   weekKey: string,
+  lfbDoctorOverride?: string | null,
 ): ScheduleData {
   if (!schedule["Hors site - LFB"]) return schedule
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
-  const lfbUser = (["B", "Z", "A"] as const)[((weekNum % 3) + 3) % 3]
+  const fromOverride =
+    lfbDoctorOverride === "H" || lfbDoctorOverride === "S" || lfbDoctorOverride === "G"
+      ? lfbDoctorOverride
+      : null
+  const lfbUser =
+    fromOverride || (["H", "S", "G"] as const)[((weekNum % 3) + 3) % 3]
   const cell = schedule["Hors site - LFB"].JEUDI
   if ((cell?.value || []).length > 0) return schedule
   return setValidatedDoctors(schedule, "Hors site - LFB", "JEUDI", [lfbUser])
@@ -481,6 +489,10 @@ export type ApplyStructuralConstraintsOptions = {
    * Défaut true.
    */
   vacationsReady?: boolean
+  /** Désignation admin Visite (A/B/U) — sinon rotation weekNum % 3. */
+  visiteDoctor?: string | null
+  /** Désignation admin LFB jeudi (H/S/G) — sinon rotation weekNum % 3. */
+  lfbDoctor?: string | null
 }
 
 /**
@@ -509,7 +521,10 @@ export function applyStructuralConstraints(
   }
 
   // 1) Assignations cliniques fixes (IRM / FV / DAAS / Rythmo / Visite)
-  next = applyFixedClinicalAssignments(next, weekKey, vacations, { vacationsReady })
+  next = applyFixedClinicalAssignments(next, weekKey, vacations, {
+    vacationsReady,
+    visiteDoctor: opts.visiteDoctor,
+  })
 
   // 2) CH astreintes (nuit semaine + ATL weekend selon roulement)
   next = applyChAstreinteConstraints(next, weekKey)
@@ -525,7 +540,7 @@ export function applyStructuralConstraints(
 
   // 4) NCT calendrier + LFB
   next = applyNctCalendarConstraints(next, weekKey)
-  next = applyLfbThursdayRotation(next, weekKey)
+  next = applyLfbThursdayRotation(next, weekKey, opts.lfbDoctor)
 
   // 5) Demi-journées libres habituelles
   if (opts.applyHabitualHalfDays !== false) {

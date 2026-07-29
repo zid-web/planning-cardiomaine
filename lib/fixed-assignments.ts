@@ -176,7 +176,7 @@ export function applyFixedClinicalAssignments(
   schedule: ScheduleData,
   weekKey: string,
   vacations: DoctorVacation[] = [],
-  opts?: { vacationsReady?: boolean },
+  opts?: { vacationsReady?: boolean; visiteDoctor?: string | null },
 ): ScheduleData {
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
   const assignOpts = { vacationsReady: opts?.vacationsReady }
@@ -212,9 +212,15 @@ export function applyFixedClinicalAssignments(
     assignIfAvailable(schedule, slot.row, slot.day, slot.doctor, weekKey, vacations, assignOpts)
   }
 
-  // --- Visite : U → A → B par semaine ---
+  // --- Visite : U → A → B (ou désignation admin) ---
   if (schedule["Matin - Visite"]) {
-    const visiteUser = VISITE_ROTATION[((weekNum % 3) + 3) % 3]
+    const override =
+      opts?.visiteDoctor === "U" ||
+      opts?.visiteDoctor === "A" ||
+      opts?.visiteDoctor === "B"
+        ? opts.visiteDoctor
+        : null
+    const visiteUser = override || VISITE_ROTATION[((weekNum % 3) + 3) % 3]
     for (const day of DAYS) {
       assignIfAvailable(schedule, "Matin - Visite", day, visiteUser, weekKey, vacations, assignOpts)
     }

@@ -27,7 +27,9 @@ Fichier agent : uploads `DOC022_*.pdf`. Encodage machine : `lib/group-clinical-r
 
 - **½-off** mercredi apm M/W/G/Z/H/B ; mardi apm S ; jeudi apm U/P ; vendredi apm O/A/… ; récupération après garde nuit
 - **IRM** S lundi matin + vendredi apm
-- **Visite** rotation U → A → B (1 semaine / 3)
+- **Visite** rotation U → A → B (1 semaine / 3) — **désignable** avant Générer (`visite_doctor`)
+- **LFB** jeudi rotation **H → S → G** (1/3) — **désignable** (`lfb_doctor`) ; ancien pool B/Z/A abandonné
+- **PSSL** : B jeudi / Z mardi — cases à cocher avant Générer (`pssl_b_active` / `pssl_z_active`)
 - **CORO** W/M/O/FV ; **ATL Matin/Midi/Soir** M/O/W/FV/CH (coronarographistes uniquement — **pas** R/V/T/G) ; **Rythmo** A/U/P (calendrier impair/pair — voir ci-dessous) ; **NCT** M/W ; **Rééducation** Z/B/S/G/H (+R/K mercredi)
 - **DAAS** Apm EE2 lundi ; **FV** garde nuit lundi + coro jeudi apm
 

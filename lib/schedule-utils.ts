@@ -211,8 +211,8 @@ export const generateWeekSchedule = (
   if (schedule["Hors site - LFB"]) {
     DAYS.forEach((day) => (schedule["Hors site - LFB"][day].value = []))
     if (schedule["Hors site - LFB"]["JEUDI"]) {
-      const lfbUsers = ["B", "Z", "A"]
-      const lfbUser = lfbUsers[weekNum % 3]
+      const lfbUsers = ["H", "S", "G"]
+      const lfbUser = lfbUsers[((weekNum % 3) + 3) % 3]
       schedule["Hors site - LFB"]["JEUDI"].value = [lfbUser]
     }
   }
