@@ -52,7 +52,8 @@ export const DOC022_CLINICAL_ELIGIBILITY = {
   coro: ["W", "M", "O", "FV"],
   /**
    * Astreintes ATL Matin / Midi / Soir (Nuit) = M, O, W + CH structurel.
-   * **FV n’est pas concerné par les ATL** (Coro salle / garde lundi seulement).
+   * **FV** : uniquement ATL Midi **jeudi** (= miroir Apm Coro jeudi) — jamais
+   * Matin, Nuit, ni les autres après-midi. Voir `isAtlEligibleForCell`.
    */
   atl: ["M", "O", "W", "CH"],
   /** Rythmologie */
@@ -170,11 +171,30 @@ export const DOC022_EXTERNAL_SITES = {
   nct_plus: { doctors: ["M", "W"], cadence: "calendrier_nct" },
 } as const
 
-/** Codes ATL autorisés (alias stable pour front / tests). */
+/** Codes ATL autorisés (pool général — sans l’exception FV jeudi Midi). */
 export const DOC022_ATL_ALLOWED: readonly string[] = DOC022_CLINICAL_ELIGIBILITY.atl
+
+/** Ligne + jour où FV est en ATL (= Coro jeudi apm). */
+export const FV_ATL_ROW = "Astreintes ATL Midi"
+export const FV_ATL_DAY = "JEUDI"
 
 export function isAtlEligibleDoctor(doctorId: string): boolean {
   return (DOC022_ATL_ALLOWED as readonly string[]).includes(doctorId)
+}
+
+/**
+ * Éligibilité ATL par case : pool M/O/W/CH, plus FV uniquement sur
+ * Astreintes ATL Midi + JEUDI (miroir Apm - Coro jeudi).
+ */
+export function isAtlEligibleForCell(
+  doctorId: string,
+  rowKey: string,
+  day: string,
+): boolean {
+  if (doctorId === "FV") {
+    return rowKey === FV_ATL_ROW && day === FV_ATL_DAY
+  }
+  return isAtlEligibleDoctor(doctorId)
 }
 
 export function isCoroEligibleDoctor(doctorId: string): boolean {
@@ -199,7 +219,7 @@ export function toSolverClinicalRulesPayload() {
     // Aligné DOC022 + déjà en prod
     reeduc_allowed: [...DOC022_CLINICAL_ELIGIBILITY.reeduc],
     coro_allowed: [...DOC022_CLINICAL_ELIGIBILITY.coro],
-    /** ATL = M/O/W/CH — FV exclu (Coro / garde lundi seulement). */
+    /** ATL pool solveur = M/O/W/CH. FV ATL jeudi Midi = sync structurelle Coro (pas de vars ASTREINTE globales FV côté solveur). */
     astreinte_allowed: [...DOC022_CLINICAL_ELIGIBILITY.atl],
     rythmo_allowed: [...DOC022_CLINICAL_ELIGIBILITY.rythmo],
     nct_allowed: ["M", "W"],

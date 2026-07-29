@@ -7,6 +7,7 @@ import {
   DOC022_CLINICAL_ELIGIBILITY,
   DOC022_DOCTOR_NAMES,
   DOC022_FIXED_CLINICAL_SLOTS,
+  isAtlEligibleForCell,
   toSolverClinicalRulesPayload,
 } from "@/lib/group-clinical-rules"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
@@ -21,9 +22,14 @@ function main() {
   assert.deepEqual(
     [...DOC022_CLINICAL_ELIGIBILITY.atl].sort(),
     ["CH", "M", "O", "W"].sort(),
-    "ATL = M/O/W/CH (pas FV)",
+    "ATL pool général = M/O/W/CH",
   )
-  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("FV"), "FV hors ATL")
+  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("FV"), "FV hors pool ATL général")
+  assert.equal(isAtlEligibleForCell("FV", "Astreintes ATL Midi", "JEUDI"), true)
+  assert.equal(isAtlEligibleForCell("FV", "Astreintes ATL Matin", "JEUDI"), false)
+  assert.equal(isAtlEligibleForCell("FV", "Astreintes ATL Midi", "MARDI"), false)
+  assert.equal(isAtlEligibleForCell("FV", "Astreintes ATL Nuit", "JEUDI"), false)
+  assert.equal(isAtlEligibleForCell("W", "Astreintes ATL Matin", "LUNDI"), true)
   assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("R"))
   assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("V"))
   assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("T"))

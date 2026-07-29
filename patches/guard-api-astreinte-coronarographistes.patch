@@ -25,8 +25,10 @@ diff --git a/solver.py b/solver.py
      rythmo_vendredi_doctor = "P" if req.week_type == 1 else "U"
      rythmo_vendredi_slot = "matin" if req.week_type == 1 else "am"
      NCT_ALLOWED = set(rules["nct_allowed"])
-+    # ATL Matin/Midi/Soir = M, O, W + CH (pas FV — Coro / garde lundi seulement).
-+    ASTREINTE_ALLOWED = set(rules.get("astreinte_allowed") or (list(CORO_ALLOWED) + ["CH"]))
++    # ATL Matin/Midi/Soir = M, O, W + CH. FV n'est PAS dans ce pool :
++    # ATL Midi jeudi = miroir Coro (front / forçage Coro jeudi), pas de vars
++    # ASTREINTE globales pour FV (sinon INFEASIBLE avec exclusivité créneau).
++    ASTREINTE_ALLOWED = set(rules.get("astreinte_allowed") or ["M", "O", "W", "CH"])
      NCT_FIXED_SCHEDULE = rules["nct_fixed_schedule"]
      GARDE_ALLOWED = set(rules.get("garde_allowed", []))  # vide = pas de restriction (rétro-compatible)
  
