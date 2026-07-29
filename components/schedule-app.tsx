@@ -1237,8 +1237,8 @@ export function ScheduleApp({
     // Rééducation: Block Tuesday and Thursday
     if (row.includes("RÉEDUCATION") && (day === "MARDI" || day === "JEUDI")) return true
 
-    // PSSL: Block Mon, Tue, Wed, Fri
-    if (row.includes("PSSL") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) return true
+    // PSSL: B jeudi / Z mardi — bloquer Lun/Mer/Ven seulement
+    if (row.includes("PSSL") && ["LUNDI", "MERCREDI", "VENDREDI"].includes(day)) return true
 
     // LFB: Block Mon, Wed, Fri
     if (row.includes("LFB") && ["LUNDI", "MERCREDI", "VENDREDI"].includes(day)) return true

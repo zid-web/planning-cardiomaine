@@ -226,6 +226,14 @@ export type GenerateWeekRequestPayload = {
   weekend_mode?: "CH" | "ROTATION";
   last_nct_doctor?: string | null;
   previous_sunday_guard_doctor?: string | null;
+  /** Semaine de VISITE (A/B/U) — optionnel, rétrocompatible. */
+  visite_doctor?: string | null;
+  /** LFB jeudi (H/S/G) — optionnel. */
+  lfb_doctor?: string | null;
+  /** B fait PSSL ce jeudi. */
+  pssl_b_active?: boolean;
+  /** Z fait PSSL ce mardi. */
+  pssl_z_active?: boolean;
   existing_schedule?: Record<string, string[]> | null;
   /**
    * Fréquences / éligibilité déduites de l’historique (Cs/ETT/EE/hors site…).
@@ -597,6 +605,10 @@ export function buildCurrentWeekRequestPayload(opts: {
   vacations?: Array<{ doctor_id: string; start_date: string; end_date: string }>;
   schedule?: ScheduleData;
   weekendMode?: "CH" | "ROTATION";
+  visite_doctor?: string | null;
+  lfb_doctor?: string | null;
+  pssl_b_active?: boolean;
+  pssl_z_active?: boolean;
 }): GenerateWeekRequestPayload {
   return {
     week_start_date: opts.weekStartDate,
@@ -605,5 +617,17 @@ export function buildCurrentWeekRequestPayload(opts: {
     vacations: opts.vacations || [],
     weekend_mode: opts.weekendMode || "ROTATION",
     existing_schedule: opts.schedule ? scheduleToExistingSchedule(opts.schedule) : {},
+    ...(opts.visite_doctor != null && opts.visite_doctor !== ""
+      ? { visite_doctor: opts.visite_doctor }
+      : {}),
+    ...(opts.lfb_doctor != null && opts.lfb_doctor !== ""
+      ? { lfb_doctor: opts.lfb_doctor }
+      : {}),
+    ...(typeof opts.pssl_b_active === "boolean"
+      ? { pssl_b_active: opts.pssl_b_active }
+      : {}),
+    ...(typeof opts.pssl_z_active === "boolean"
+      ? { pssl_z_active: opts.pssl_z_active }
+      : {}),
   };
 }
