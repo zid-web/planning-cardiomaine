@@ -369,10 +369,12 @@ function cellPendingStatus(
 }
 
 /**
- * Unifie plusieurs lignes d’un même jour sur le même pool de médecins listés.
- * `priorityRows` : première ligne non vide gagne. Remplaçants par case conservés.
+ * Propage le pool de médecins listés d’une case source vers les cases **vides**
+ * du même jour. `priorityRows` : première ligne non vide gagne.
+ * Ne **jamais** écraser une case qui a déjà un médecin listé (override admin).
+ * Remplaçants texte libre conservés sur chaque case.
  */
-function unifySameListedDoctors(
+function fillEmptyFromPriorityListedDoctors(
   schedule: ScheduleData,
   rows: readonly string[],
   day: string,
@@ -392,6 +394,7 @@ function unifySameListedDoctors(
   let next = schedule
   for (const row of rows) {
     if (!next[row]?.[day]) continue
+    if (listedInCell(next, row, day).length > 0) continue
     const remplacants = remplacantsInCell(next, row, day)
     next = setCellDoctors(next, row, day, [...chosen, ...remplacants], status)
   }
@@ -399,44 +402,51 @@ function unifySameListedDoctors(
 }
 
 /**
- * Weekend Garde + ATL :
- * - Sam Garde Midi = Nuit (un médecin)
- * - Dim Garde Matin = Midi = Nuit (un médecin)
- * - Sam Garde Matin = Ven Garde Nuit, associée au médecin Sam Midi/Nuit
- * - Sam/Dim ATL Matin = Midi = Nuit (un médecin / jour)
+ * Weekend Garde + ATL (couplage **souple**) :
+ * - Remplit les cases **vides** pour aligner Sam Midi↔Nuit, Dim Matin/Midi/Nuit,
+ *   ATL weekend Matin/Midi/Nuit, et Sam Matin dérivé de Ven Nuit + Sam Midi.
+ * - Ne réécrit **jamais** une case déjà pourvue d’un médecin listé : les gardes
+ *   week-end sont saisies à la main (réunion semestrielle) ; une correction admin
+ *   doit tenir après sauvegarde / rechargement même si elle casse temporairement
+ *   la cohérence Matin=Midi=Nuit.
  */
 export function applyWeekendGardeAtlCoupling(schedule: ScheduleData): ScheduleData {
   let next = schedule
 
-  // ATL weekend : un médecin pour Matin+Midi+Nuit par jour
+  // ATL weekend : propager vers cases vides seulement
   for (const day of WEEKEND) {
-    next = unifySameListedDoctors(next, ATL_ROWS, day, [
+    next = fillEmptyFromPriorityListedDoctors(next, ATL_ROWS, day, [
       "Astreintes ATL Nuit",
       "Astreintes ATL Midi",
       "Astreintes ATL Matin",
     ])
   }
 
-  // Sam Garde Midi = Nuit
-  next = unifySameListedDoctors(
+  // Sam Garde Midi ↔ Nuit (cases vides seulement)
+  next = fillEmptyFromPriorityListedDoctors(
     next,
     ["Garde Midi", "Garde Nuit"],
     "SAMEDI",
     ["Garde Midi", "Garde Nuit"],
   )
 
-  // Dim Garde Matin = Midi = Nuit
-  next = unifySameListedDoctors(next, GARDE_PERIOD_ROWS, "DIMANCHE", [
+  // Dim Garde Matin / Midi / Nuit (cases vides seulement)
+  next = fillEmptyFromPriorityListedDoctors(next, GARDE_PERIOD_ROWS, "DIMANCHE", [
     "Garde Nuit",
     "Garde Midi",
     "Garde Matin",
   ])
 
-  // Sam Garde Matin = Ven Nuit + associé Sam Midi/Nuit
+  // Sam Garde Matin = Ven Nuit + associé Sam Midi — uniquement si Matin est vide
   const friNight = listedInCell(next, "Garde Nuit", "VENDREDI")
   const satWeekendDoc = listedInCell(next, "Garde Midi", "SAMEDI")
   const samMatinListed = [...new Set([...friNight, ...satWeekendDoc])]
-  if (samMatinListed.length > 0 && next["Garde Matin"]?.SAMEDI) {
+  const samMatinExisting = listedInCell(next, "Garde Matin", "SAMEDI")
+  if (
+    samMatinListed.length > 0 &&
+    next["Garde Matin"]?.SAMEDI &&
+    samMatinExisting.length === 0
+  ) {
     const remplacants = remplacantsInCell(next, "Garde Matin", "SAMEDI")
     const status =
       next["Garde Nuit"]?.VENDREDI?.status === "pending" ||

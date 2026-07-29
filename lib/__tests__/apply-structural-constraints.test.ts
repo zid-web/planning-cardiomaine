@@ -321,7 +321,7 @@ function main() {
   assert.deepEqual(fvOnAtl["Astreintes ATL Midi"].JEUDI.value, ["FV"], "FV OK ATL Midi jeudi")
   assert.deepEqual(fvOnAtl["Astreintes ATL Nuit"].JEUDI.value, [], "FV retiré ATL Nuit")
 
-  // Weekend Garde : Sam Midi=Nuit ; Dim all same ; Sam Matin = Ven Nuit + associé
+  // Weekend Garde : cases vides remplies (Sam Midi→Nuit ; Dim ; Sam Matin = Ven Nuit + associé)
   let we = generateWeekSchedule(weekKey, [])
   we["Garde Nuit"].VENDREDI = { value: ["B"], type: "doctor", status: "pending" }
   we["Garde Midi"].SAMEDI = { value: ["G"], type: "doctor", status: "pending" }
@@ -343,6 +343,39 @@ function main() {
   assert.deepEqual(we["Astreintes ATL Matin"].SAMEDI.value, ["W"])
   assert.deepEqual(we["Astreintes ATL Midi"].SAMEDI.value, ["W"])
   assert.deepEqual(we["Astreintes ATL Nuit"].SAMEDI.value, ["W"])
+
+  // Override admin : cases déjà remplies ne sont PAS réécrites (S32 Sam O→corrections)
+  let override = generateWeekSchedule(weekKey, [])
+  override["Garde Nuit"].VENDREDI = { value: ["B"], type: "doctor", status: "validated" }
+  override["Garde Matin"].SAMEDI = { value: ["M"], type: "doctor", status: "validated" }
+  override["Garde Midi"].SAMEDI = { value: ["O"], type: "doctor", status: "validated" }
+  override["Garde Nuit"].SAMEDI = { value: ["W"], type: "doctor", status: "validated" }
+  override["Garde Matin"].DIMANCHE = { value: ["G"], type: "doctor", status: "validated" }
+  override["Garde Midi"].DIMANCHE = { value: ["S"], type: "doctor", status: "validated" }
+  override["Garde Nuit"].DIMANCHE = { value: ["A"], type: "doctor", status: "validated" }
+  override["Astreintes ATL Matin"].SAMEDI = { value: ["M"], type: "doctor", status: "validated" }
+  override["Astreintes ATL Midi"].SAMEDI = { value: ["O"], type: "doctor", status: "validated" }
+  override["Astreintes ATL Nuit"].SAMEDI = { value: ["W"], type: "doctor", status: "validated" }
+  override = applyWeekendGardeAtlCoupling(override)
+  assert.deepEqual(override["Garde Matin"].SAMEDI.value, ["M"], "Sam Matin override tenu")
+  assert.deepEqual(override["Garde Midi"].SAMEDI.value, ["O"], "Sam Midi override tenu")
+  assert.deepEqual(override["Garde Nuit"].SAMEDI.value, ["W"], "Sam Nuit override tenu")
+  assert.deepEqual(override["Garde Matin"].DIMANCHE.value, ["G"], "Dim Matin override tenu")
+  assert.deepEqual(override["Garde Midi"].DIMANCHE.value, ["S"], "Dim Midi override tenu")
+  assert.deepEqual(override["Garde Nuit"].DIMANCHE.value, ["A"], "Dim Nuit override tenu")
+  assert.deepEqual(override["Astreintes ATL Matin"].SAMEDI.value, ["M"], "ATL Sam Matin override")
+  assert.deepEqual(override["Astreintes ATL Midi"].SAMEDI.value, ["O"], "ATL Sam Midi override")
+  assert.deepEqual(override["Astreintes ATL Nuit"].SAMEDI.value, ["W"], "ATL Sam Nuit override")
+
+  // Idempotent via applyStructuralConstraints : correction manuelle survit
+  let persisted = generateWeekSchedule("2026-W32", [])
+  persisted["Garde Matin"].SAMEDI = { value: ["M"], type: "doctor", status: "validated" }
+  persisted["Garde Midi"].SAMEDI = { value: ["O"], type: "doctor", status: "validated" }
+  persisted["Garde Nuit"].SAMEDI = { value: ["W"], type: "doctor", status: "validated" }
+  persisted = applyStructuralConstraints(persisted, "2026-W32", [])
+  assert.deepEqual(persisted["Garde Matin"].SAMEDI.value, ["M"])
+  assert.deepEqual(persisted["Garde Midi"].SAMEDI.value, ["O"])
+  assert.deepEqual(persisted["Garde Nuit"].SAMEDI.value, ["W"])
 
   console.log("✅ apply-structural-constraints tests passed")
 }
