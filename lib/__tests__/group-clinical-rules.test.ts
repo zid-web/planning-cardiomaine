@@ -20,9 +20,10 @@ function main() {
   assert.ok(DOC022_CLINICAL_ELIGIBILITY.reeduc.includes("R"), "R éligible rééducation")
   assert.deepEqual(
     [...DOC022_CLINICAL_ELIGIBILITY.atl].sort(),
-    ["CH", "FV", "M", "O", "W"].sort(),
-    "ATL = coronarographistes uniquement",
+    ["CH", "M", "O", "W"].sort(),
+    "ATL = M/O/W/CH (pas FV)",
   )
+  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("FV"), "FV hors ATL")
   assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("R"))
   assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("V"))
   assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("T"))
@@ -31,10 +32,9 @@ function main() {
 
   const payload = toSolverClinicalRulesPayload()
   assert.ok(payload.clinical_eligibility)
-  // Contournement temporaire : FV omis du payload tant que le patch
-  // guard-api-atl-coro-slot-exclusivity n’est pas sur Render (voir group-clinical-rules).
   assert.deepEqual(payload.astreinte_allowed.sort(), ["CH", "M", "O", "W"].sort())
   assert.ok(!payload.astreinte_allowed.includes("FV"))
+  assert.ok(payload.coro_allowed.includes("FV"), "FV reste éligible Coro")
   assert.ok(Array.isArray(payload.doc022_fixed_slots))
   assert.ok(payload.doc022_fixed_slots.some((s) => s.doctor === "P"))
 

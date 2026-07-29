@@ -42,7 +42,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "VISITE U/A/B + PSSL B(jeudi)/Z(mardi) désignables avant Générer",
   "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines impaires) — jamais Garde Matin/Midi/Nuit",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
-  "ATL Matin/Midi/Soir = coronarographistes uniquement (M, O, W, FV, CH) — R/V/T/G exclus",
+  "ATL Matin/Midi/Soir = M/O/W/CH uniquement (FV exclu des ATL) — R/V/T/G exclus",
   "Weekend Garde : Sam Matin = Ven Nuit (+ associé Sam Midi/Nuit) ; Sam Midi=Nuit ; Dim Matin=Midi=Nuit",
   "Weekend ATL : Sam Matin=Midi=Nuit ; Dim Matin=Midi=Nuit (un médecin / jour)",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
@@ -168,10 +168,10 @@ export function applyChAstreinteConstraints(
 }
 
 /**
- * ATL Matin/Midi/Soir = coronarographistes (M, O, W, FV, CH) uniquement.
- * Retire les propositions/saisies listées hors pool (ex. R, V, T, G).
+ * ATL Matin/Midi/Soir = M, O, W, CH uniquement (**pas FV**).
+ * Retire les propositions/saisies listées hors pool (ex. R, V, T, G, FV).
  * Les remplaçants texte libre sont conservés.
- * Coro salle : même filtre hors CH (pool coro = M/O/W/FV).
+ * Coro salle : M/O/W/FV (pas CH).
  */
 export function applyAtlCoronarographisteEligibility(schedule: ScheduleData): ScheduleData {
   let next = schedule
@@ -252,10 +252,11 @@ function setCellDoctors(
 
 /**
  * Lun–Ven : Coro matin/apm et ATL Matin/Midi sont **la même affectation**
- * (même médecin, même statut). On unifie les deux lignes :
- * - priorité à Coro si rempli ;
- * - sinon reprise depuis ATL (ex. solveur ASTREINTE sans CORO) ;
- * - sinon les deux vides.
+ * pour M/O/W (même médecin). **FV** peut être en Coro (ex. jeudi apm fixe)
+ * sans être copié sur ATL — FV n’est pas concerné par les astreintes.
+ * - priorité à Coro si rempli (côté ATL : seulement les médecins ATL-éligibles) ;
+ * - sinon reprise depuis ATL vers Coro si le médecin est Coro-éligible ;
+ * - sinon les deux vides / ATL inchangé si Coro = FV seul.
  */
 export function applyAtlFollowsCoroConstraints(schedule: ScheduleData): ScheduleData {
   let next = schedule
@@ -292,25 +293,52 @@ function syncAtlCoroPair(
   const coroVals = coro?.value || []
   const atlVals = atl?.value || []
 
-  let values: string[]
-  let status: "validated" | "pending"
+  const keepFreeText = (v: string) => Boolean(v) && !isListedDoctor(v)
+  const coroEligible = (v: string) => keepFreeText(v) || isCoroEligibleDoctor(v)
+  const atlEligible = (v: string) => keepFreeText(v) || isAtlEligibleDoctor(v)
+
+  // --- Coro ---
+  let coroOut: string[]
+  let coroStatus: "validated" | "pending"
   if (coroVals.length > 0) {
-    values = [...coroVals]
-    status = (coro?.status || "validated") as "validated" | "pending"
-  } else if (atlVals.length > 0) {
-    values = [...atlVals]
-    status = (atl?.status || "validated") as "validated" | "pending"
+    coroOut = [...coroVals]
+    coroStatus = (coro?.status || "validated") as "validated" | "pending"
   } else {
-    values = []
-    status = "validated"
+    const fromAtl = atlVals.filter(coroEligible)
+    if (fromAtl.length > 0) {
+      coroOut = fromAtl
+      coroStatus = (atl?.status || "validated") as "validated" | "pending"
+    } else {
+      coroOut = []
+      coroStatus = "validated"
+    }
+  }
+
+  // --- ATL : ne jamais y pousser FV (ni autre hors pool ATL) ---
+  let atlOut: string[]
+  let atlStatus: "validated" | "pending"
+  const fromCoroForAtl = coroVals.filter(atlEligible)
+  if (fromCoroForAtl.length > 0) {
+    atlOut = fromCoroForAtl
+    atlStatus = (coro?.status || "validated") as "validated" | "pending"
+  } else if (coroVals.length > 0) {
+    // Coro rempli uniquement par non-ATL (ex. FV jeudi) → ne pas écraser ATL avec FV
+    atlOut = atlVals.filter(atlEligible)
+    atlStatus = (atl?.status || "validated") as "validated" | "pending"
+  } else if (atlVals.length > 0) {
+    atlOut = atlVals.filter(atlEligible)
+    atlStatus = (atl?.status || "validated") as "validated" | "pending"
+  } else {
+    atlOut = []
+    atlStatus = "validated"
   }
 
   let next = schedule
   if (schedule[coroRow]?.[day]) {
-    next = setCellDoctors(next, coroRow, day, values, status)
+    next = setCellDoctors(next, coroRow, day, coroOut, coroStatus)
   }
   if (schedule[atlRow]?.[day]) {
-    next = setCellDoctors(next, atlRow, day, values, status)
+    next = setCellDoctors(next, atlRow, day, atlOut, atlStatus)
   }
   return next
 }

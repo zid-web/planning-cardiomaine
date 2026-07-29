@@ -362,12 +362,12 @@ export function canAssignDoctorToSlot(
     }
   }
 
-  // ATL Matin/Midi/Soir = coronarographistes uniquement (M, O, W, FV ; CH géré ci-dessus)
+  // ATL Matin/Midi/Soir = M/O/W/CH (pas FV ; CH géré ci-dessus)
   if (isAtlRow(rowKey)) {
     if (!isAtlEligibleDoctor(doctorId)) {
       return {
         allowed: false,
-        reason: "Astreinte ATL réservée aux coronarographistes (M, O, W, FV, CH).",
+        reason: "Astreinte ATL réservée à M, O, W et CH (pas FV).",
       }
     }
   }

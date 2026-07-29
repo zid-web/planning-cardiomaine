@@ -3,7 +3,7 @@ diff --git a/rules_config.json b/rules_config.json
    },
    "reeduc_days": ["LUNDI", "MERCREDI", "VENDREDI"],
    "coro_allowed": ["W", "M", "O", "FV"],
-+  "astreinte_allowed": ["M", "O", "W", "FV", "CH"],
++  "astreinte_allowed": ["M", "O", "W", "CH"],
    "rythmo_allowed": ["A", "U", "P"],
    "rythmo_schedule": {
      "P": ["MARDI"],
@@ -25,7 +25,7 @@ diff --git a/solver.py b/solver.py
      rythmo_vendredi_doctor = "P" if req.week_type == 1 else "U"
      rythmo_vendredi_slot = "matin" if req.week_type == 1 else "am"
      NCT_ALLOWED = set(rules["nct_allowed"])
-+    # ATL Matin/Midi/Soir = coronarographistes uniquement (M, O, W, FV, CH).
++    # ATL Matin/Midi/Soir = M, O, W + CH (pas FV — Coro / garde lundi seulement).
 +    ASTREINTE_ALLOWED = set(rules.get("astreinte_allowed") or (list(CORO_ALLOWED) + ["CH"]))
      NCT_FIXED_SCHEDULE = rules["nct_fixed_schedule"]
      GARDE_ALLOWED = set(rules.get("garde_allowed", []))  # vide = pas de restriction (rétro-compatible)
