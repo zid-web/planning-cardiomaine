@@ -1,5 +1,6 @@
 import { DAYS, DOCTOR_METADATA, DOCTORS } from "@/lib/constants";
 import { isListedDoctor } from "@/lib/doctor-code";
+import { isDoublonEligibleRow } from "@/lib/slot-blocking";
 import type { CellData, ScheduleData } from "@/lib/types";
 
 const GARDE_ROW_KEYS = new Set(["Garde Matin", "Garde Midi", "Garde Nuit"]);
@@ -44,7 +45,11 @@ function mergeCellDoctorsPreservingRemplacants(
     };
   }
 
-  return { value: Array.from(new Set(cleanedIncoming)), remplacant: remField };
+  // Cs : le solveur peut émettre 2× le même médecin (Z² / H²) — ne pas dédupliquer
+  const value = isDoublonEligibleRow(rowKey)
+    ? cleanedIncoming
+    : Array.from(new Set(cleanedIncoming));
+  return { value, remplacant: remField };
 }
 
 /** Mapping activités solveur Render → lignes du planning UI */
@@ -449,7 +454,12 @@ export function mergeAssignmentsIntoSchedule(
     if (note.includes("saisie vacances") || note.includes("congé")) continue;
     const key = `${rowKey}||${dayKey}`;
     const list = grouped.get(key) || [];
-    if (assign.doctor && !list.includes(assign.doctor)) list.push(assign.doctor);
+    if (assign.doctor) {
+      // Même médecin 2× dans une case Cs (note « doublon ») : conserver les deux occurrences
+      if (isDoublonEligibleRow(rowKey) || !list.includes(assign.doctor)) {
+        list.push(assign.doctor);
+      }
+    }
     grouped.set(key, list);
   }
 

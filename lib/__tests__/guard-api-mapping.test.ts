@@ -196,6 +196,98 @@ function main() {
   assert.ok(!withCh["Garde Matin"].SAMEDI.value.includes("CH"), "CH exclu des gardes")
   assert.ok(withCh["Garde Matin"].SAMEDI.value.includes("O"))
 
+  // Doublon Cs solveur : 2 Assignment identiques → ["Z","Z"] (pas dédupliqués)
+  const csDoublon = mergeAssignmentsIntoSchedule(generateWeekSchedule("2026-W30"), [
+    {
+      date: "2026-07-20",
+      day_name: "LUNDI",
+      slot: "am",
+      activity: "Cs PSS",
+      doctor: "Z",
+      note: "assigné par le solveur (historique)",
+    },
+    {
+      date: "2026-07-20",
+      day_name: "LUNDI",
+      slot: "am",
+      activity: "Cs PSS",
+      doctor: "Z",
+      note: "assigné par le solveur (doublon)",
+    },
+    {
+      date: "2026-07-21",
+      day_name: "MARDI",
+      slot: "am",
+      activity: "Cs PSS",
+      doctor: "H",
+      note: "assigné par le solveur (historique)",
+    },
+    {
+      date: "2026-07-21",
+      day_name: "MARDI",
+      slot: "am",
+      activity: "Cs PSS",
+      doctor: "H",
+      note: "assigné par le solveur (doublon)",
+    },
+    {
+      date: "2026-07-22",
+      day_name: "MERCREDI",
+      slot: "am",
+      activity: "Cs PSS",
+      doctor: "B",
+      note: "assigné par le solveur (historique)",
+    },
+  ])
+  assert.deepEqual(
+    csDoublon["Apm - Cs PSS"].LUNDI.value,
+    ["Z", "Z"],
+    "doublon Z Lundi Apm Cs PSS préservé",
+  )
+  assert.deepEqual(
+    csDoublon["Apm - Cs PSS"].MARDI.value,
+    ["H", "H"],
+    "doublon H Mardi Apm Cs PSS préservé",
+  )
+  assert.deepEqual(
+    csDoublon["Apm - Cs PSS"].MERCREDI.value,
+    ["B"],
+    "occurrence unique inchangée",
+  )
+
+  // Autres lignes : déduplication toujours active (ex. Coro)
+  const coroDup = mergeAssignmentsIntoSchedule(generateWeekSchedule("2026-W30"), [
+    {
+      date: "2026-07-20",
+      day_name: "LUNDI",
+      slot: "matin",
+      activity: "CORO",
+      doctor: "W",
+    },
+    {
+      date: "2026-07-20",
+      day_name: "LUNDI",
+      slot: "matin",
+      activity: "CORO",
+      doctor: "W",
+    },
+  ])
+  assert.deepEqual(coroDup["Matin - Coro"].LUNDI.value, ["W"], "Coro reste dédupliqué")
+
+  // mergeSolverWeekIntoExisting : conserver ["Z","Z"] déjà dans le planning généré
+  const genDoublon: ScheduleData = generateWeekSchedule("2026-W30")
+  genDoublon["Apm - Cs PSS"].LUNDI = {
+    value: ["Z", "Z"],
+    type: "doctor",
+    status: "pending",
+  }
+  const afterDoublon = mergeSolverWeekIntoExisting(generateWeekSchedule("2026-W30"), genDoublon)
+  assert.deepEqual(
+    afterDoublon["Apm - Cs PSS"].LUNDI.value,
+    ["Z", "Z"],
+    "merge week préserve le doublon Cs",
+  )
+
   console.log("✅ guard-api-mapping vacation/coro tests passed")
 }
 
