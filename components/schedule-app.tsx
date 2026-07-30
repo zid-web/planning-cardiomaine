@@ -70,7 +70,13 @@ import {
 } from "@/lib/half-day-off"
 import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import { cn } from "@/lib/utils"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   getScheduleHistory,
   saveScheduleToDb,
@@ -2618,14 +2624,16 @@ export function ScheduleApp({
         <Dialog open={showWorkloadStats} onOpenChange={setShowWorkloadStats}>
           <DialogContent className="max-h-[85vh] max-w-2xl overflow-hidden bg-white text-slate-900">
             <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white pb-3">
-              <div className="min-w-0">
-                <h3 className="text-xl font-bold text-slate-900">Statistiques de charge de travail</h3>
-                <p className="text-xs text-slate-500">
+              <DialogHeader className="min-w-0 space-y-1 text-left">
+                <DialogTitle className="text-xl font-bold text-slate-900">
+                  Statistiques de charge de travail
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500">
                   Détail des tâches par praticien — total mensuel
                   {monthlyWorkloadStats.weeksScanned > 0
                     ? ` · ${monthlyWorkloadStats.weeksScanned} semaine${monthlyWorkloadStats.weeksScanned > 1 ? "s" : ""} chargée${monthlyWorkloadStats.weeksScanned > 1 ? "s" : ""}`
                     : " · aucune semaine en mémoire pour ce mois"}
-                </p>
+                </DialogDescription>
                 <div className="mt-2 flex items-center gap-1">
                   <Button
                     type="button"
@@ -2654,7 +2662,7 @@ export function ScheduleApp({
                 <p className="mt-1 text-[10px] text-slate-400">
                   Hors stats : DAAS, T, V, D, I, FV, Val, R, CH — absences / ½-off non comptées
                 </p>
-              </div>
+              </DialogHeader>
               <Button variant="outline" size="sm" onClick={() => setShowWorkloadStats(false)}>
                 Fermer
               </Button>
@@ -2742,13 +2750,15 @@ export function ScheduleApp({
       {showProposals && (
         <Dialog open={showProposals} onOpenChange={setShowProposals}>
           <DialogContent className="max-w-lg">
-            <div className="flex items-center justify-between sticky top-0 bg-slate-50 z-10 py-2">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">Propositions de Gardes</h3>
-                <p className="text-xs text-slate-500">
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-50 py-2">
+              <DialogHeader className="space-y-1 text-left">
+                <DialogTitle className="text-xl font-bold text-slate-900">
+                  Propositions de Gardes
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500">
                   Semaine {currentWeekInfo.week} - {currentWeekInfo.year}
-                </p>
-              </div>
+                </DialogDescription>
+              </DialogHeader>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setShowProposals(false)}>
                   Fermer
