@@ -49,7 +49,7 @@ Fichier agent : uploads `DOC022_*.pdf`. Encodage machine : `lib/group-clinical-r
 - Sam/Dim ATL Matin = Midi = Nuit (un médecin / jour)
 - **Ven ATL Nuit = Sam ATL Nuit** (même médecin)
 - Week-ends ATL **M/O/W** (semaines paires) :
-  - **Combo** (**5 / semestre**, prédéfinis) : A = ATL Ven nuit + Sat ATL + Garde Dim ; B = Garde Sam + ATL Dim
+  - **Combo** (**5 / semestre**, prédéfinis ; 2026 W40–W52 dans `weekend-wom-presets.ts`) : A = ATL Ven nuit + Sat ATL + Garde Dim ; B = Garde Sam + ATL Dim
   - **Mono** : un seul M/O/W sur Sat+Sun ATL (équité 6 mois)
   - **Saisie manuelle prioritaire** sur toute autre action (pattern / solveur)
 - Lun–Ven ATL Matin/Midi = Coro matin/apm
