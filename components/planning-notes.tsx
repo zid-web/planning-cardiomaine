@@ -52,8 +52,28 @@ export function PlanningNotes() {
       }
 
       recognitionRef.current.onerror = (event: any) => {
-        console.error('[app] Speech recognition error:', event.error)
-        setError(`Erreur de reconnaissance vocale: ${event.error}`)
+        const code = event?.error || ""
+        // Chrome continuous : no-speech / aborted — ne pas afficher d’erreur bloquante
+        if (code === "no-speech" || code === "aborted") {
+          if (code === "no-speech" && recognitionRef.current) {
+            try {
+              // Relance douce après onend (évite InvalidStateError)
+              setTimeout(() => {
+                try {
+                  if (recognitionRef.current) recognitionRef.current.start()
+                } catch {
+                  /* ignore */
+                }
+              }, 280)
+            } catch {
+              /* ignore */
+            }
+          }
+          return
+        }
+        console.error('[app] Speech recognition error:', code)
+        setError(`Erreur de reconnaissance vocale: ${code}`)
+        setIsRecording(false)
       }
     }
   }, [])

@@ -35,7 +35,8 @@ export function speechErrorMessage(error: SpeechErrorCode): string {
     case "not-allowed":
       return "Micro refusé. Autorisez le micro (cadenas de l’URL → Micro → Autoriser), puis réessayez. Chrome ou Edge recommandé."
     case "no-speech":
-      return "Aucune parole détectée. Réessayez, ou saisissez la consigne manuellement puis cliquez Appliquer."
+      // Non bloquant : Chrome envoie souvent no-speech en continuous — on redémarre l’écoute.
+      return ""
     case "audio-capture":
       return "Aucun microphone détecté sur cet appareil."
     case "network":
@@ -55,6 +56,11 @@ export function speechErrorMessage(error: SpeechErrorCode): string {
     default:
       return error ? `Erreur micro : ${error}` : "Erreur de reconnaissance vocale"
   }
+}
+
+/** Erreurs Web Speech qui ne doivent pas couper la dictée (auto-restart). */
+export function isRecoverableSpeechError(error: SpeechErrorCode): boolean {
+  return error === "no-speech" || error === "aborted"
 }
 
 /** Demande l’accès micro avant SpeechRecognition (meilleur feedback permission). */

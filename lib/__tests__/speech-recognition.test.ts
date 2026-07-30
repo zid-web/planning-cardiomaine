@@ -4,6 +4,7 @@
 import assert from "node:assert/strict"
 import {
   collectSpeechTranscript,
+  isRecoverableSpeechError,
   speechErrorMessage,
 } from "@/lib/speech-recognition"
 import { applyParsedCommandToSchedule } from "@/lib/guard-api-mapping"
@@ -13,6 +14,10 @@ function main() {
   assert.match(speechErrorMessage("not-allowed"), /Micro refusé/i)
   assert.match(speechErrorMessage("not-supported"), /Chrome/i)
   assert.equal(speechErrorMessage("aborted"), "")
+  assert.equal(speechErrorMessage("no-speech"), "", "no-speech non bloquant")
+  assert.equal(isRecoverableSpeechError("no-speech"), true)
+  assert.equal(isRecoverableSpeechError("aborted"), true)
+  assert.equal(isRecoverableSpeechError("not-allowed"), false)
 
   const { finalText, displayText } = collectSpeechTranscript(
     {
