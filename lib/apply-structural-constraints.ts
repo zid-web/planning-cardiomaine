@@ -23,7 +23,9 @@ import {
 } from "@/lib/half-day-off"
 import { NCT_DATES_2025_DEC, NCT_DATES_2026 } from "@/lib/guard-scheduler"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
+import type { EquityCounts } from "@/lib/equity-tracking"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
+import { applyWeekendWomRules } from "@/lib/weekend-wom-rules"
 import {
   mergeVacancesIntoConges,
   populateCongesRowFromVacations,
@@ -403,12 +405,11 @@ function fillEmptyFromPriorityListedDoctors(
 
 /**
  * Weekend Garde + ATL (couplage **souple**) :
- * - Remplit les cases **vides** pour aligner Sam Midi↔Nuit, Dim Matin/Midi/Nuit,
- *   ATL weekend Matin/Midi/Nuit, et Sam Matin dérivé de Ven Nuit + Sam Midi.
- * - Ne réécrit **jamais** une case déjà pourvue d’un médecin listé : les gardes
- *   week-end sont saisies à la main (réunion semestrielle) ; une correction admin
- *   doit tenir après sauvegarde / rechargement même si elle casse temporairement
- *   la cohérence Matin=Midi=Nuit.
+ * - Remplit les cases **vides** pour aligner Sam/Dim ATL Matin/Midi/Nuit,
+ *   Sam Garde Midi↔Nuit, Dim Garde Matin/Midi/Nuit,
+ *   Sam Matin dérivé de Ven Garde Nuit + Sam Midi.
+ * - Si Sam Matin a **un seul** médecin listé, propage vers Midi/Nuit vides.
+ * - Ne réécrit **jamais** une case déjà pourvue d’un médecin listé.
  */
 export function applyWeekendGardeAtlCoupling(schedule: ScheduleData): ScheduleData {
   let next = schedule
@@ -461,6 +462,16 @@ export function applyWeekendGardeAtlCoupling(schedule: ScheduleData): ScheduleDa
       [...samMatinListed, ...remplacants],
       status,
     )
+  }
+
+  // Un seul médecin sur Sam Matin → propager vers Midi/Nuit vides (pas si Matin = Ven+associé)
+  const matinOnly = listedInCell(next, "Garde Matin", "SAMEDI")
+  if (matinOnly.length === 1) {
+    next = fillEmptyFromPriorityListedDoctors(next, GARDE_PERIOD_ROWS, "SAMEDI", [
+      "Garde Matin",
+      "Garde Midi",
+      "Garde Nuit",
+    ])
   }
 
   return next
@@ -575,6 +586,11 @@ export type ApplyStructuralConstraintsOptions = {
   visiteDoctor?: string | null
   /** Désignation admin LFB jeudi (H/S/G) — sinon rotation weekNum % 3. */
   lfbDoctor?: string | null
+  /**
+   * Équité glissante 6 mois (M/O/W) pour choisir mono/combo week-end ATL.
+   * Optionnel — rotation déterministe si absent.
+   */
+  weekendEquity?: Record<string, EquityCounts>
 }
 
 /**
@@ -617,7 +633,10 @@ export function applyStructuralConstraints(
   // 3) ATL Matin/Midi Lun–Ven = miroir Coro (après strip CH Matin/Midi)
   next = applyAtlFollowsCoroConstraints(next)
 
-  // 3bis) Weekend : couplage Garde + ATL (Sam/Dim)
+  // 3a) Week-end WOM (semaines paires) : mono / combo M-O-W + Ven↔Sam ATL nuit
+  next = applyWeekendWomRules(next, weekKey, opts.weekendEquity)
+
+  // 3bis) Weekend : couplage Garde + ATL (Sam/Dim) — soft fill
   next = applyWeekendGardeAtlCoupling(next)
 
   // 4) NCT calendrier + LFB
@@ -655,6 +674,9 @@ export function applyStructuralConstraints(
 
   // 10) Re-miroir Coro→ATL après strips (si Coro a perdu un médecin)
   next = applyAtlFollowsCoroConstraints(next)
+
+  // 10bis) Re-applique WOM soft (cases encore vides après strips)
+  next = applyWeekendWomRules(next, weekKey, opts.weekendEquity)
 
   // 11) Re-couplage weekend après strips
   next = applyWeekendGardeAtlCoupling(next)

@@ -474,21 +474,25 @@ export function generateAstreinteRotation(
 
     if (isEvenWeek) {
       // Semaines PAIRES (week_type=2):
-      // W/O/M: nuits Lun/Mar/Ven (pas de nuits consécutives) + weekend ATL entier
+      // W/O/M: nuits Lun/Mar/Ven (pas de nuits consécutives Lun–Ven) + weekend ATL
       // CH: nuits Mer/Jeu
+      // Ven ATL Nuit = médecin Sat ATL (systématique).
+      // Combo (~10/13 week-ends WOM) : Sat ATL=user1, Sun ATL=user2 ;
+      //   (Garde Sam=user2 / Dim=user1 appliqué côté structural soft).
+      // Mono : Sat+Sun ATL=user1.
       const user1 = usersOMW[userIndex % 3]
       const user2 = usersOMW[(userIndex + 1) % 3]
-      const user3 = usersOMW[(userIndex + 2) % 3]
 
       rotation.monday = user1
       rotation.tuesday = user2 // ≠ lundi (pas de nuits ATL consécutives Lun–Ven)
       rotation.wednesday = "CH"
       rotation.thursday = "CH"
-      rotation.friday = user3 // isolé (Mer/Jeu = CH)
-      rotation.saturday1 = user1 // weekend ATL Matin/Midi/Nuit (solveur affine)
-      rotation.saturday2 = user2
-      rotation.sunday = user1
-      rotation.sundayAstreinte = user2
+      rotation.friday = user1 // = Sat ATL Nuit
+      const isCombo = ((((currentWeek / 2 - 1) % 13) + 13) % 13) < 10
+      rotation.saturday1 = user1
+      rotation.saturday2 = isCombo ? user2 : user1
+      rotation.sunday = user1 // Dim Garde hint (combo) = atlSat
+      rotation.sundayAstreinte = isCombo ? user2 : user1
 
       userIndex++
     } else {

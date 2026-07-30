@@ -49,13 +49,21 @@ required service is the Next.js dev server; the backend is Supabase.
   - **« Aucune solution trouvée »** : souvent `astreinte_allowed` avec FV **global** + couplage ATL=Coro comptant CORO+ASTREINTE ×2. Warning LFB indépendant. Patch exclusivité : `patches/guard-api-atl-coro-slot-exclusivity.patch`.
 - **ATL Matin/Midi Lun–Ven = Coro** pour **M/O/W** ; pour **FV** seulement jeudi Apm. `applyAtlFollowsCoroConstraints` unifie. Cumul autorisé dans `slot-blocking`.
   - **Nuits + weekend** (cycle 2 sem., `week_type` 1=impaire / 2=paire) : **impaire** = CH Lun/Mar/Ven nuit + weekend ATL entier ; W/O/M = Mer/Jeu nuit. **paire** = W/O/M Lun/Mar/Ven nuit + weekend ATL ; CH = Mer/Jeu nuit. Weekend `ASTREINTE` mappe vers **Astreintes ATL Matin** (pas Garde).
-  - **Weekend ATL** : couplage **souple** Matin/Midi/Nuit (remplit les cases vides seulement) — `applyWeekendGardeAtlCoupling`. Une saisie admin distincte par créneau n’est pas réécrite.
+  - **Ven ATL Nuit = Sam ATL Nuit** (même médecin, soft) — `applyFriSatAtlNightCoupling`.
+  - **Weekend ATL WOM** (`lib/weekend-wom-rules.ts`, semaines paires) :
+    - **Combo** (~10 / 13 week-ends WOM sur 6 mois) : Sat ATL = A, Sun ATL = B ; Garde Sam = B ; Garde Dim = A ; Ven ATL Nuit = A (couples M/O/W, équité `weekend_count` si fournie).
+    - **Mono** (autres week-ends WOM) : Sat+Sun ATL Matin/Midi/Nuit = un seul M/O/W (équité 6 mois).
+    - Soft fill only (cases vides) — override admin conservé.
+  - **Weekend ATL** jour : couplage **souple** Matin/Midi/Nuit — `applyWeekendGardeAtlCoupling`.
   - **Pas de nuits ATL consécutives Lun–Ven** pour W/O/M (weekend et CH exempts) — solveur §5quinquies ; dérogation = saisie admin / `existing_schedule`.
   - `generateGuardsViaAPI` dérive `week_type` du n° de semaine ISO (ne plus laisser le défaut 1).
-- **Weekend Garde** (`applyWeekendGardeAtlCoupling`) — **saisie manuelle** (réunion semestrielle ; le solveur ne les propose plus) :
-  - Couplage **souple** (cases **vides** seulement) : Sam Midi→Nuit ; Dim Matin/Midi/Nuit ; Sam Matin dérivé de Ven Nuit + Sam Midi si Matin vide.
-  - **Ne jamais** réécraser une case déjà pourvue (override admin doit tenir après save/reload, même si Matin≠Midi≠Nuit pour une semaine exceptionnelle).
-  - Patch solveur historique : `patches/guard-api-weekend-garde-atl-rythmo.patch`
+- **Weekend Garde** (`applyWeekendGardeAtlCoupling` + WOM rules) — saisie manuelle possible ; soft suggestions :
+  - Sam : un médecin **Matin → Midi → Nuit** si cases vides (priorité Matin).
+  - Dim Matin = Midi = Nuit (soft).
+  - Sam Matin dérivé de Ven Garde Nuit + Sam Midi si Matin vide.
+  - Combo WOM : Garde Sam/Dim complémentaires à l’ATL (voir ci-dessus).
+  - **Ne jamais** réécraser une case déjà pourvue.
+  - Patch solveur historique : `patches/guard-api-weekend-garde-atl-rythmo.patch` ; notes combo WOM : `patches/guard-api-weekend-wom-combo.md`
 - **« Générer »** = **propositions** `pending` (gardes/astreintes WOM/Coro/…) à valider admin. Lignes : `GENERATOR_PROPOSAL_ROW_KEYS`. **UI** : cases violet + badge `Prop.` (`isSolverProposalCell`) — distinct des fixes/`validated` et des demandes de changement (orange).
 - **Paramètres semaine avant Générer** (icône engrenage à côté du bouton) : `visite_doctor` (U/A/B), `lfb_doctor` (H/S/G), `pssl_b_active` (B jeudi), `pssl_z_active` (Z mardi). Défauts = rotation `weekNum % 3` / parité ; l’admin peut corriger. Envoyés dans `/generate-week` (optionnels, rétrocompatibles). Helpers : `lib/week-generation-params.ts`. LFB structurel aligné **H/S/G** (plus B/Z/A). PSSL éditable Mardi + Jeudi.
 - Congés CRUD : **ne pas** `revalidatePath('/protected/planning')` pendant la modale (course / faux positif « message channel closed »). Refresh via `onVacationsUpdated` + `getAllVacations` (`noStore`).
