@@ -245,12 +245,52 @@ function main() {
   assert.deepEqual(w42["Garde Matin"].SAMEDI.value, ["M"])
   assert.deepEqual(w42["Garde Matin"].DIMANCHE.value, ["O"])
 
-  // Preset W40 mono M
-  let w40 = clearWeekendAtlAndGarde(generateWeekSchedule("2026-W40", []))
-  w40 = applyWeekendWomRules(w40, "2026-W40")
-  assert.deepEqual(w40["Astreintes ATL Matin"].SAMEDI.value, ["M"])
-  assert.deepEqual(w40["Astreintes ATL Matin"].DIMANCHE.value, ["M"])
-  assert.deepEqual(w40["Garde Matin"].SAMEDI.value, [])
+  // Preset W40 mono M — sans clear (rotation + structural)
+  let w40Fresh = applyStructuralConstraints(
+    generateWeekSchedule("2026-W40", []),
+    "2026-W40",
+    [],
+  )
+  assert.deepEqual(w40Fresh["Astreintes ATL Matin"].SAMEDI.value, ["M"])
+  assert.deepEqual(w40Fresh["Astreintes ATL Midi"].SAMEDI.value, ["M"])
+  assert.deepEqual(w40Fresh["Astreintes ATL Nuit"].SAMEDI.value, ["M"])
+  assert.deepEqual(w40Fresh["Astreintes ATL Matin"].DIMANCHE.value, ["M"])
+  assert.deepEqual(w40Fresh["Astreintes ATL Nuit"].DIMANCHE.value, ["M"])
+  assert.deepEqual(w40Fresh["Astreintes ATL Nuit"].VENDREDI.value, ["M"])
+
+  // Bug prod : W déjà en ATL+Garde Sam / ATL Dim → force mono M + strip Garde WOM
+  let w40Stale = generateWeekSchedule("2026-W40", [])
+  for (const row of [
+    "Astreintes ATL Matin",
+    "Astreintes ATL Midi",
+    "Astreintes ATL Nuit",
+  ]) {
+    w40Stale[row].SAMEDI = { value: ["W"], type: "doctor", status: "validated" }
+    w40Stale[row].DIMANCHE = { value: ["W"], type: "doctor", status: "validated" }
+  }
+  for (const row of ["Garde Matin", "Garde Midi", "Garde Nuit"]) {
+    w40Stale[row].SAMEDI = { value: ["W"], type: "doctor", status: "validated" }
+  }
+  w40Stale = applyStructuralConstraints(w40Stale, "2026-W40", [])
+  assert.deepEqual(w40Stale["Astreintes ATL Matin"].SAMEDI.value, ["M"], "force M sur Sat")
+  assert.deepEqual(w40Stale["Astreintes ATL Matin"].DIMANCHE.value, ["M"], "force M sur Dim")
+  assert.deepEqual(w40Stale["Garde Matin"].SAMEDI.value, [], "strip résidu combo Garde W")
+  assert.deepEqual(w40Stale["Garde Nuit"].SAMEDI.value, [])
+
+  // Remplacant conservé sous force mono
+  let w40Remp = clearWeekendAtlAndGarde(generateWeekSchedule("2026-W40", []))
+  w40Remp["Astreintes ATL Matin"].SAMEDI = {
+    value: ["W", "Dupont"],
+    type: "doctor",
+    status: "validated",
+  }
+  w40Remp = applyWeekendWomRules(w40Remp, "2026-W40")
+  assert.deepEqual(w40Remp["Astreintes ATL Matin"].SAMEDI.value, ["M", "Dupont"])
+
+  // W48 preset M prime sur rotation générique
+  let w48 = applyStructuralConstraints(generateWeekSchedule("2026-W48", []), "2026-W48", [])
+  assert.deepEqual(w48["Astreintes ATL Matin"].SAMEDI.value, ["M"])
+  assert.deepEqual(w48["Astreintes ATL Matin"].DIMANCHE.value, ["M"])
 
   // Preset W52 : MG Jeudi nuit + Ven matin/midi/nuit (structural, force sur CH Jeudi)
   let w52 = applyStructuralConstraints(generateWeekSchedule("2026-W52", []), "2026-W52", [])

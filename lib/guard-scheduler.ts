@@ -1,3 +1,4 @@
+import { getWeekendWeekPreset } from "@/lib/weekend-wom-presets"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 
 export interface GuardConstraints {
@@ -489,13 +490,30 @@ export function generateAstreinteRotation(
       rotation.tuesday = user2 // ≠ lundi (pas de nuits ATL consécutives Lun–Ven)
       rotation.wednesday = "CH"
       rotation.thursday = "CH"
-      rotation.friday = user1 // = Sat ATL Nuit
       const weekKey = `${currentYear}-W${String(currentWeek).padStart(2, "0")}`
-      const isCombo = isWomComboWeekend(weekKey)
-      rotation.saturday1 = user1
-      rotation.saturday2 = isCombo ? user2 : user1
-      rotation.sunday = user1 // Dim Garde hint (combo) = atlSat
-      rotation.sundayAstreinte = isCombo ? user2 : user1
+      const preset = getWeekendWeekPreset(weekKey)
+
+      // Preset calendrier prime sur la rotation générique pour Ven/week-end ATL
+      if (preset?.kind === "mono") {
+        rotation.friday = preset.atlDoctor
+        rotation.saturday1 = preset.atlDoctor
+        rotation.saturday2 = preset.atlDoctor
+        rotation.sunday = preset.atlDoctor
+        rotation.sundayAstreinte = preset.atlDoctor
+      } else if (preset?.kind === "combo") {
+        rotation.friday = preset.atlSat
+        rotation.saturday1 = preset.atlSat
+        rotation.saturday2 = preset.atlSun
+        rotation.sunday = preset.atlSat
+        rotation.sundayAstreinte = preset.atlSun
+      } else {
+        rotation.friday = user1 // = Sat ATL Nuit
+        const isCombo = isWomComboWeekend(weekKey)
+        rotation.saturday1 = user1
+        rotation.saturday2 = isCombo ? user2 : user1
+        rotation.sunday = user1
+        rotation.sundayAstreinte = isCombo ? user2 : user1
+      }
 
       userIndex++
     } else {
