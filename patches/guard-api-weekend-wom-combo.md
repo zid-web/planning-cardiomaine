@@ -16,8 +16,10 @@
      — **pas** de croisement Garde↔ATL forcé
    - **W52 2026** : special MG = ATL Jeudi nuit + Ven matin/midi/nuit (pas de week-end auto)
 3. Semaines `week_type=1` : week-end ATL = **CH** (inchangé).
-4. **Saisie manuelle prioritaire** sur pattern / solveur / croisement soft
-   (ne jamais réécrire une case déjà pourvue d’un médecin listé).
+4. **Presets front** (`weekend-wom-presets.ts`) : sur semaines listées, mono/combo
+   sont **forcés** (pas seulement soft fill) pour corriger rotation/solveur/ancien
+   combo. Remplacants conservés. Hors preset : soft fill ; saisie hors M/O/W sur
+   Garde mono non touchée.
 
 ## Front déjà livré
 
