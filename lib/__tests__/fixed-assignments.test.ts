@@ -156,6 +156,39 @@ function main() {
     "vacationsReady=false → ne pas écraser P",
   )
 
+  // Saisie manuelle prime même si le titulaire fixe est présent (U disponible)
+  let manualRythmo = generateWeekSchedule(weekKey, [])
+  manualRythmo["Apm - Rythmo"].MERCREDI = { value: ["P"], type: "doctor", status: "validated" }
+  manualRythmo = applyFixedClinicalAssignments(manualRythmo, weekKey, [])
+  assert.deepEqual(
+    manualRythmo["Apm - Rythmo"].MERCREDI.value,
+    ["P"],
+    "P manuel conservé même si U est disponible",
+  )
+
+  // ETT ped (S mercredi Apm salle 1) : modification manuelle conservée
+  let ettPed = generateWeekSchedule(weekKey, [])
+  assert.deepEqual(
+    ettPed["Apm - ETT salle 1"].MERCREDI.value,
+    ["S"],
+    "défaut DOC022 = S (ETT ped)",
+  )
+  ettPed["Apm - ETT salle 1"].MERCREDI = { value: ["P"], type: "doctor", status: "validated" }
+  ettPed = applyFixedClinicalAssignments(ettPed, weekKey, [])
+  assert.deepEqual(
+    ettPed["Apm - ETT salle 1"].MERCREDI.value,
+    ["P"],
+    "ETT ped : saisie manuelle P non écrasée par S",
+  )
+  // Case vidée → S revient (défaut)
+  ettPed["Apm - ETT salle 1"].MERCREDI = { value: [], type: "empty", status: "validated" }
+  ettPed = applyFixedClinicalAssignments(ettPed, weekKey, [])
+  assert.deepEqual(
+    ettPed["Apm - ETT salle 1"].MERCREDI.value,
+    ["S"],
+    "ETT ped vide → réinjection S",
+  )
+
   const cleared = clearFixedAssigneesOnVacation(schedule, weekKey, vacations)
   assert.ok(!cleared["Hors site - IRM"].LUNDI.value.includes("S"))
   assert.ok(!cleared["Garde Nuit"].LUNDI.value.includes("FV"))

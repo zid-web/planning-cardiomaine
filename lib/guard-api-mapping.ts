@@ -500,8 +500,10 @@ export function mergeAssignmentsIntoSchedule(
 
 /**
  * Après « Générer » : fusionne les **propositions** (pending) sur les lignes
- * d’équité + historique clinique + hors site solveur ; préserve le reste
- * (contraintes structurelles NCT/Rythmo, Notes, saisies hors périmètre).
+ * d’équité + historique clinique + hors site solveur.
+ * Une case **validée** avec médecin listé (saisie manuelle / déjà validée)
+ * n’est **jamais** écrasée. Remplaçant seul → le solveur peut encore proposer.
+ * Préserve le reste (contraintes structurelles NCT/Rythmo, Notes, hors périmètre).
  */
 export function mergeSolverWeekIntoExisting(
   existing: ScheduleData | undefined,
@@ -527,6 +529,16 @@ export function mergeSolverWeekIntoExisting(
         const genVals = Array.isArray(genCell.value) ? genCell.value : [];
         if (!genVals.length) continue;
         const existingCell = existingRow[day];
+        const existingVals = Array.isArray(existingCell?.value) ? existingCell.value : [];
+        const existingListed = existingVals.filter((d) => Boolean(d) && isListedDoctor(d));
+        // Saisie manuelle / validée (médecin listé) prime sur les propositions Générer
+        if (existingCell?.status === "validated" && existingListed.length > 0) {
+          continue;
+        }
+        // Demande de changement en cours : ne pas écraser
+        if (existingCell?.request && existingListed.length > 0) {
+          continue;
+        }
         const merged = mergeCellDoctorsPreservingRemplacants(
           existingCell,
           genVals,

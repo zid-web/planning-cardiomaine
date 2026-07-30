@@ -134,7 +134,7 @@ function assignIfAvailable(
   doctor: string,
   weekKey: string,
   vacations: DoctorVacation[],
-  opts?: { vacationsReady?: boolean },
+  _opts?: { vacationsReady?: boolean },
 ): void {
   const dateStr = dateStrForWeekDay(weekKey, day)
   if (!dateStr) return
@@ -152,17 +152,18 @@ function assignIfAvailable(
     return
   }
   const current = schedule[rowKey]?.[day]?.value || []
-  // Congés pas encore chargés : ne pas écraser une couverture manuelle (ex. P)
-  if (opts?.vacationsReady === false) {
-    const onlyFixedOrEmpty =
-      current.length === 0 || current.every((d) => d === doctor)
-    if (!onlyFixedOrEmpty) return
-  }
+  // Saisie manuelle / couverture différente du titulaire fixe : ne jamais écraser.
+  // (Case vide ou uniquement le titulaire → injecter / idempotent.)
+  // Inclut aussi vacationsReady=false (ex. P sur Rythmo avant chargement congés).
+  const onlyFixedOrEmpty =
+    current.length === 0 || current.every((d) => d === doctor)
+  if (!onlyFixedOrEmpty) return
   setDoctors(schedule, rowKey, day, [doctor])
 }
 
 /**
- * Applique les assignations fixes (écrase les cellules concernées).
+ * Applique les assignations fixes (cases **vides** ou déjà au titulaire).
+ * Une saisie manuelle différente n’est **jamais** écrasée (ETT ped S, Rythmo, IRM…).
  * - IRM : uniquement S — Lundi (matin) + Vendredi (après-midi), hors vacances
  * - FV : Garde Nuit chaque Lundi ; Coro chaque Jeudi après-midi ; hors vacances
  * - DAAS : uniquement Apm - EE2 chaque Lundi, hors vacances
@@ -184,7 +185,13 @@ export function applyFixedClinicalAssignments(
   // --- IRM : seul S, Lundi + Vendredi (ligne jour = créneau ouvert) ---
   if (schedule["Hors site - IRM"]) {
     for (const day of DAYS) {
-      setDoctors(schedule, "Hors site - IRM", day, [])
+      if (day === "LUNDI" || day === "VENDREDI") continue
+      const current = schedule["Hors site - IRM"][day]?.value || []
+      // Retirer S hors Lun/Ven ; conserver une saisie manuelle d’un autre médecin
+      const withoutS = current.filter((d) => d !== "S")
+      if (withoutS.length !== current.length || withoutS.length === 0) {
+        setDoctors(schedule, "Hors site - IRM", day, withoutS)
+      }
     }
     assignIfAvailable(schedule, "Hors site - IRM", "LUNDI", "S", weekKey, vacations, assignOpts)
     assignIfAvailable(schedule, "Hors site - IRM", "VENDREDI", "S", weekKey, vacations, assignOpts)
