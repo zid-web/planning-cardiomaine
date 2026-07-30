@@ -12,8 +12,9 @@
  * 4. Sur week-end **combo** uniquement, croisement soft Sat → Dim (cases vides) :
  *    Sat ATL → Garde Dim ; Garde Sam → Sun ATL.
  *
- * **Priorité saisie manuelle** : jamais d’écrasement d’une case déjà pourvue
- * d’un médecin listé (soft fill uniquement) — prime sur pattern / croisement / solveur.
+ * **Presets calendrier** (`weekend-wom-presets.ts`) : mono/combo/special sont
+ * **forcés** (corrige rotation, solveur, ancien combo). Remplacants conservés.
+ * Hors preset : soft fill cases vides uniquement.
  */
 
 import { isListedDoctor } from "@/lib/doctor-code"
@@ -432,11 +433,91 @@ function applyMonoDoctor(
   return next
 }
 
+/** Remplace les médecins listés par `doctors`, conserve les remplacants. */
+function forceCellDoctors(
+  schedule: ScheduleData,
+  row: string,
+  day: string,
+  doctors: string[],
+  status: "validated" | "pending",
+): ScheduleData {
+  if (!schedule[row]?.[day]) return schedule
+  const remplacants = remplacantsInCell(schedule, row, day)
+  return setCellDoctors(schedule, row, day, [...doctors, ...remplacants], status)
+}
+
+/** Retire M/O/W/CH d’une case Garde (résidu combo), garde remplacants + autres listés. */
+function stripWomAndChFromGardeCell(
+  schedule: ScheduleData,
+  row: string,
+  day: string,
+): ScheduleData {
+  if (!schedule[row]?.[day]) return schedule
+  const cell = schedule[row][day]
+  const kept = (cell.value || []).filter(
+    (d) => d && !isWom(d) && d !== "CH",
+  )
+  if (kept.length === (cell.value || []).length) return schedule
+  return setCellDoctors(
+    schedule,
+    row,
+    day,
+    kept,
+    cell.status === "pending" ? "pending" : "validated",
+  )
+}
+
 /**
- * Injecte / complète le pattern WOM (mono ou combo) sur cases **vides**.
- * Semaines impaires (CH) : no-op (CH déjà injecté ailleurs).
- * Preset `special` : cases fixes seulement, pas de mono/combo week-end.
- * Saisie manuelle : jamais écrasée (`fillEmpty*` / `fillCompletelyEmptyCell`).
+ * Preset mono : impose ATL Sat+Sun+Ven Nuit (force), retire résidus combo Garde W/O/M.
+ * Priorité remplacants conservés ; la consigne prime sur rotation/solveur/ancien combo.
+ */
+function applyMonoDoctorForced(
+  schedule: ScheduleData,
+  doctor: WomAtlDoctor,
+  status: "validated" | "pending",
+): ScheduleData {
+  let next = schedule
+  for (const day of ["SAMEDI", "DIMANCHE"] as const) {
+    for (const row of ATL_ROWS) {
+      next = forceCellDoctors(next, row, day, [doctor], status)
+    }
+  }
+  next = forceCellDoctors(next, "Astreintes ATL Nuit", "VENDREDI", [doctor], status)
+  for (const day of ["SAMEDI", "DIMANCHE"] as const) {
+    for (const row of GARDE_ROWS) {
+      next = stripWomAndChFromGardeCell(next, row, day)
+    }
+  }
+  return next
+}
+
+/**
+ * Preset combo : impose A/B sur ATL + Garde (force), remplacants conservés.
+ */
+function applyComboPairForced(
+  schedule: ScheduleData,
+  atlSat: WomAtlDoctor,
+  atlSun: WomAtlDoctor,
+  status: "validated" | "pending",
+): ScheduleData {
+  let next = schedule
+  for (const row of ATL_ROWS) {
+    next = forceCellDoctors(next, row, "SAMEDI", [atlSat], status)
+    next = forceCellDoctors(next, row, "DIMANCHE", [atlSun], status)
+  }
+  next = forceCellDoctors(next, "Astreintes ATL Nuit", "VENDREDI", [atlSat], status)
+  for (const row of GARDE_ROWS) {
+    next = forceCellDoctors(next, row, "SAMEDI", [atlSun], status)
+    next = forceCellDoctors(next, row, "DIMANCHE", [atlSat], status)
+  }
+  return next
+}
+
+/**
+ * Injecte / complète le pattern WOM (mono ou combo).
+ * Semaines impaires (CH) : no-op.
+ * Preset `special` / `mono` / `combo` : **force** la consigne (corrige rotation,
+ * solveur, ancien combo). Hors preset : soft fill cases vides uniquement.
  */
 export function applyWeekendWomPattern(
   schedule: ScheduleData,
@@ -450,19 +531,32 @@ export function applyWeekendWomPattern(
     return applySpecialCells(schedule, preset.specialCells, { force: true })
   }
 
-  let next = schedule
-  if (preset && "specialCells" in preset && preset.specialCells?.length) {
-    next = applySpecialCells(next, preset.specialCells, { force: false })
+  const status: "validated" | "pending" = "validated"
+
+  // Consigne calendrier : toujours forcer (W40 mono M même si W déjà en case)
+  if (preset?.kind === "mono") {
+    let next = applyMonoDoctorForced(schedule, preset.atlDoctor, status)
+    if (preset.specialCells?.length) {
+      next = applySpecialCells(next, preset.specialCells, { force: true })
+    }
+    return applyFriSatAtlNightCoupling(next)
+  }
+  if (preset?.kind === "combo") {
+    let next = applyComboPairForced(schedule, preset.atlSat, preset.atlSun, status)
+    if (preset.specialCells?.length) {
+      next = applySpecialCells(next, preset.specialCells, { force: true })
+    }
+    return applyFriSatAtlNightCoupling(next)
   }
 
-  const status: "validated" | "pending" = "validated"
+  // Heuristique (pas de preset) : soft fill seulement
+  let next = schedule
   const pattern = proposeWeekendWomPattern(weekKey, equity)
   const isCombo = pattern?.kind === "combo"
 
   const satWom = firstWomOnAtlDay(next, "SAMEDI")
   const sunWom = firstWomOnAtlDay(next, "DIMANCHE")
 
-  // Combo prédéfini seulement : Sat≠Sun ATL → croisement Garde (cases vides)
   if (isCombo && satWom && sunWom && satWom !== sunWom) {
     next = applyComboPair(next, satWom, sunWom, status)
     return applyFriSatAtlNightCoupling(next)
@@ -470,7 +564,6 @@ export function applyWeekendWomPattern(
 
   if (satWom && atlDayFullyEmpty(next, "DIMANCHE")) {
     if (isCombo && pattern?.kind === "combo") {
-      // B = Garde Sam si déjà saisie, sinon partenaire du pattern
       const gardeSat = firstWomOnGardeDay(next, "SAMEDI")
       const partner =
         gardeSat && gardeSat !== satWom
@@ -485,7 +578,6 @@ export function applyWeekendWomPattern(
 
   if (sunWom && atlDayFullyEmpty(next, "SAMEDI")) {
     if (isCombo && pattern?.kind === "combo") {
-      // A = Garde Dim si déjà saisie, sinon partenaire du pattern
       const gardeSun = firstWomOnGardeDay(next, "DIMANCHE")
       const partner =
         gardeSun && gardeSun !== sunWom
