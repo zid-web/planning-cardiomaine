@@ -64,9 +64,12 @@ required service is the Next.js dev server; the backend is Supabase.
 
 ### Run / build / lint
 - Dev server: `bun run dev` → http://localhost:3000 (this is the app; use dev, not `build`/`start`).
+- **Un seul `next dev`** : si `.next/dev/lock` est pris (ou port 3000 déjà occupé), tuer l’ancien processus puis relancer — un second `bun run dev` échoue ou bascule sur 3001.
+- Unit tests : `bunx tsx lib/__tests__/<name>.test.ts` (pas de script `test` npm ; pas de Jest).
 - Build: `bun run build` (note: `next.config.js` sets `typescript.ignoreBuildErrors: true`, so TS errors do not fail the build).
 - Lint: `bun run lint` works (flat config in `eslint.config.mjs`). It is configured to exit 0 with warnings only; several noisy/pre-existing rules (incl. React Compiler rules from `react-hooks` v6) are set to `warn` on purpose.
 - Standard commands are also in `README.md` and `QUICK_REFERENCE.md`.
+- E2E UI sans `TEST_LOGIN_*` : se connecter via le **Desktop pane** (session cookie) ; `SUPABASE_SERVICE_ROLE_KEY` suffit pour scripts admin.
 - Roadmap options G1–G7: see `docs/PLAN-OPTIONS-G1-G7.md`. Prefer implementing through `ScheduleApp` + `schedule-actions.ts`; do not rebuild planning in `page.tsx`.
 - Production go-live checklist (Vercel env vars, migrations, smoke tests): `docs/PRODUCTION_CHECKLIST.md`. Prefer `console.error`/`warn` only — avoid reintroducing `[v0]` debug `console.log`s.
 - Performance / monitoring: `docs/PERFORMANCE.md` (Render keep-alive cron `/api/ping-solver`, SWR on planning, solver cache, Speed Insights). User testing: `docs/USER_TESTING_PLAN.md` + in-app Feedback → `app_feedback` / `/protected/admin/feedback`.
