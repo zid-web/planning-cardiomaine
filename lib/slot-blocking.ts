@@ -19,6 +19,7 @@ import {
   appendSpecialDoctorLabel,
   isEttPedWithGardeOrAtlMidi,
 } from "@/lib/special-activity-labels"
+import { isStressSlotClosed } from "@/lib/stress-rules"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
 
@@ -358,6 +359,14 @@ export function canAssignDoctorToSlot(
   // Remplaçant texte libre : pas de règles listées
   if (!isListedDoctor(doctorId)) {
     return { allowed: true }
+  }
+
+  // Stress : jamais Mer/Ven après-midi
+  if (isStressSlotClosed(rowKey, day)) {
+    return {
+      allowed: false,
+      reason: "Pas de vacation Stress le mercredi ni le vendredi après-midi.",
+    }
   }
 
   // CH : astreintes ATL uniquement — jamais de garde

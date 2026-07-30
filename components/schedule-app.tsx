@@ -54,6 +54,7 @@ import {
   sisterRoomForDoublon,
 } from "@/lib/slot-blocking"
 import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
+import { isStressSlotClosed } from "@/lib/stress-rules"
 import {
   applyStructuralConstraints,
   schedulesDiffer,
@@ -1239,6 +1240,9 @@ export function ScheduleApp({
     if ((day === "SAMEDI" || day === "DIMANCHE") && !isAllowedOnHoliday(row)) {
       return true
     }
+
+    // Stress : jamais mercredi / vendredi après-midi
+    if (isStressSlotClosed(row, day)) return true
 
     // Rééducation: Block Tuesday and Thursday
     if (row.includes("RÉEDUCATION") && (day === "MARDI" || day === "JEUDI")) return true
