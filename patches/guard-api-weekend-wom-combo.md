@@ -14,7 +14,7 @@
      - Croisement : Sat ATL ⇒ Garde Dim ; Garde Sam ⇒ Sun ATL
    - **Mono** (tous les autres week-ends WOM) : Sat+Sun ATL = un seul M/O/W
      — **pas** de croisement Garde↔ATL forcé
-   - **W52 2026** : special MG = ATL Jeudi nuit + Ven matin/midi/nuit (pas de week-end auto)
+   - **W52 2026** : special **M** = ATL Jeudi nuit + Ven matin/midi/nuit (pas de week-end auto)
 3. Semaines `week_type=1` : week-end ATL = **CH** (inchangé).
 4. **Presets front** (`weekend-wom-presets.ts`) : sur semaines listées, mono/combo
    sont **forcés** (pas seulement soft fill) pour corriger rotation/solveur/ancien

@@ -71,7 +71,7 @@ function main() {
   assert.equal(isWomComboWeekend("2026-W44"), true)
   assert.equal(isWomComboWeekend("2026-W40"), false, "W40 mono M")
   assert.equal(isWomComboWeekend("2026-W48"), false, "W48 mono M")
-  assert.equal(isWomComboWeekend("2026-W52"), false, "W52 special MG")
+  assert.equal(isWomComboWeekend("2026-W52"), false, "W52 special M Jeudi+Ven")
 
   // Presets H2 consignes
   const p40 = proposeWeekendWomPattern("2026-W40")
@@ -292,12 +292,12 @@ function main() {
   assert.deepEqual(w48["Astreintes ATL Matin"].SAMEDI.value, ["M"])
   assert.deepEqual(w48["Astreintes ATL Matin"].DIMANCHE.value, ["M"])
 
-  // Preset W52 : MG Jeudi nuit + Ven matin/midi/nuit (structural, force sur CH Jeudi)
+  // Preset W52 : M Jeudi nuit + Ven matin/midi/nuit (structural, force sur CH Jeudi)
   let w52 = applyStructuralConstraints(generateWeekSchedule("2026-W52", []), "2026-W52", [])
-  assert.deepEqual(w52["Astreintes ATL Nuit"].JEUDI.value, ["MG"])
-  assert.deepEqual(w52["Astreintes ATL Matin"].VENDREDI.value, ["MG"])
-  assert.deepEqual(w52["Astreintes ATL Midi"].VENDREDI.value, ["MG"])
-  assert.deepEqual(w52["Astreintes ATL Nuit"].VENDREDI.value, ["MG"])
+  assert.deepEqual(w52["Astreintes ATL Nuit"].JEUDI.value, ["M"])
+  assert.deepEqual(w52["Astreintes ATL Matin"].VENDREDI.value, ["M"])
+  assert.deepEqual(w52["Astreintes ATL Midi"].VENDREDI.value, ["M"])
+  assert.deepEqual(w52["Astreintes ATL Nuit"].VENDREDI.value, ["M"])
 
   console.log("✅ weekend-wom-rules tests passed")
 }

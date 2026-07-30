@@ -1,18 +1,13 @@
 /**
  * Calendrier week-end ATL / Garde prédéfini (consignes admin).
  *
- * Saisie manuelle reste prioritaire partout (`fillEmpty*` côté rules).
- *
  * 2026 H2 (W40–W52) — consignes :
- * - W40 mono M ; W42 combo O(A)+M(B) ; W44 combo W(A)+O(B)
+ * - W40 mono M ; W42 combo O(rôle A)+M(rôle B) ; W44 combo W(A)+O(B)
  * - W46 mono O ; W48 mono M ; W50 mono W
- * - W52 : MG = ATL Jeudi nuit + Vendredi matin/midi/nuit (pas de pattern week-end)
+ * - W52 : **M** = ATL Jeudi nuit + Vendredi matin/midi/nuit (pas de pattern week-end)
  *
- * W42 : le médecin A (Ven+Sat ATL + Garde Dim) n’était pas nommé dans la consigne ;
- * on retient **O** (M = B clairement nommé). Corriger ici si besoin.
- *
- * W44 : « O … d'astreinte samedi … et de garde dimanche » interprété comme
- * combo B standard (Garde Sam + ATL Dim), aligné sur W42.
+ * W42 : rôle A = **O** (confirmé ; pas un code médecin « A »).
+ * W44 : O = rôle B (Garde Sam + ATL Dim).
  */
 
 export type WeekendSpecialCell = {
@@ -46,9 +41,9 @@ export type WeekendWeekPreset =
  */
 export const WOM_WEEKEND_PRESETS: Readonly<Record<string, WeekendWeekPreset>> = {
   "2026-W40": { kind: "mono", atlDoctor: "M" },
-  // A=O (Ven+Sat ATL + Garde Dim), B=M (Garde Sam + Sun ATL)
+  // Rôle A=O (Ven+Sat ATL + Garde Dim), B=M (Garde Sam + Sun ATL)
   "2026-W42": { kind: "combo", atlSat: "O", atlSun: "M" },
-  // A=W, B=O
+  // Rôle A=W, B=O
   "2026-W44": { kind: "combo", atlSat: "W", atlSun: "O" },
   "2026-W46": { kind: "mono", atlDoctor: "O" },
   "2026-W48": { kind: "mono", atlDoctor: "M" },
@@ -57,17 +52,17 @@ export const WOM_WEEKEND_PRESETS: Readonly<Record<string, WeekendWeekPreset>> = 
     kind: "special",
     skipFriSatCoupling: true,
     specialCells: [
-      { row: "Astreintes ATL Nuit", day: "JEUDI", doctors: ["MG"] },
-      { row: "Astreintes ATL Matin", day: "VENDREDI", doctors: ["MG"] },
-      { row: "Astreintes ATL Midi", day: "VENDREDI", doctors: ["MG"] },
-      { row: "Astreintes ATL Nuit", day: "VENDREDI", doctors: ["MG"] },
+      { row: "Astreintes ATL Nuit", day: "JEUDI", doctors: ["M"] },
+      { row: "Astreintes ATL Matin", day: "VENDREDI", doctors: ["M"] },
+      { row: "Astreintes ATL Midi", day: "VENDREDI", doctors: ["M"] },
+      { row: "Astreintes ATL Nuit", day: "VENDREDI", doctors: ["M"] },
     ],
   },
 }
 
 /**
  * Combos 2026 (5 / semestre) — H2 aligné consignes W42/W44
- * (W48/W52 ne sont plus combo : mono M / special MG).
+ * (W48/W52 ne sont plus combo : mono M / special M Jeudi+Ven).
  */
 export const WOM_COMBO_WEEK_KEYS_2026 = [
   // H1
