@@ -1,6 +1,7 @@
 "use client"
 
 import { CalendarDays, ChevronRight } from "lucide-react"
+import { getSpecialActivityDisplayName } from "@/lib/special-activity-labels"
 import { cn } from "@/lib/utils"
 
 type WeekViewProps = {
@@ -20,6 +21,10 @@ function cleanActivityLabel(activity: string): string {
     .replace("Hors site - ", "")
     .replace("Astreintes ATL ", "Astreinte ")
     .replace("1/2 journée off ", "½ off ")
+}
+
+function activityDisplayLabel(activity: string, day: string, doctorCode: string): string {
+  return getSpecialActivityDisplayName(activity, day, doctorCode) || cleanActivityLabel(activity)
 }
 
 function periodTone(activity: string): string {
@@ -131,7 +136,7 @@ export function WeekView({
                         periodTone(task),
                       )}
                     >
-                      {cleanActivityLabel(task)}
+                      {activityDisplayLabel(task, day, doctorCode)}
                     </span>
                   ))}
                 </div>

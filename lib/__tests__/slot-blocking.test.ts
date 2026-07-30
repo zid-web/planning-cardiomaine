@@ -96,6 +96,17 @@ function main() {
   schedule["Matin - ETT salle 2"].LUNDI.value = ["S"]
   assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "S", "Matin - ETT salle 1"), "S²")
 
+  // Étiquettes spéciales (ped / PM) composées avec le format badge
+  schedule["Apm - ETT salle 1"].MERCREDI = {
+    value: ["S"],
+    type: "doctor",
+    status: "validated",
+  }
+  assert.equal(
+    formatDoctorWithDoublon(schedule, "MERCREDI", "S", "Apm - ETT salle 1"),
+    "S (ped)",
+  )
+
   // LFB bloqué jour de garde
   schedule = generateWeekSchedule(weekKey, [])
   schedule["Garde Matin"].MARDI.value = ["G"]

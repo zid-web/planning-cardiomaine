@@ -108,7 +108,7 @@ export const DOC022_FIXED_CLINICAL_SLOTS: Doc022FixedSlot[] = [
     row: "Apm - ETT salle 1",
     day: "MERCREDI",
     doctor: "S",
-    note: "DOC022 ECHO1 écho enfants Dr Saint André 14h–16h30",
+    note: "DOC022 ECHO1 écho enfants (ETT ped) Dr Saint André 14h–16h30",
   },
   // EE2 : Lefebvre lundi matin ; Bros vendredi matin (DAAS reste apm lundi)
   {

@@ -3,6 +3,10 @@
 import { Calendar, Edit3, MessageSquare, Plus, Sun, Moon, Sunrise, UserCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS } from "@/lib/constants"
+import {
+  appendSpecialDoctorLabel,
+  getSpecialActivityDisplayNameForDoctors,
+} from "@/lib/special-activity-labels"
 import { cn } from "@/lib/utils"
 
 export type DayTask = {
@@ -68,6 +72,13 @@ function cleanActivityLabel(activity: string): string {
     .replace("Apm - ", "")
     .replace("Hors site - ", "")
     .replace("Astreintes ATL ", "Astreinte ")
+}
+
+function activityDisplayLabel(activity: string, day: string, doctors: string[]): string {
+  return (
+    getSpecialActivityDisplayNameForDoctors(activity, day, doctors) ||
+    cleanActivityLabel(activity)
+  )
 }
 
 export function TodayView({
@@ -230,7 +241,7 @@ export function TodayView({
                         )}
                       </div>
                       <p className="truncate text-sm font-semibold text-slate-900">
-                        {cleanActivityLabel(task.activity)}
+                        {activityDisplayLabel(task.activity, dayName, task.doctors)}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-1">
                         {task.doctors.map((doc) => (
@@ -242,7 +253,7 @@ export function TodayView({
                               doc === doctorCode && "ring-2 ring-offset-1 ring-slate-900/30",
                             )}
                           >
-                            {doc}
+                            {appendSpecialDoctorLabel(doc, task.activity, dayName, doc)}
                           </Badge>
                         ))}
                       </div>
