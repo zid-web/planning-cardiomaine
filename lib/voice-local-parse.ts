@@ -80,29 +80,63 @@ function findDoctorsInText(text: string, known: string[]): string[] {
   return found
 }
 
-function inferActivitySlot(text: string): { activity: string; slot: string } {
+function inferActivitySlot(
+  text: string,
+  dateIso?: string,
+): { activity: string; slot: string } {
   const t = text.toLowerCase()
-  if (/\bnct\b/.test(t)) return { activity: "NCT", slot: "nuit" }
-  if (/cong[eéè]s|vacances?|\babsent/.test(t)) return { activity: "VACANCES", slot: "matin" }
-  if (/congr[eéè]s/.test(t)) return { activity: "CONGRES", slot: "matin" }
-  if (/\brythmo\b/.test(t)) {
-    return { activity: "RYTHMO", slot: /\bmatin\b/.test(t) ? "matin" : "am" }
+  let activity = "GARDE"
+  let slot = "nuit"
+
+  if (/\bnct\b/.test(t)) {
+    activity = "NCT"
+    slot = "nuit"
+  } else if (/cong[eéè]s|vacances?|\babsent/.test(t)) {
+    activity = "VACANCES"
+    slot = "matin"
+  } else if (/congr[eéè]s/.test(t)) {
+    activity = "CONGRES"
+    slot = "matin"
+  } else if (/\brythmo\b/.test(t)) {
+    activity = "RYTHMO"
+    slot = /\bmatin\b/.test(t) ? "matin" : "am"
+  } else if (/\bcoro\b|\bcoroscanner\b|\bcoronaro/.test(t)) {
+    activity = "CORO"
+    slot = /\bmatin\b/.test(t) ? "matin" : "am"
+  } else if (/\bastreinte\b|\batl\b/.test(t)) {
+    activity = "ASTREINTE"
+    if (/\bnuit\b|\bsoir\b/.test(t)) slot = "nuit"
+    else if (/\bmidi\b/.test(t)) slot = "am"
+    else if (/\bmatin\b/.test(t)) slot = "matin"
+    else if (/\bapr[eè]s/.test(t)) slot = "am"
+    else slot = "matin"
+  } else if (/\bgarde\b/.test(t)) {
+    activity = "GARDE"
+    if (/\bnuit\b|\bsoir\b/.test(t)) slot = "nuit"
+    else if (/\bmidi\b/.test(t)) slot = "am"
+    else if (/\bmatin\b/.test(t)) slot = "matin"
+    else if (/\bapr[eè]s/.test(t)) slot = "am"
+    else slot = "matin"
+  } else if (/\bnuit\b|\bsoir\b/.test(t)) {
+    activity = "GARDE"
+    slot = "nuit"
   }
-  if (/\bcoro\b|\bcoroscanner\b|\bcoronaro/.test(t)) {
-    return { activity: "CORO", slot: /\bmatin\b/.test(t) ? "matin" : "am" }
+
+  // Week-end : Claude / Render utilisent souvent slot=weekend — le front mappe
+  // weekend/ASTREINTE → ATL Matin (puis couplage soft Matin/Midi/Nuit).
+  const dow = dateIso ? new Date(`${dateIso}T12:00:00`).getDay() : -1
+  const isWeekendDay = dow === 0 || dow === 6
+  const mentionsWeekend = /\bweek[- ]?end\b|\bsamedi\b|\bdimanche\b/.test(t)
+  const hasExplicitPeriod = /\bmatin\b|\bmidi\b|\bnuit\b|\bsoir\b|\bapr[eè]s/.test(t)
+  if (
+    (isWeekendDay || mentionsWeekend) &&
+    (activity === "ASTREINTE" || activity === "GARDE") &&
+    !hasExplicitPeriod
+  ) {
+    slot = "weekend"
   }
-  if (/\bastreinte\b|\batl\b/.test(t)) {
-    if (/\bnuit\b|\bsoir\b/.test(t)) return { activity: "ASTREINTE", slot: "nuit" }
-    if (/\bmidi\b|\bapr[eè]s/.test(t)) return { activity: "ASTREINTE", slot: "am" }
-    return { activity: "ASTREINTE", slot: "matin" }
-  }
-  if (/\bgarde\b/.test(t)) {
-    if (/\bnuit\b|\bsoir\b/.test(t)) return { activity: "GARDE", slot: "nuit" }
-    if (/\bmidi\b|\bapr[eè]s/.test(t)) return { activity: "GARDE", slot: "am" }
-    return { activity: "GARDE", slot: "matin" }
-  }
-  if (/\bnuit\b|\bsoir\b/.test(t)) return { activity: "GARDE", slot: "nuit" }
-  return { activity: "GARDE", slot: "nuit" }
+
+  return { activity, slot }
 }
 
 /**
@@ -123,7 +157,7 @@ export function parseVoiceCommandLocally(
   const doctors = findDoctorsInText(trimmed, knownDoctors)
   if (!doctors.length) return null
 
-  const { activity, slot } = inferActivitySlot(trimmed)
+  const { activity, slot } = inferActivitySlot(trimmed, date)
   const t = trimmed.toLowerCase()
 
   // "X remplace Y"
@@ -184,4 +218,25 @@ export function isDoctorInValidationError(message: string): boolean {
       m.includes("input_value=none") ||
       m.includes("manquant"))
   )
+}
+
+/**
+ * True si Render refuse une combinaison slot/activité que le front sait mapper
+ * (ex. « Combinaison créneau/activité non reconnue : weekend / ASTREINTE »).
+ */
+export function isUnrecognizedSlotActivityError(message: string): boolean {
+  const m = (message || "").toLowerCase()
+  return (
+    m.includes("combinaison") &&
+    (m.includes("non reconnue") || m.includes("non reconnu") || m.includes("inconnue"))
+  ) || (
+    m.includes("weekend") &&
+    m.includes("astreinte") &&
+    (m.includes("422") || m.includes("non reconnue") || m.includes("créneau"))
+  )
+}
+
+/** Erreurs voice où un repli local `parseVoiceCommandLocally` est pertinent. */
+export function shouldUseLocalVoiceFallback(message: string): boolean {
+  return isDoctorInValidationError(message) || isUnrecognizedSlotActivityError(message)
 }
