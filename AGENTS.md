@@ -52,7 +52,7 @@ required service is the Next.js dev server; the backend is Supabase.
   - **Nuits + weekend** (cycle 2 sem., `week_type` 1=impaire / 2=paire) : **impaire** = CH Lun/Mar/Ven nuit + weekend ATL entier ; W/O/M = Mer/Jeu nuit. **paire** = W/O/M Lun/Mar/Ven nuit + weekend ATL ; CH = Mer/Jeu nuit. Weekend `ASTREINTE` mappe vers **Astreintes ATL Matin** (pas Garde).
   - **Ven ATL Nuit = Sam ATL Nuit** (même médecin, soft) — `applyFriSatAtlNightCoupling`.
   - **Weekend ATL WOM** (`lib/weekend-wom-rules.ts`, semaines paires) :
-    - **Combo** (**exactement 5 / semestre**, calendrier `WOM_COMBO_WEEK_KEYS_OVERRIDE` / indices) : **A** = Ven ATL Nuit + Sat ATL + Garde Dim ; **B** = Garde Sam + Sun ATL. Presets : `lib/weekend-wom-presets.ts` — sur semaines preset, la consigne est **forcée** (corrige rotation/solveur/ancien combo ; remplacants conservés). Hors preset : soft fill. Ex. W40 mono **M** même si W était déjà en case.
+    - **Combo** (**exactement 5 / semestre**, calendrier `WOM_COMBO_WEEK_KEYS_OVERRIDE` / indices) : **rôle A** = Ven ATL Nuit + Sat ATL + Garde Dim ; **rôle B** = Garde Sam + Sun ATL (A/B = rôles, pas le code médecin « A »). Presets : `lib/weekend-wom-presets.ts` — consignes **forcées** (ex. W40/48 mono M ; W42 O+M ; W44 W+O ; W52 **M** Jeudi nuit + Ven matin/midi/nuit). Hors preset : soft fill.
     - **Mono** (autres week-ends WOM) : Sat+Sun ATL Matin/Midi/Nuit = un seul M/O/W (équité 6 mois).
     - Soft fill only (cases vides) — override admin conservé.
   - **Weekend ATL** jour : couplage **souple** Matin/Midi/Nuit — `applyWeekendGardeAtlCoupling`.
