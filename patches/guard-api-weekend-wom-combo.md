@@ -7,10 +7,9 @@
 1. **Ven ASTREINTE nuit = Sam ASTREINTE nuit** (même médecin) — implication dure.
 2. Semaines `week_type=2` (week-end ATL M/O/W) :
    - **Combo** (~10 / 13 week-ends paires sur 6 mois) :
-     - Sat ATL Matin/Midi/Nuit = **A**
-     - Sun ATL Matin/Midi/Nuit = **B**
-     - Ven ATL Nuit = **A**
-     - Garde Sam = **B**, Garde Dim = **A** (si variables GARDE week-end actives)
+     - **A** = Ven ATL Nuit + Sat ATL Matin/Midi/Nuit + Garde Dim Matin/Midi/Nuit
+     - **B** = Garde Sam Matin/Midi/Nuit + Sun ATL Matin/Midi/Nuit
+     - Croisement : Sat ATL ⇒ Garde Dim ; Garde Sam ⇒ Sun ATL
    - **Mono** : Sat+Sun ATL = un seul M/O/W (équité `points_weekend` / 6 mois)
 3. Semaines `week_type=1` : week-end ATL = **CH** (inchangé).
 
