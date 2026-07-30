@@ -33,6 +33,7 @@ import {
   collectSpeechTranscript,
   createFrSpeechRecognition,
   ensureMicrophonePermission,
+  isRecoverableSpeechError,
   isSpeechRecognitionSupported,
   speechErrorMessage,
   type SpeechRecognitionLike,
@@ -79,6 +80,9 @@ export function VoiceAndUploadPanel({
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
   const finalTranscriptRef = useRef("")
+  /** Intention utilisateur : rester en écoute (ignore no-speech / fin Chrome). */
+  const wantListeningRef = useRef(false)
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [speechSupported, setSpeechSupported] = useState(true)
 
@@ -86,6 +90,11 @@ export function VoiceAndUploadPanel({
   useEffect(() => {
     setSpeechSupported(isSpeechRecognitionSupported())
     return () => {
+      wantListeningRef.current = false
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current)
+        restartTimerRef.current = null
+      }
       try {
         recognitionRef.current?.abort()
       } catch {
@@ -109,6 +118,11 @@ export function VoiceAndUploadPanel({
   }, [currentWeekRequest, resolveWeekStart, weekNumber, vacations])
 
   const stopListening = useCallback(() => {
+    wantListeningRef.current = false
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current)
+      restartTimerRef.current = null
+    }
     try {
       recognitionRef.current?.stop()
     } catch {
@@ -144,6 +158,12 @@ export function VoiceAndUploadPanel({
       return
     }
 
+    wantListeningRef.current = true
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current)
+      restartTimerRef.current = null
+    }
+
     try {
       recognitionRef.current?.abort()
     } catch {
@@ -152,6 +172,7 @@ export function VoiceAndUploadPanel({
 
     const recognition = createFrSpeechRecognition({ continuous: true })
     if (!recognition) {
+      wantListeningRef.current = false
       const msg = speechErrorMessage("not-supported")
       setStatus({ type: "error", message: msg })
       toast.error(msg)
@@ -162,7 +183,24 @@ export function VoiceAndUploadPanel({
     setTranscript("")
     setEditedTranscript("")
 
+    const scheduleRestart = () => {
+      if (!wantListeningRef.current) return
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current)
+      // Court délai : Chrome exige de ne pas rappeler start() synchrone dans onend/onerror
+      restartTimerRef.current = setTimeout(() => {
+        restartTimerRef.current = null
+        if (!wantListeningRef.current || !recognitionRef.current) return
+        try {
+          recognitionRef.current.start()
+          setStatus({ type: "loading", message: "Écoute en cours… parlez maintenant" })
+        } catch {
+          // InvalidStateError si déjà démarré — ignorer
+        }
+      }, 280)
+    }
+
     recognition.onstart = () => {
+      if (!wantListeningRef.current) return
       setIsListening(true)
       setStatus({ type: "loading", message: "Écoute en cours… parlez maintenant" })
     }
@@ -178,8 +216,21 @@ export function VoiceAndUploadPanel({
     }
 
     recognition.onerror = (event) => {
-      console.error("[app] Speech recognition error:", event.error)
-      const msg = speechErrorMessage(event.error)
+      const code = event.error || ""
+      if (isRecoverableSpeechError(code)) {
+        // Chrome continuous : no-speech / aborted très fréquents — ne pas toast ni couper
+        if (code === "no-speech") {
+          setStatus({
+            type: "loading",
+            message: "Toujours à l’écoute… parlez un peu plus fort ou rapprochez le micro",
+          })
+        }
+        // onend suivra et relancera via scheduleRestart
+        return
+      }
+      console.error("[app] Speech recognition error:", code)
+      wantListeningRef.current = false
+      const msg = speechErrorMessage(code)
       if (msg) {
         setStatus({ type: "error", message: msg })
         toast.error(msg)
@@ -188,6 +239,11 @@ export function VoiceAndUploadPanel({
     }
 
     recognition.onend = () => {
+      if (wantListeningRef.current) {
+        // Fin « naturelle » Chrome (souvent après no-speech) → relancer
+        scheduleRestart()
+        return
+      }
       setIsListening(false)
       const text = (finalTranscriptRef.current || "").trim()
       if (text) {
@@ -215,6 +271,7 @@ export function VoiceAndUploadPanel({
         recognition.start()
       } catch (err2) {
         console.error("[app] SpeechRecognition.start retry failed:", err2)
+        wantListeningRef.current = false
         const msg = speechErrorMessage("start-failed")
         setStatus({ type: "error", message: msg })
         toast.error(msg)
