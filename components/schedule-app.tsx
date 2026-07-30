@@ -84,7 +84,8 @@ import {
 } from "@/app/actions/schedule-actions"
 import type { ScheduleSaveSource } from "@/lib/schedule-diff"
 import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
-import { getLastSundayGuardDoctor } from "@/app/actions/guard-api-actions"
+import { getLastSundayGuardDoctor, recordLastComboGardeFromSchedule } from "@/app/actions/guard-api-actions"
+import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { getAllVacations } from "@/app/actions/vacation-actions"
 import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions"
 import { VacationsButton } from "@/components/vacations-button"
@@ -348,6 +349,13 @@ export function ScheduleApp({
       toast.error("Les propositions ont été générées mais la sauvegarde a échoué. Réessayez.")
       console.error("[schedule-app] Échec de sauvegarde après génération:", error)
       return
+    }
+
+    // Combo : mémoriser qui a *réellement* la Garde Sam (espacement 15 j. solveur)
+    if (isWomComboWeekend(currentWeekKey)) {
+      void recordLastComboGardeFromSchedule(currentWeekKey, mergedWeekSchedule).catch((err) => {
+        console.warn("[schedule-app] last_combo_garde:", err)
+      })
     }
 
     setGeneratedScheduleWarnings(warnings)
@@ -911,6 +919,17 @@ export function ScheduleApp({
     void updateSchedule(newSchedule)
     setSelectedCell(null)
     toast.success("Proposition validée")
+
+    // Combo : après validation Garde Sam, mémoriser le médecin réel
+    if (
+      isWomComboWeekend(weekKey) &&
+      day === "SAMEDI" &&
+      (row === "Garde Matin" || row === "Garde Midi" || row === "Garde Nuit")
+    ) {
+      void recordLastComboGardeFromSchedule(weekKey, newSchedule).catch((err) => {
+        console.warn("[schedule-app] last_combo_garde after validate:", err)
+      })
+    }
   }
 
   const pendingRequests = useMemo(
