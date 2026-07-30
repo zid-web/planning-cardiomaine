@@ -5,12 +5,34 @@ import assert from "node:assert/strict"
 import {
   applyFriSatAtlNightCoupling,
   applySaturdayGardeSingleDoctor,
+  applyWeekendComboCrossCoupling,
   applyWeekendWomRules,
   isWomComboWeekend,
   proposeWeekendWomPattern,
 } from "@/lib/weekend-wom-rules"
 import { applyStructuralConstraints } from "@/lib/apply-structural-constraints"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
+
+function clearWeekendAtlAndGarde(schedule: ReturnType<typeof generateWeekSchedule>) {
+  for (const row of [
+    "Astreintes ATL Matin",
+    "Astreintes ATL Midi",
+    "Astreintes ATL Nuit",
+  ]) {
+    schedule[row].SAMEDI = { value: [], type: "empty", status: "validated" }
+    schedule[row].DIMANCHE = { value: [], type: "empty", status: "validated" }
+  }
+  schedule["Astreintes ATL Nuit"].VENDREDI = {
+    value: [],
+    type: "empty",
+    status: "validated",
+  }
+  for (const row of ["Garde Matin", "Garde Midi", "Garde Nuit"]) {
+    schedule[row].SAMEDI = { value: [], type: "empty", status: "validated" }
+    schedule[row].DIMANCHE = { value: [], type: "empty", status: "validated" }
+  }
+  return schedule
+}
 
 function main() {
   // Combo vs mono : ~10/13 semaines paires
@@ -67,25 +89,7 @@ function main() {
   assert.deepEqual(schedule["Garde Nuit"].SAMEDI.value, ["W"])
 
   // Combo inject sur week-end ATL vide (semaine paire)
-  let empty = generateWeekSchedule("2026-W32", [])
-  for (const row of [
-    "Astreintes ATL Matin",
-    "Astreintes ATL Midi",
-    "Astreintes ATL Nuit",
-  ]) {
-    empty[row].SAMEDI = { value: [], type: "empty", status: "validated" }
-    empty[row].DIMANCHE = { value: [], type: "empty", status: "validated" }
-  }
-  empty["Astreintes ATL Nuit"].VENDREDI = {
-    value: [],
-    type: "empty",
-    status: "validated",
-  }
-  for (const row of ["Garde Matin", "Garde Midi", "Garde Nuit"]) {
-    empty[row].SAMEDI = { value: [], type: "empty", status: "validated" }
-    empty[row].DIMANCHE = { value: [], type: "empty", status: "validated" }
-  }
-  // Retirer CH éventuel (W32 paire — pas de CH weekend)
+  let empty = clearWeekendAtlAndGarde(generateWeekSchedule("2026-W32", []))
   empty = applyWeekendWomRules(empty, "2026-W32")
   const satAtl = empty["Astreintes ATL Nuit"].SAMEDI.value[0]
   const sunAtl = empty["Astreintes ATL Nuit"].DIMANCHE.value[0]
@@ -98,25 +102,62 @@ function main() {
   assert.deepEqual(empty["Garde Midi"].DIMANCHE.value, [satAtl])
   assert.deepEqual(empty["Garde Nuit"].DIMANCHE.value, [satAtl])
 
-  // Mono : même ATL Sam+Dim, pas de garde forcée si déjà mono pattern
-  let monoWeek = generateWeekSchedule("2026-W22", [])
+  // Combo croisement soft : Sat ATL=A + Garde Sam=B → Dim Garde=A, Sun ATL=B
+  // (même si le pattern aurait proposé un autre partenaire)
+  let cross = clearWeekendAtlAndGarde(generateWeekSchedule("2026-W32", []))
   for (const row of [
     "Astreintes ATL Matin",
     "Astreintes ATL Midi",
     "Astreintes ATL Nuit",
   ]) {
-    monoWeek[row].SAMEDI = { value: [], type: "empty", status: "validated" }
-    monoWeek[row].DIMANCHE = { value: [], type: "empty", status: "validated" }
-  }
-  monoWeek["Astreintes ATL Nuit"].VENDREDI = {
-    value: [],
-    type: "empty",
-    status: "validated",
+    cross[row].SAMEDI = { value: ["M"], type: "doctor", status: "validated" }
   }
   for (const row of ["Garde Matin", "Garde Midi", "Garde Nuit"]) {
-    monoWeek[row].SAMEDI = { value: [], type: "empty", status: "validated" }
-    monoWeek[row].DIMANCHE = { value: [], type: "empty", status: "validated" }
+    cross[row].SAMEDI = { value: ["W"], type: "doctor", status: "validated" }
   }
+  cross = applyWeekendWomRules(cross, "2026-W32")
+  assert.deepEqual(cross["Astreintes ATL Nuit"].VENDREDI.value, ["M"], "Ven ATL = Sat ATL")
+  assert.deepEqual(cross["Astreintes ATL Matin"].DIMANCHE.value, ["W"], "Sun ATL = Garde Sam")
+  assert.deepEqual(cross["Astreintes ATL Midi"].DIMANCHE.value, ["W"])
+  assert.deepEqual(cross["Astreintes ATL Nuit"].DIMANCHE.value, ["W"])
+  assert.deepEqual(cross["Garde Matin"].DIMANCHE.value, ["M"], "Garde Dim = Sat ATL")
+  assert.deepEqual(cross["Garde Midi"].DIMANCHE.value, ["M"])
+  assert.deepEqual(cross["Garde Nuit"].DIMANCHE.value, ["M"])
+  // Ne pas écraser Sat déjà saisi
+  assert.deepEqual(cross["Garde Matin"].SAMEDI.value, ["W"])
+  assert.deepEqual(cross["Astreintes ATL Matin"].SAMEDI.value, ["M"])
+
+  // applyWeekendComboCrossCoupling seul (sans pattern) sur combo
+  let softOnly = clearWeekendAtlAndGarde(generateWeekSchedule("2026-W32", []))
+  softOnly["Astreintes ATL Matin"].SAMEDI = { value: ["O"], type: "doctor", status: "validated" }
+  softOnly["Astreintes ATL Midi"].SAMEDI = { value: ["O"], type: "doctor", status: "validated" }
+  softOnly["Astreintes ATL Nuit"].SAMEDI = { value: ["O"], type: "doctor", status: "validated" }
+  softOnly["Garde Midi"].SAMEDI = { value: ["M"], type: "doctor", status: "validated" }
+  softOnly = applyWeekendComboCrossCoupling(softOnly, "2026-W32")
+  assert.deepEqual(softOnly["Garde Matin"].DIMANCHE.value, ["O"])
+  assert.deepEqual(softOnly["Garde Midi"].DIMANCHE.value, ["O"])
+  assert.deepEqual(softOnly["Garde Nuit"].DIMANCHE.value, ["O"])
+  assert.deepEqual(softOnly["Astreintes ATL Matin"].DIMANCHE.value, ["M"])
+  assert.deepEqual(softOnly["Astreintes ATL Nuit"].VENDREDI.value, ["O"])
+
+  // Mono : pas de croisement combo (Garde Dim / Sun ATL non forcés depuis Sat Garde)
+  let monoCross = clearWeekendAtlAndGarde(generateWeekSchedule("2026-W22", []))
+  for (const row of [
+    "Astreintes ATL Matin",
+    "Astreintes ATL Midi",
+    "Astreintes ATL Nuit",
+  ]) {
+    monoCross[row].SAMEDI = { value: ["M"], type: "doctor", status: "validated" }
+  }
+  for (const row of ["Garde Matin", "Garde Midi", "Garde Nuit"]) {
+    monoCross[row].SAMEDI = { value: ["W"], type: "doctor", status: "validated" }
+  }
+  monoCross = applyWeekendComboCrossCoupling(monoCross, "2026-W22")
+  assert.deepEqual(monoCross["Garde Matin"].DIMANCHE.value, [], "mono : pas de croisement")
+  assert.deepEqual(monoCross["Astreintes ATL Matin"].DIMANCHE.value, [])
+
+  // Mono : même ATL Sam+Dim, pas de garde forcée si déjà mono pattern
+  let monoWeek = clearWeekendAtlAndGarde(generateWeekSchedule("2026-W22", []))
   monoWeek = applyWeekendWomRules(monoWeek, "2026-W22")
   const monoDoc = monoWeek["Astreintes ATL Nuit"].SAMEDI.value[0]
   assert.ok(monoDoc)

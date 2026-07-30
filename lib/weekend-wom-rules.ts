@@ -4,10 +4,13 @@
  * 1. Astreinte ATL Nuit samedi ⇒ même médecin en ATL Nuit vendredi (systématique).
  * 2. Garde samedi : un seul médecin Matin → Midi → Nuit dans la mesure du possible.
  * 3. Semaines paires (week-end ATL WOM, pas CH) :
- *    - ~10 week-ends / 6 mois en **combo** : Sat ATL = A, Sun ATL = B ;
- *      Garde Sam = B, Garde Dim = A ; Ven ATL Nuit = A.
+ *    - ~10 week-ends / 6 mois en **combo** :
+ *      A = Ven ATL Nuit + Sat ATL Matin/Midi/Nuit + Garde Dim Matin/Midi/Nuit
+ *      B = Garde Sam Matin/Midi/Nuit + Sun ATL Matin/Midi/Nuit
  *    - Autres week-ends WOM **mono** : Sat+Sun ATL (Matin/Midi/Nuit) = un seul M/O/W
  *      (équité / rotation).
+ * 4. Sur week-end **combo**, croisement soft Sat → Dim (cases vides) :
+ *    Sat ATL → Garde Dim ; Garde Sam → Sun ATL (priorité au médecin déjà saisi).
  *
  * Couplage **souple** : ne remplit que les cases vides (override admin respecté).
  */
@@ -147,6 +150,19 @@ function firstWomOnAtlDay(
   return null
 }
 
+/** Priorité Midi/Nuit (associé week-end) avant Matin (peut inclure Ven Garde Nuit). */
+function firstWomOnGardeDay(
+  schedule: ScheduleData,
+  day: "SAMEDI" | "DIMANCHE",
+): WomAtlDoctor | null {
+  for (const row of ["Garde Nuit", "Garde Midi", "Garde Matin"] as const) {
+    for (const d of listedInCell(schedule, row, day)) {
+      if (isWom(d)) return d
+    }
+  }
+  return null
+}
+
 function atlDayFullyEmpty(schedule: ScheduleData, day: "SAMEDI" | "DIMANCHE"): boolean {
   return ATL_ROWS.every((row) => !hasListedDoctor(schedule, row, day))
 }
@@ -274,11 +290,41 @@ function applyComboPair(
   status: "validated" | "pending",
 ): ScheduleData {
   let next = schedule
+  // A = Ven ATL Nuit + Sat ATL + Garde Dim ; B = Garde Sam + Sun ATL
   next = fillEmptyAtlDay(next, "SAMEDI", atlSat, status)
   next = fillEmptyAtlDay(next, "DIMANCHE", atlSun, status)
   next = fillEmptyCell(next, "Astreintes ATL Nuit", "VENDREDI", [atlSat], status)
   next = fillEmptyGardeDay(next, "SAMEDI", atlSun, status)
   next = fillEmptyGardeDay(next, "DIMANCHE", atlSat, status)
+  return next
+}
+
+/**
+ * Croisement soft week-end combo (cases vides uniquement) :
+ * - Sat ATL (A) → Garde Dim Matin/Midi/Nuit
+ * - Garde Sam (B) → Sun ATL Matin/Midi/Nuit
+ * Respecte aussi Ven ATL Nuit ← Sat ATL via `applyFriSatAtlNightCoupling`.
+ */
+export function applyWeekendComboCrossCoupling(
+  schedule: ScheduleData,
+  weekKey: string,
+): ScheduleData {
+  if (!isWomComboWeekend(weekKey)) return schedule
+
+  const status: "validated" | "pending" = "validated"
+  let next = schedule
+
+  const satAtl = firstWomOnAtlDay(next, "SAMEDI")
+  if (satAtl) {
+    next = fillEmptyGardeDay(next, "DIMANCHE", satAtl, status)
+    next = fillEmptyCell(next, "Astreintes ATL Nuit", "VENDREDI", [satAtl], status)
+  }
+
+  const satGarde = firstWomOnGardeDay(next, "SAMEDI")
+  if (satGarde) {
+    next = fillEmptyAtlDay(next, "DIMANCHE", satGarde, status)
+  }
+
   return next
 }
 
@@ -319,7 +365,12 @@ export function applyWeekendWomPattern(
 
   if (satWom && atlDayFullyEmpty(next, "DIMANCHE")) {
     if (pattern?.kind === "combo") {
-      const partner = otherWom(satWom, satWom === pattern.atlSat ? pattern.atlSun : pattern.atlSat)
+      // B = Garde Sam si déjà saisie, sinon partenaire du pattern
+      const gardeSat = firstWomOnGardeDay(next, "SAMEDI")
+      const partner =
+        gardeSat && gardeSat !== satWom
+          ? gardeSat
+          : otherWom(satWom, satWom === pattern.atlSat ? pattern.atlSun : pattern.atlSat)
       next = applyComboPair(next, satWom, partner, status)
     } else {
       next = applyMonoDoctor(next, satWom, status)
@@ -329,7 +380,12 @@ export function applyWeekendWomPattern(
 
   if (sunWom && atlDayFullyEmpty(next, "SAMEDI")) {
     if (pattern?.kind === "combo") {
-      const partner = otherWom(sunWom, sunWom === pattern.atlSun ? pattern.atlSat : pattern.atlSun)
+      // A = Garde Dim si déjà saisie, sinon partenaire du pattern
+      const gardeSun = firstWomOnGardeDay(next, "DIMANCHE")
+      const partner =
+        gardeSun && gardeSun !== sunWom
+          ? gardeSun
+          : otherWom(sunWom, sunWom === pattern.atlSun ? pattern.atlSat : pattern.atlSun)
       next = applyComboPair(next, partner, sunWom, status)
     } else {
       next = applyMonoDoctor(next, sunWom, status)
@@ -349,7 +405,8 @@ export function applyWeekendWomPattern(
 }
 
 /**
- * Point d’entrée : pattern WOM (semaines paires) + Ven↔Sam ATL nuit + Garde Sam unifiée.
+ * Point d’entrée : pattern WOM (semaines paires) + croisement combo Sat→Dim
+ * + Ven↔Sam ATL nuit + Garde Sam unifiée.
  */
 export function applyWeekendWomRules(
   schedule: ScheduleData,
@@ -358,6 +415,7 @@ export function applyWeekendWomRules(
 ): ScheduleData {
   if (!schedule || !weekKey) return schedule
   let next = applyWeekendWomPattern(schedule, weekKey, equity)
+  next = applyWeekendComboCrossCoupling(next, weekKey)
   next = applyFriSatAtlNightCoupling(next)
   next = applySaturdayGardeSingleDoctor(next)
   return next
