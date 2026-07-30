@@ -66,7 +66,9 @@ Créneaux fixes injectés via `applyFixedClinicalAssignments` :
 | Hors site - Scinti | Lun / Mer | T | Scinti Cloitre |
 | Hors site - Scinti | Mardi | R | Scinti Rousseau |
 
-- **Éligibilités cliniques** (`clinical_eligibility`) : **W n’est pas éligible au Stress** (EDS).
+- **Éligibilités cliniques** (`clinical_eligibility`) : **W n’est pas éligible au Stress** (EDS). **D** éligible Stress (externe jeudi).
+- **Stress** : jamais mercredi apm ni vendredi apm (cases fermées).
+- **D (echo PSS)** : tous les jeudis Stress matin ; 1er jeudi du mois = Stress matin+apm ; autres jeudis = Stress matin + EE1/EE2 apm.
 
 ## Soft / hors génération forcée (sites externes)
 

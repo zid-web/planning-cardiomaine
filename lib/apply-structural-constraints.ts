@@ -25,6 +25,7 @@ import { NCT_DATES_2025_DEC, NCT_DATES_2026 } from "@/lib/guard-scheduler"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import type { EquityCounts } from "@/lib/equity-tracking"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
+import { applyStressAndDRules } from "@/lib/stress-rules"
 import { applyWeekendWomRules } from "@/lib/weekend-wom-rules"
 import {
   mergeVacancesIntoConges,
@@ -623,6 +624,9 @@ export function applyStructuralConstraints(
     vacationsReady,
     visiteDoctor: opts.visiteDoctor,
   })
+
+  // 1bis) Stress fermé Mer/Ven Apm + D jeudi (1er = Stress apm ; sinon EE1+EE2)
+  next = applyStressAndDRules(next, weekKey, vacations, { vacationsReady })
 
   // 2) CH astreintes (nuit semaine + ATL weekend selon roulement)
   next = applyChAstreinteConstraints(next, weekKey)

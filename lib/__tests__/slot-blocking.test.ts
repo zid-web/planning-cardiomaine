@@ -262,8 +262,13 @@ function main() {
   assert.equal(r.allowed, true, `remplacant+médecin week-end: ${r.reason}`)
 
   // Sans remplaçant : exclusion mutuelle normale (ATL week-end bloque Garde)
+  // W30 paire combo : Sun ATL = M (pas O) → tester avec le médecin réellement sur ATL Dim
   schedule["Garde Matin"].DIMANCHE = { value: [], type: "empty", status: "validated" }
-  r = canAssignDoctorToSlot("O", "2026-07-26", "Garde Matin", "DIMANCHE", schedule, [])
+  const sunAtlDoc =
+    (schedule["Astreintes ATL Matin"].DIMANCHE.value || []).find((d) =>
+      ["M", "O", "W", "CH"].includes(d),
+    ) || "M"
+  r = canAssignDoctorToSlot(sunAtlDoc, "2026-07-26", "Garde Matin", "DIMANCHE", schedule, [])
   assert.equal(r.allowed, false, "sans remplacant, ATL week-end bloque Garde")
 
   schedule["Garde Matin"].DIMANCHE = {
@@ -273,11 +278,11 @@ function main() {
     status: "validated",
   }
   schedule["1/2 journée off Matin"].DIMANCHE = {
-    value: ["O"],
+    value: [sunAtlDoc],
     type: "doctor",
     status: "validated",
   }
-  r = canAssignDoctorToSlot("O", "2026-07-26", "Garde Matin", "DIMANCHE", schedule, [])
+  r = canAssignDoctorToSlot(sunAtlDoc, "2026-07-26", "Garde Matin", "DIMANCHE", schedule, [])
   assert.equal(r.allowed, true, "½-off n’empêche pas association remplacant week-end")
 
   console.log("✅ slot-blocking tests passed")

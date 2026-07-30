@@ -44,8 +44,8 @@ export const DOC022_CLINICAL_ELIGIBILITY = {
   echo: ["A", "H", "W", "B", "Z", "K", "P", "R", "G", "S", "M", "O", "V"],
   /** Épreuve d’effort */
   ee: ["A", "H", "W", "B", "O", "T", "Z", "K", "U", "V", "G", "S", "M", "R"],
-  /** Echo de stress / EDS — W non éligible (consigne métier) */
-  stress: ["A", "H", "B", "Z", "K", "G", "S"],
+  /** Echo de stress / EDS — W non éligible ; D = externe jeudi (règle fixe) */
+  stress: ["A", "H", "B", "Z", "K", "G", "S", "D"],
   /** ETO */
   eto: ["H", "Z", "G"],
   /** CORO / angioplastie (salle) — pas CH */
