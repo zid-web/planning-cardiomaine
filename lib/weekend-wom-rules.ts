@@ -320,7 +320,7 @@ function applySpecialCells(
       cell.doctors.every((d) => existing.includes(d))
     if (alreadyExact) continue
     if (!opts.force && existing.some(Boolean)) continue
-    // force=true : consigne prédéfinie (ex. MG W52) prime sur CH / rotation auto
+    // force=true : consigne prédéfinie (ex. M W52 Jeudi+Ven) prime sur CH / rotation auto
     next = setCellDoctors(next, cell.row, cell.day, cell.doctors, status)
   }
   return next
