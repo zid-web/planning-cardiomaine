@@ -379,10 +379,14 @@ export const generateWeekSchedule = (
         })
       }
 
-      // Weekend ATL Matin/Midi/Nuit : CH (impaire) ou un W/O/M (paire) — 1 médecin / créneau
+      // Weekend ATL : Sat = saturday1 ; Dim = sundayAstreinte (combo) ou saturday1 (mono)
+      // Ven ATL Nuit déjà posé via applyWeekdayNightAstreinte(friday) = saturday1
       if (currentRotation.saturday1) {
         applyWeekendAtl("SAMEDI", currentRotation.saturday1)
-        applyWeekendAtl("DIMANCHE", currentRotation.saturday1)
+        applyWeekendAtl(
+          "DIMANCHE",
+          currentRotation.sundayAstreinte || currentRotation.saturday1,
+        )
       }
     }
   }

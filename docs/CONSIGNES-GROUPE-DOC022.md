@@ -44,9 +44,13 @@ Fichier agent : uploads `DOC022_*.pdf`. Encodage machine : `lib/group-clinical-r
 
 ### Weekend Garde / ATL
 
-- Sam Garde Matin = Ven Garde Nuit (+ associé Sam Midi/Nuit)
-- Sam Garde Midi = Nuit (un médecin) ; Dim Garde Matin = Midi = Nuit (un médecin)
+- Sam Garde Matin = Ven Garde Nuit (+ associé Sam Midi/Nuit) ; viser **un seul** médecin Sam Matin→Midi→Nuit
+- Dim Garde Matin = Midi = Nuit (un médecin)
 - Sam/Dim ATL Matin = Midi = Nuit (un médecin / jour)
+- **Ven ATL Nuit = Sam ATL Nuit** (même médecin)
+- Week-ends ATL **M/O/W** (semaines paires) :
+  - **Combo** (~10 / semestre) : A = ATL Ven nuit + Sat ATL + Garde Dim ; B = Garde Sam + ATL Dim
+  - **Mono** : un seul M/O/W sur Sat+Sun ATL (équité 6 mois)
 - Lun–Ven ATL Matin/Midi = Coro matin/apm
 
 ## Ajouté depuis DOC022 (cette itération)
