@@ -2,6 +2,9 @@ import { DAYS, DOCTOR_METADATA, DOCTORS } from "@/lib/constants";
 import { isListedDoctor } from "@/lib/doctor-code";
 import { isDoublonEligibleRow } from "@/lib/slot-blocking";
 import type { CellData, ScheduleData } from "@/lib/types";
+import { buildWeekendComboSolverFields } from "@/lib/weekend-combo-solver";
+import { getWeekNumber } from "@/lib/schedule-utils";
+import { parseISO } from "date-fns";
 
 const GARDE_ROW_KEYS = new Set(["Garde Matin", "Garde Midi", "Garde Nuit"]);
 
@@ -239,6 +242,19 @@ export type GenerateWeekRequestPayload = {
   pssl_b_active?: boolean;
   /** Z fait PSSL ce mardi. */
   pssl_z_active?: boolean;
+  /**
+   * Week-end combo M/O/W — uniquement semaines calendrier (5 / semestre).
+   * Absent / false = pas de garde week-end générée par le solveur.
+   */
+  weekend_astreinte_combo?: boolean;
+  /** Préférence rôle ATL (Ven+Sat) — souple si absent. */
+  weekend_combo_astreinte_anchor?: string;
+  /** Préférence rôle Garde Sam — souple si absent. */
+  weekend_combo_garde_anchor?: string;
+  /** Qui a fait le rôle Garde au dernier combo (espacement 15 j.). */
+  last_combo_garde_doctor?: string;
+  /** Samedi ISO du dernier combo. */
+  last_combo_garde_date?: string;
   existing_schedule?: Record<string, string[]> | null;
   /**
    * Fréquences / éligibilité déduites de l’historique (Cs/ETT/EE/hors site…).
@@ -629,7 +645,21 @@ export function buildCurrentWeekRequestPayload(opts: {
   lfb_doctor?: string | null;
   pssl_b_active?: boolean;
   pssl_z_active?: boolean;
+  /** Week key ISO (YYYY-Www) — pour champs combo si fourni. */
+  weekKey?: string;
+  lastComboGardeDoctor?: string | null;
+  lastComboGardeDate?: string | null;
 }): GenerateWeekRequestPayload {
+  const fromStart = getWeekNumber(parseISO(opts.weekStartDate));
+  const weekKey =
+    opts.weekKey ||
+    `${fromStart.year}-W${String(fromStart.week).padStart(2, "0")}`;
+
+  const combo = buildWeekendComboSolverFields(weekKey, {
+    doctor: opts.lastComboGardeDoctor ?? null,
+    date: opts.lastComboGardeDate ?? null,
+  });
+
   return {
     week_start_date: opts.weekStartDate,
     week_type: opts.weekNumber % 2 === 0 ? 2 : 1,
@@ -637,6 +667,7 @@ export function buildCurrentWeekRequestPayload(opts: {
     vacations: opts.vacations || [],
     weekend_mode: opts.weekendMode || "ROTATION",
     existing_schedule: opts.schedule ? scheduleToExistingSchedule(opts.schedule) : {},
+    ...(combo ?? {}),
     ...(opts.visite_doctor != null && opts.visite_doctor !== ""
       ? { visite_doctor: opts.visite_doctor }
       : {}),

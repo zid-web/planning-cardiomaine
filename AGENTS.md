@@ -53,6 +53,7 @@ required service is the Next.js dev server; the backend is Supabase.
   - **Ven ATL Nuit = Sam ATL Nuit** (même médecin, soft) — `applyFriSatAtlNightCoupling`.
   - **Weekend ATL WOM** (`lib/weekend-wom-rules.ts`, semaines paires) :
     - **Combo** (**exactement 5 / semestre**, calendrier `WOM_COMBO_WEEK_KEYS_OVERRIDE` / indices) : **rôle A** = Ven ATL Nuit + Sat ATL + Garde Dim ; **rôle B** = Garde Sam + Sun ATL (A/B = rôles, pas le code médecin « A »). Presets : `lib/weekend-wom-presets.ts` — consignes **forcées** (ex. W40/48 mono M ; W42 O+M ; W44 W+O ; W52 **M** Jeudi nuit + Ven matin/midi/nuit). Hors preset : soft fill.
+    - **Solveur « Générer »** : sur semaines combo uniquement, `generateGuardsViaAPI` envoie `weekend_astreinte_combo` + ancres (`lib/weekend-combo-solver.ts` / `buildWeekendComboSolverFields`). `last_combo_garde_doctor`/`date` lus/écrits dans `settings` (après Générer + validation Garde Sam) pour l’espacement 15 j. — lire le résultat réel, pas seulement l’ancre.
     - **Mono** (autres week-ends WOM) : Sat+Sun ATL Matin/Midi/Nuit = un seul M/O/W (équité 6 mois).
     - Soft fill only (cases vides) — override admin conservé.
   - **Weekend ATL** jour : couplage **souple** Matin/Midi/Nuit — `applyWeekendGardeAtlCoupling`.

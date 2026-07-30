@@ -16,6 +16,14 @@ import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
 import { toSolverClinicalRulesPayload } from "@/lib/group-clinical-rules";
 import { buildActivityMaintenancePayload } from "@/lib/activity-maintenance";
+import {
+  buildWeekendComboSolverFields,
+  LAST_COMBO_GARDE_DATE_KEY,
+  LAST_COMBO_GARDE_DOCTOR_KEY,
+  resolveLastComboGardeFromSchedule,
+  type LastComboGardeState,
+} from "@/lib/weekend-combo-solver";
+import { isWomComboWeekend } from "@/lib/weekend-wom-rules";
 
 // Configuration
 const GUARD_API_URL =
@@ -205,8 +213,11 @@ export async function generateGuardsViaAPI(
     const resolvedWeekType: 1 | 2 =
       weekType ?? (wnEarly.week % 2 === 0 ? 2 : 1);
 
-    // 2. Récupère le dernier médecin NCT (depuis la base ou une variable)
-    const lastNctDoctor = await getLastNctDoctor();
+    // 2. Récupère le dernier médecin NCT + dernier combo garde (espacement 15 j.)
+    const [lastNctDoctor, lastComboGarde] = await Promise.all([
+      getLastNctDoctor(),
+      getLastComboGardeState(),
+    ]);
 
     // 3. Récupère les congés + médecin de garde dimanche précédent
     const [congres, previousSundayGuardDoctor] = await Promise.all([
@@ -249,6 +260,20 @@ export async function generateGuardsViaAPI(
       );
     }
 
+    // Équité weekend (M/O/W) pour ancres combo si pas de preset explicite
+    let weekendEquity: Record<string, EquityCounts> | undefined
+    try {
+      weekendEquity = (await getCumulativeEquityFromTable()) ?? undefined
+    } catch {
+      weekendEquity = undefined
+    }
+
+    const weekendComboFields = buildWeekendComboSolverFields(
+      currentWeekKey,
+      lastComboGarde,
+      weekendEquity,
+    )
+
     // 5. Construit le payload pour Render
     const payload = {
       week_start_date: weekStartDate,
@@ -285,6 +310,8 @@ export async function generateGuardsViaAPI(
       rules_override: toSolverClinicalRulesPayload(),
       // Suspensions NCT / PSSL / LFB / CDL (périodes calendrier — optionnel)
       activity_maintenance: buildActivityMaintenancePayload(),
+      // Week-end combo M/O/W (uniquement semaines calendrier — sinon absent)
+      ...(weekendComboFields ?? {}),
       // Rotations désignées admin (VISITE / LFB / PSSL) — optionnels
       ...(weekOverrides?.visite_doctor
         ? { visite_doctor: weekOverrides.visite_doctor }
@@ -329,6 +356,15 @@ export async function generateGuardsViaAPI(
       previousSundayGuardDoctor,
     });
 
+    // Persiste qui a *réellement* le rôle Garde Sam (peut différer de l’ancre)
+    if (isWomComboWeekend(weekKey)) {
+      try {
+        await persistLastComboGardeFromSchedule(weekKey, scheduleData)
+      } catch (err) {
+        console.warn("[generateGuardsViaAPI] last_combo_garde non persisté:", err)
+      }
+    }
+
     const patternSlots = Object.values(historicalPatterns).reduce(
       (n, days) => n + Object.keys(days).length,
       0,
@@ -344,6 +380,13 @@ export async function generateGuardsViaAPI(
         weeksScanned: historicalWeeksScanned,
         slotsSent: patternSlots,
       },
+      weekendCombo: weekendComboFields
+        ? {
+            sent: true,
+            astreinte_anchor: weekendComboFields.weekend_combo_astreinte_anchor,
+            garde_anchor: weekendComboFields.weekend_combo_garde_anchor,
+          }
+        : { sent: false },
       raw: data,
     };
   } catch (error) {
@@ -372,6 +415,68 @@ async function getLastNctDoctor(): Promise<string | null> {
   }
 
   return data.value;
+}
+
+async function getLastComboGardeState(): Promise<LastComboGardeState> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from("settings")
+    .select("key, value")
+    .in("key", [LAST_COMBO_GARDE_DOCTOR_KEY, LAST_COMBO_GARDE_DATE_KEY])
+
+  if (error || !data?.length) {
+    return { doctor: null, date: null }
+  }
+
+  const map = Object.fromEntries(data.map((r) => [r.key, r.value]))
+  return {
+    doctor: map[LAST_COMBO_GARDE_DOCTOR_KEY] || null,
+    date: map[LAST_COMBO_GARDE_DATE_KEY] || null,
+  }
+}
+
+async function saveLastComboGardeState(state: LastComboGardeState): Promise<void> {
+  if (!state.doctor || !state.date) return
+  const supabase = await createClient()
+  const { error } = await supabase.from("settings").upsert(
+    [
+      { key: LAST_COMBO_GARDE_DOCTOR_KEY, value: state.doctor },
+      { key: LAST_COMBO_GARDE_DATE_KEY, value: state.date },
+    ],
+    { onConflict: "key" },
+  )
+  if (error) {
+    console.warn("[saveLastComboGardeState]", error.message)
+  }
+}
+
+async function persistLastComboGardeFromSchedule(
+  weekKey: string,
+  schedule: ScheduleData,
+): Promise<LastComboGardeState | null> {
+  const resolved = resolveLastComboGardeFromSchedule(weekKey, schedule)
+  if (!resolved) return null
+  await saveLastComboGardeState(resolved)
+  return resolved
+}
+
+/**
+ * Après validation admin d’une Garde Sam (ou re-save week combo) :
+ * met à jour last_combo_garde_* depuis le planning réel.
+ */
+export async function recordLastComboGardeFromSchedule(
+  weekKey: string,
+  schedule: ScheduleData,
+): Promise<{ ok: boolean; doctor?: string; date?: string }> {
+  try {
+    if (!isWomComboWeekend(weekKey)) return { ok: false }
+    const saved = await persistLastComboGardeFromSchedule(weekKey, schedule)
+    if (!saved?.doctor || !saved.date) return { ok: false }
+    return { ok: true, doctor: saved.doctor, date: saved.date }
+  } catch (err) {
+    console.warn("[recordLastComboGardeFromSchedule]", err)
+    return { ok: false }
+  }
 }
 
 /**
