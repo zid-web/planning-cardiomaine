@@ -52,10 +52,10 @@ required service is the Next.js dev server; the backend is Supabase.
   - **Nuits + weekend** (cycle 2 sem., `week_type` 1=impaire / 2=paire) : **impaire** = CH Lun/Mar/Ven nuit + weekend ATL entier ; W/O/M = Mer/Jeu nuit. **paire** = W/O/M Lun/Mar/Ven nuit + weekend ATL ; CH = Mer/Jeu nuit. Weekend `ASTREINTE` mappe vers **Astreintes ATL Matin** (pas Garde).
   - **Ven ATL Nuit = Sam ATL Nuit** (même médecin, soft) — `applyFriSatAtlNightCoupling`.
   - **Weekend ATL WOM** (`lib/weekend-wom-rules.ts`, semaines paires) :
-    - **Combo** (**exactement 5 / semestre**, calendrier `WOM_COMBO_WEEK_KEYS_OVERRIDE` / indices) : **rôle A** = Ven ATL Nuit + Sat ATL + Garde Dim ; **rôle B** = Garde Sam + Sun ATL (A/B = rôles, pas le code médecin « A »). Presets : `lib/weekend-wom-presets.ts` — consignes **forcées** (ex. W40/48 mono M ; W42 O+M ; W44 W+O ; W52 **M** Jeudi nuit + Ven matin/midi/nuit). Hors preset : soft fill.
+    - **Combo** (**exactement 5 / semestre**, calendrier `WOM_COMBO_WEEK_KEYS_OVERRIDE` / indices) : **rôle A** = Ven ATL Nuit + Sat ATL + Garde Dim ; **rôle B** = Garde Sam + Sun ATL (A/B = rôles, pas le code médecin « A »). Presets : `lib/weekend-wom-presets.ts` (ex. W40/48 mono ; W42 O+M ; W44 W+O ; W52 **special** M Jeudi nuit + Ven matin/midi/nuit — force M même si CH structurel). Remplissage week-end : **jamais** un médecin en vacances ; **saisie manuelle** (médecin disponible) non écrasée ; cases vides seulement pour la consigne. Après strip congés (étape 10bis), **pas** de réinjection de l’absent (ex. W32 8–9/08/2026) — sinon M réapparaît et bloque l’édition manuelle.
     - **Solveur « Générer »** : sur semaines combo uniquement, `generateGuardsViaAPI` envoie `weekend_astreinte_combo` + ancres (`lib/weekend-combo-solver.ts` / `buildWeekendComboSolverFields`). `last_combo_garde_doctor`/`date` lus/écrits dans `settings` (après Générer + validation Garde Sam) pour l’espacement 15 j. — lire le résultat réel, pas seulement l’ancre.
-    - **Mono** (autres week-ends WOM) : Sat+Sun ATL Matin/Midi/Nuit = un seul M/O/W (équité 6 mois).
-    - Soft fill only (cases vides) — override admin conservé.
+    - **Mono** (autres week-ends WOM) : Sat+Sun ATL Matin/Midi/Nuit = un seul M/O/W (équité 6 mois), vacances respectées.
+    - Soft fill only (cases vides / absents retirés) — override admin disponible conservé.
   - **Weekend ATL** jour : couplage **souple** Matin/Midi/Nuit — `applyWeekendGardeAtlCoupling`.
   - **Pas de nuits ATL consécutives Lun–Ven** pour W/O/M (weekend et CH exempts) — solveur §5quinquies ; dérogation = saisie admin / `existing_schedule`.
   - `generateGuardsViaAPI` dérive `week_type` du n° de semaine ISO (ne plus laisser le défaut 1).
