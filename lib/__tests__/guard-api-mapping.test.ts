@@ -159,9 +159,38 @@ function main() {
   assert.deepEqual(after["Matin - Cs PSS"].LUNDI.value, ["B"], "Cs manuel préservé si solveur vide")
   assert.deepEqual(after["Matin - Cs Tessée"].MARDI.value, ["P"], "Cs historique proposé")
   assert.equal(after["Matin - Cs Tessée"].MARDI.status, "pending")
-  assert.deepEqual(after["Matin - Coro"].LUNDI.value, ["W"], "Coro proposé par le solveur")
-  assert.equal(after["Matin - Coro"].LUNDI.status, "pending")
+  assert.deepEqual(
+    after["Matin - Coro"].LUNDI.value,
+    ["O"],
+    "Coro validé manuel prime sur proposition solveur",
+  )
+  assert.equal(after["Matin - Coro"].LUNDI.status, "validated")
   assert.deepEqual(after["Apm - Coro"].LUNDI.value, ["M"])
+
+  // ETT ped validé manuel : Générer ne remplace pas
+  existing["Apm - ETT salle 1"].MERCREDI = {
+    value: ["P"],
+    type: "doctor",
+    status: "validated",
+  }
+  generated["Apm - ETT salle 1"].MERCREDI = {
+    value: ["S"],
+    type: "doctor",
+    status: "pending",
+  }
+  const afterEtt = mergeSolverWeekIntoExisting(existing, generated)
+  assert.deepEqual(
+    afterEtt["Apm - ETT salle 1"].MERCREDI.value,
+    ["P"],
+    "ETT ped manuel validé prime sur Générer",
+  )
+  assert.equal(afterEtt["Apm - ETT salle 1"].MERCREDI.status, "validated")
+
+  // Case vide ETT : proposition Générer acceptée
+  existing["Apm - ETT salle 1"].MERCREDI = { value: [], type: "empty", status: "validated" }
+  const afterEttEmpty = mergeSolverWeekIntoExisting(existing, generated)
+  assert.deepEqual(afterEttEmpty["Apm - ETT salle 1"].MERCREDI.value, ["S"])
+  assert.equal(afterEttEmpty["Apm - ETT salle 1"].MERCREDI.status, "pending")
 
   // Week-end garde : préserver le remplaçant quand le solveur propose un médecin
   existing["Garde Matin"].SAMEDI = {
