@@ -7,6 +7,7 @@
  * Jamais Cs PSS + Cs Tessée le même matin/apm.
  * Interne **I** sur Garde Matin : le médecin associé peut aussi faire Cs / ETT / EE
  * le même matin (pas Coro / Rythmo / Rééducation). **S+I** peut aussi garder l’IRM.
+ * **S** mercredi apm : ETT ped (salle 1) + Garde Midi / ATL Midi autorisés.
  * Une garde admin peut remplacer l’IRM fixe sur le même créneau.
  */
 
@@ -14,6 +15,10 @@ import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
 import { isAtlEligibleForCell, isCoroEligibleDoctor } from "@/lib/group-clinical-rules"
 import { HALF_DAY_OFF_APM_ROW, HALF_DAY_OFF_MATIN_ROW } from "@/lib/half-day-off"
+import {
+  appendSpecialDoctorLabel,
+  isEttPedWithGardeOrAtlMidi,
+} from "@/lib/special-activity-labels"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
 
@@ -245,7 +250,8 @@ export type CompatibilityContext = {
 
 /**
  * Deux lignes peuvent coexister le même créneau pour le même médecin.
- * Avec `ctx` : exceptions Garde Matin + I (Cs/ETT/EE) et S+I+IRM.
+ * Avec `ctx` : exceptions Garde Matin + I (Cs/ETT/EE), S+I+IRM,
+ * et S mercredi apm ETT ped + Garde Midi / ATL Midi.
  */
 export function areCompatibleSamePeriod(
   rowA: string,
@@ -255,6 +261,15 @@ export function areCompatibleSamePeriod(
   if (rowA === rowB) return true
   if (isAtlCoroPair(rowA, rowB)) return true
   if (isRoomDoublonPair(rowA, rowB)) return true
+
+  // S mercredi : ETT pédiatrique + garde/astreinte Midi
+  if (
+    ctx?.doctorId === "S" &&
+    ctx.day === "MERCREDI" &&
+    isEttPedWithGardeOrAtlMidi(rowA, rowB)
+  ) {
+    return true
+  }
 
   if (ctx && wouldBePairedWithIntern(ctx.schedule, ctx.day, ctx.doctorId, ctx.targetRow || "Garde Matin")) {
     const hasGardeMatin = rowA === "Garde Matin" || rowB === "Garde Matin"
@@ -520,7 +535,10 @@ export function formatDoctorWithDoublon(
   doctorId: string,
   rowKey: string,
 ): string {
-  return isDoctorDoublonInCell(schedule, day, doctorId, rowKey) ? `${doctorId}²` : doctorId
+  const base = isDoctorDoublonInCell(schedule, day, doctorId, rowKey)
+    ? `${doctorId}²`
+    : doctorId
+  return appendSpecialDoctorLabel(base, rowKey, day, doctorId)
 }
 
 export function stripDoctorFromRow(

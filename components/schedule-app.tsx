@@ -53,6 +53,7 @@ import {
   isDoublonEligibleRow,
   sisterRoomForDoublon,
 } from "@/lib/slot-blocking"
+import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
 import {
   applyStructuralConstraints,
   schedulesDiffer,
@@ -1920,7 +1921,7 @@ export function ScheduleApp({
                                                       : listed
                                                         ? DOCTOR_COLORS[doc] || "bg-slate-500"
                                                         : "bg-amber-600"
-                                                  } text-white border-none px-1 py-0 text-[9px] h-5 max-w-[80px] truncate justify-center
+                                                  } text-white border-none px-1 py-0 text-[9px] h-5 max-w-[96px] truncate justify-center
                                                   ${isChangeRequestPending && cellData.request?.requester === doc ? "ring-2 ring-orange-400" : ""}
                                                   ${isSolverProposal && !conflict.hasConflict ? "ring-1 ring-violet-300/80 border border-dashed border-white/50" : ""}
                                                 `}
@@ -1933,7 +1934,9 @@ export function ScheduleApp({
                                                         ? sisterRoomForDoublon(rowKey)
                                                           ? `${doc} en doublon (les deux salles)`
                                                           : `${doc} en doublon (même case)`
-                                                        : doc
+                                                        : label !== doc
+                                                          ? label
+                                                          : doc
                                                       : `Remplaçant : ${doc}`)
                                                 }
                                               >
@@ -2040,8 +2043,14 @@ export function ScheduleApp({
                   const isRoomDoublon = Boolean(sister && onSister)
                   const isSameCellDoublon =
                     listed && occ >= 2 && isDoublonEligibleRow(selectedCell.row)
-                  const label =
-                    listed && (isSameCellDoublon || isRoomDoublon) ? `${doc}²` : doc
+                  const label = listed
+                    ? formatDoctorWithDoublon(
+                        schedule,
+                        selectedCell.day,
+                        doc,
+                        selectedCell.row,
+                      )
+                    : doc
                   return (
                     <div
                       key={doc}
@@ -2051,7 +2060,9 @@ export function ScheduleApp({
                             ? `${doc} en doublon (même case)`
                             : isRoomDoublon
                               ? `${doc} en doublon (les deux salles)`
-                              : doc
+                              : label !== doc
+                                ? label
+                                : doc
                           : `Remplaçant : ${doc}`
                       }
                       className={`flex items-center gap-1 pl-2 pr-1 py-1 rounded-md text-white text-sm font-bold shadow-sm ${
@@ -2157,7 +2168,12 @@ export function ScheduleApp({
                     `}
                       >
                         <div className={`mr-2 size-2 rounded-full ${DOCTOR_COLORS[doc]}`} />
-                        {canPromoteDoublon ? `${doc}²` : doc}
+                        {appendSpecialDoctorLabel(
+                          canPromoteDoublon ? `${doc}²` : doc,
+                          selectedCell?.row || "",
+                          selectedCell?.day || "",
+                          doc,
+                        )}
                       </button>
                     )
                   })}
