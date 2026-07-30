@@ -4,15 +4,16 @@
  * 1. Astreinte ATL Nuit samedi ⇒ même médecin en ATL Nuit vendredi (systématique).
  * 2. Garde samedi : un seul médecin Matin → Midi → Nuit dans la mesure du possible.
  * 3. Semaines paires (week-end ATL WOM, pas CH) :
- *    - ~10 week-ends / 6 mois en **combo** :
+ *    - **Exactement 5 week-ends combo / semestre** (prédéfinis, indices espacés) :
  *      A = Ven ATL Nuit + Sat ATL Matin/Midi/Nuit + Garde Dim Matin/Midi/Nuit
  *      B = Garde Sam Matin/Midi/Nuit + Sun ATL Matin/Midi/Nuit
  *    - Autres week-ends WOM **mono** : Sat+Sun ATL (Matin/Midi/Nuit) = un seul M/O/W
  *      (équité / rotation).
- * 4. Sur week-end **combo**, croisement soft Sat → Dim (cases vides) :
- *    Sat ATL → Garde Dim ; Garde Sam → Sun ATL (priorité au médecin déjà saisi).
+ * 4. Sur week-end **combo** uniquement, croisement soft Sat → Dim (cases vides) :
+ *    Sat ATL → Garde Dim ; Garde Sam → Sun ATL.
  *
- * Couplage **souple** : ne remplit que les cases vides (override admin respecté).
+ * **Priorité saisie manuelle** : jamais d’écrasement d’une case déjà pourvue
+ * d’un médecin listé (soft fill uniquement) — prime sur pattern / croisement / solveur.
  */
 
 import { isListedDoctor } from "@/lib/doctor-code"
@@ -31,9 +32,24 @@ const ATL_ROWS = [
 
 const GARDE_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
 
-/** ~10 combos sur ~13 week-ends WOM (semaines paires) par semestre (~26 sem.). */
-export const WOM_COMBO_PER_HALF_YEAR = 10
+/**
+ * Exactement **5** week-ends combo par semestre (~13 semaines paires WOM).
+ * Indices 0..12 parmi les semaines paires du semestre — prédéfinis et espacés.
+ * Ex. 2026 H1 : W04, W10, W16, W22, W26 ; H2 : W30, W36, W42, W48, W52.
+ */
+export const WOM_COMBO_PER_HALF_YEAR = 5
 export const WOM_EVEN_WEEKS_PER_HALF_YEAR = 13
+/** Indices prédéfinis (0-based) dans chaque bloc de 13 semaines paires. */
+export const WOM_COMBO_EVEN_INDICES = [1, 4, 7, 10, 12] as const
+
+/**
+ * Surcharge optionnelle par année (liste explicite de week keys ISO).
+ * Si présente, remplace les indices pour cette année civile.
+ * Laisser vide = calendrier indices (valable toute année).
+ */
+export const WOM_COMBO_WEEK_KEYS_OVERRIDE: Readonly<Record<number, readonly string[]>> = {
+  // Exemple futur : 2026: ["2026-W04", "2026-W10", ...],
+}
 
 export type WeekendWomPattern =
   | {
@@ -173,18 +189,54 @@ function otherWom(primary: WomAtlDoctor, preferred?: WomAtlDoctor): WomAtlDoctor
 }
 
 /**
- * Semaine paire → week-end WOM. Parmi les semaines paires d’un semestre (~13),
- * les 10 premières (index % 13 < 10) sont en mode combo.
+ * Index 0..12 de la semaine paire dans son semestre (H1 = W02…W26, H2 = W28…W52).
+ * Retourne null si semaine impaire / invalide.
  */
-export function isWomComboWeekend(weekKey: string): boolean {
-  if (isOddIsoWeek(weekKey)) return false
+export function evenWeekIndexInHalfYear(weekKey: string): number | null {
+  if (isOddIsoWeek(weekKey)) return null
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "0", 10)
-  if (!weekNum || weekNum % 2 !== 0) return false
+  if (!weekNum || weekNum % 2 !== 0) return null
   const evenIndex = weekNum / 2 - 1
-  const idx =
+  return (
     ((evenIndex % WOM_EVEN_WEEKS_PER_HALF_YEAR) + WOM_EVEN_WEEKS_PER_HALF_YEAR) %
     WOM_EVEN_WEEKS_PER_HALF_YEAR
-  return idx < WOM_COMBO_PER_HALF_YEAR
+  )
+}
+
+/** Liste les 5 (×2 semestres) week keys combo pour une année civile. */
+export function listWomComboWeekKeys(year: number): string[] {
+  const override = WOM_COMBO_WEEK_KEYS_OVERRIDE[year]
+  if (override?.length) return [...override]
+
+  const keys: string[] = []
+  for (const halfBase of [0, WOM_EVEN_WEEKS_PER_HALF_YEAR]) {
+    for (const idx of WOM_COMBO_EVEN_INDICES) {
+      const evenIndex = halfBase + idx
+      const weekNum = (evenIndex + 1) * 2
+      if (weekNum < 1 || weekNum > 52) continue
+      keys.push(`${year}-W${String(weekNum).padStart(2, "0")}`)
+    }
+  }
+  return keys
+}
+
+/**
+ * Week-end combo = parmi les **5 prédéfinis / semestre** (sauf override année).
+ * Semaines impaires (CH) : jamais combo.
+ */
+export function isWomComboWeekend(weekKey: string): boolean {
+  if (!weekKey || isOddIsoWeek(weekKey)) return false
+  const year = Number.parseInt(weekKey.split("-W")[0] || "0", 10)
+  if (!year) return false
+
+  const override = WOM_COMBO_WEEK_KEYS_OVERRIDE[year]
+  if (override?.length) {
+    return override.includes(weekKey)
+  }
+
+  const idx = evenWeekIndexInHalfYear(weekKey)
+  if (idx === null) return false
+  return (WOM_COMBO_EVEN_INDICES as readonly number[]).includes(idx)
 }
 
 function pickByEquity(
@@ -343,6 +395,8 @@ function applyMonoDoctor(
 /**
  * Injecte / complète le pattern WOM (mono ou combo) sur cases **vides**.
  * Semaines impaires (CH) : no-op (CH déjà injecté ailleurs).
+ * Combo (croisement Garde↔ATL) **uniquement** sur les 5 week-ends prédéfinis.
+ * Saisie manuelle : jamais écrasée (`fillEmpty*`).
  */
 export function applyWeekendWomPattern(
   schedule: ScheduleData,
@@ -354,17 +408,19 @@ export function applyWeekendWomPattern(
   let next = schedule
   const status: "validated" | "pending" = "validated"
   const pattern = proposeWeekendWomPattern(weekKey, equity)
+  const isCombo = pattern?.kind === "combo"
 
   const satWom = firstWomOnAtlDay(next, "SAMEDI")
   const sunWom = firstWomOnAtlDay(next, "DIMANCHE")
 
-  if (satWom && sunWom && satWom !== sunWom) {
+  // Combo prédéfini seulement : Sat≠Sun ATL → croisement Garde (cases vides)
+  if (isCombo && satWom && sunWom && satWom !== sunWom) {
     next = applyComboPair(next, satWom, sunWom, status)
     return applyFriSatAtlNightCoupling(next)
   }
 
   if (satWom && atlDayFullyEmpty(next, "DIMANCHE")) {
-    if (pattern?.kind === "combo") {
+    if (isCombo && pattern?.kind === "combo") {
       // B = Garde Sam si déjà saisie, sinon partenaire du pattern
       const gardeSat = firstWomOnGardeDay(next, "SAMEDI")
       const partner =
@@ -379,7 +435,7 @@ export function applyWeekendWomPattern(
   }
 
   if (sunWom && atlDayFullyEmpty(next, "SAMEDI")) {
-    if (pattern?.kind === "combo") {
+    if (isCombo && pattern?.kind === "combo") {
       // A = Garde Dim si déjà saisie, sinon partenaire du pattern
       const gardeSun = firstWomOnGardeDay(next, "DIMANCHE")
       const partner =
