@@ -258,7 +258,7 @@ function main() {
   assert.deepEqual(w40Fresh["Astreintes ATL Nuit"].DIMANCHE.value, ["M"])
   assert.deepEqual(w40Fresh["Astreintes ATL Nuit"].VENDREDI.value, ["M"])
 
-  // Bug prod : W déjà en ATL+Garde Sam / ATL Dim → force mono M + strip Garde WOM
+  // Saisie manuelle W disponible → conservée (plus d’écrasement force)
   let w40Stale = generateWeekSchedule("2026-W40", [])
   for (const row of [
     "Astreintes ATL Matin",
@@ -272,12 +272,12 @@ function main() {
     w40Stale[row].SAMEDI = { value: ["W"], type: "doctor", status: "validated" }
   }
   w40Stale = applyStructuralConstraints(w40Stale, "2026-W40", [])
-  assert.deepEqual(w40Stale["Astreintes ATL Matin"].SAMEDI.value, ["M"], "force M sur Sat")
-  assert.deepEqual(w40Stale["Astreintes ATL Matin"].DIMANCHE.value, ["M"], "force M sur Dim")
-  assert.deepEqual(w40Stale["Garde Matin"].SAMEDI.value, [], "strip résidu combo Garde W")
+  assert.deepEqual(w40Stale["Astreintes ATL Matin"].SAMEDI.value, ["W"], "manuel W conservé")
+  assert.deepEqual(w40Stale["Astreintes ATL Matin"].DIMANCHE.value, ["W"])
+  assert.deepEqual(w40Stale["Garde Matin"].SAMEDI.value, [], "strip résidu combo Garde W en mono")
   assert.deepEqual(w40Stale["Garde Nuit"].SAMEDI.value, [])
 
-  // Remplacant conservé sous force mono
+  // Remplacant + W disponible → W + remplacant (pas d’écrasement M)
   let w40Remp = clearWeekendAtlAndGarde(generateWeekSchedule("2026-W40", []))
   w40Remp["Astreintes ATL Matin"].SAMEDI = {
     value: ["W", "Dupont"],
@@ -285,19 +285,51 @@ function main() {
     status: "validated",
   }
   w40Remp = applyWeekendWomRules(w40Remp, "2026-W40")
-  assert.deepEqual(w40Remp["Astreintes ATL Matin"].SAMEDI.value, ["M", "Dupont"])
+  assert.deepEqual(w40Remp["Astreintes ATL Matin"].SAMEDI.value, ["W", "Dupont"])
 
-  // W48 preset M prime sur rotation générique
+  // W48 preset M (cases vides)
   let w48 = applyStructuralConstraints(generateWeekSchedule("2026-W48", []), "2026-W48", [])
   assert.deepEqual(w48["Astreintes ATL Matin"].SAMEDI.value, ["M"])
   assert.deepEqual(w48["Astreintes ATL Matin"].DIMANCHE.value, ["M"])
 
-  // Preset W52 : M Jeudi nuit + Ven matin/midi/nuit (structural, force sur CH Jeudi)
+  // Preset W52 : M Jeudi nuit + Ven matin/midi/nuit
   let w52 = applyStructuralConstraints(generateWeekSchedule("2026-W52", []), "2026-W52", [])
   assert.deepEqual(w52["Astreintes ATL Nuit"].JEUDI.value, ["M"])
   assert.deepEqual(w52["Astreintes ATL Matin"].VENDREDI.value, ["M"])
   assert.deepEqual(w52["Astreintes ATL Midi"].VENDREDI.value, ["M"])
   assert.deepEqual(w52["Astreintes ATL Nuit"].VENDREDI.value, ["M"])
+
+  // W32 (8–9 août 2026) : M en vacances → retiré, pas réinjecté ; saisie O possible
+  const vacM = [
+    {
+      doctor_id: "M",
+      start_date: "2026-08-07",
+      end_date: "2026-08-10",
+      reason: "congé",
+    },
+  ]
+  let w32 = applyStructuralConstraints(generateWeekSchedule("2026-W32", []), "2026-W32", vacM)
+  assert.ok(
+    !w32["Astreintes ATL Matin"].SAMEDI.value.includes("M"),
+    "M absent Sat ATL (vacances)",
+  )
+  assert.ok(
+    !w32["Astreintes ATL Matin"].DIMANCHE.value.includes("M"),
+    "M absent Dim ATL (vacances)",
+  )
+  // Admin place O manuellement → conservé après re-contraintes
+  w32["Astreintes ATL Matin"].SAMEDI = { value: ["O"], type: "doctor", status: "validated" }
+  w32["Astreintes ATL Midi"].SAMEDI = { value: ["O"], type: "doctor", status: "validated" }
+  w32["Astreintes ATL Nuit"].SAMEDI = { value: ["O"], type: "doctor", status: "validated" }
+  w32 = applyStructuralConstraints(w32, "2026-W32", vacM)
+  assert.deepEqual(w32["Astreintes ATL Matin"].SAMEDI.value, ["O"], "manuel O conservé")
+
+  // Preset W40 : M en vacances → case vidée (pas de réinjection M)
+  let w40Vac = applyStructuralConstraints(generateWeekSchedule("2026-W40", []), "2026-W40", [
+    { doctor_id: "M", start_date: "2026-09-28", end_date: "2026-10-04", reason: "congé" },
+  ])
+  assert.ok(!w40Vac["Astreintes ATL Matin"].SAMEDI.value.includes("M"))
+  assert.ok(!w40Vac["Astreintes ATL Matin"].DIMANCHE.value.includes("M"))
 
   console.log("✅ weekend-wom-rules tests passed")
 }

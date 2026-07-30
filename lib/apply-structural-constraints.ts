@@ -638,7 +638,10 @@ export function applyStructuralConstraints(
   next = applyAtlFollowsCoroConstraints(next)
 
   // 3a) Week-end WOM (semaines paires) : mono / combo M-O-W + Ven↔Sam ATL nuit
-  next = applyWeekendWomRules(next, weekKey, opts.weekendEquity)
+  next = applyWeekendWomRules(next, weekKey, {
+    equity: opts.weekendEquity,
+    vacations,
+  })
 
   // 3bis) Weekend : couplage Garde + ATL (Sam/Dim) — soft fill
   next = applyWeekendGardeAtlCoupling(next)
@@ -679,8 +682,11 @@ export function applyStructuralConstraints(
   // 10) Re-miroir Coro→ATL après strips (si Coro a perdu un médecin)
   next = applyAtlFollowsCoroConstraints(next)
 
-  // 10bis) Re-applique WOM soft (cases encore vides après strips)
-  next = applyWeekendWomRules(next, weekKey, opts.weekendEquity)
+  // 10bis) Re-applique WOM (cases vides après strips ; ne replace pas les absents)
+  next = applyWeekendWomRules(next, weekKey, {
+    equity: opts.weekendEquity,
+    vacations,
+  })
 
   // 11) Re-couplage weekend après strips
   next = applyWeekendGardeAtlCoupling(next)
