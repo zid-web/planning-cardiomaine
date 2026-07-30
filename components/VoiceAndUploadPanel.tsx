@@ -24,6 +24,7 @@ import {
 import {
   isDoctorInValidationError,
   parseVoiceCommandLocally,
+  shouldUseLocalVoiceFallback,
 } from '@/lib/voice-local-parse'
 import {
   uploadPlanningPdfDirect,
@@ -355,14 +356,17 @@ export function VoiceAndUploadPanel({
         const detail = data.error || data.detail || data.message
         const msg = typeof detail === 'string' ? detail : JSON.stringify(detail)
 
-        // Repli local : bug backend fréquent doctor_in=null (Pydantic) —
-        // on applique quand même une interprétation heuristique si possible.
-        if (isDoctorInValidationError(msg)) {
+        // Repli local : doctor_in=null, ou slot/activité refusés par Render
+        // (ex. weekend/ASTREINTE — le front mappe déjà via resolveRowKey).
+        if (shouldUseLocalVoiceFallback(msg)) {
           const local = parseVoiceCommandLocally(trimmed, payload.reference_date, knownDoctors)
           if (local?.doctor_in) {
+            const reason = isDoctorInValidationError(msg)
+              ? "le serveur n’a pas renvoyé doctor_in"
+              : "combinaison créneau/activité refusée par le serveur — appliquée localement"
             const successMessage =
-              `Interprétation locale : ${local.doctor_in} → ${local.activity} le ${local.date}` +
-              ` (le serveur n’a pas renvoyé doctor_in)`
+              `Interprétation locale : ${local.doctor_in} → ${local.activity}` +
+              ` (${local.slot}) le ${local.date} (${reason})`
             setStatus({ type: "success", message: successMessage })
             toast.success(successMessage)
             setTranscript("")
@@ -380,12 +384,15 @@ export function VoiceAndUploadPanel({
         throw new Error(msg || 'Erreur lors du traitement de la commande')
       }
 
-      // Si le backend renvoie matin/NCT, le front applique quand même via resolveRowKey
-      if (data?.parsed_command?.activity) {
-        data.parsed_command.activity = String(data.parsed_command.activity).toUpperCase()
-        if (data.parsed_command.activity === "NCT") {
-          data.parsed_command.slot = "nuit"
+      // Normalise weekend/ASTREINTE si le backend les laisse passer un jour
+      if (data?.parsed_command) {
+        const pc = data.parsed_command
+        if (pc.activity) pc.activity = String(pc.activity).toUpperCase()
+        if (pc.activity === "NCT") {
+          pc.slot = "nuit"
         }
+        // Défensif : slot weekend + période explicite absente → garder weekend
+        // (applyParsedCommandToSchedule / resolveRowKey gèrent déjà le mapping)
       }
 
       const successMessage = `Succès: ${data.message || 'Commande exécutée'}`
