@@ -20,6 +20,11 @@ import { isListedDoctor } from "@/lib/doctor-code"
 import type { EquityCounts } from "@/lib/equity-tracking"
 import { isOddIsoWeek } from "@/lib/fixed-assignments"
 import type { ScheduleData } from "@/lib/types"
+import {
+  getWeekendWeekPreset,
+  WOM_COMBO_WEEK_KEYS_2026,
+  type WeekendSpecialCell,
+} from "@/lib/weekend-wom-presets"
 
 export const WOM_ATL_DOCTORS = ["M", "O", "W"] as const
 export type WomAtlDoctor = (typeof WOM_ATL_DOCTORS)[number]
@@ -34,21 +39,19 @@ const GARDE_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
 
 /**
  * Exactement **5** week-ends combo par semestre (~13 semaines paires WOM).
- * Indices 0..12 parmi les semaines paires du semestre — prédéfinis et espacés.
- * Ex. 2026 H1 : W04, W10, W16, W22, W26 ; H2 : W30, W36, W42, W48, W52.
+ * Indices 0..12 parmi les semaines paires du semestre — repli si pas d’override année.
+ * 2026 : voir `WOM_COMBO_WEEK_KEYS_2026` / presets W40–W52.
  */
 export const WOM_COMBO_PER_HALF_YEAR = 5
 export const WOM_EVEN_WEEKS_PER_HALF_YEAR = 13
-/** Indices prédéfinis (0-based) dans chaque bloc de 13 semaines paires. */
+/** Indices prédéfinis (0-based) dans chaque bloc de 13 semaines paires (repli). */
 export const WOM_COMBO_EVEN_INDICES = [1, 4, 7, 10, 12] as const
 
 /**
- * Surcharge optionnelle par année (liste explicite de week keys ISO).
- * Si présente, remplace les indices pour cette année civile.
- * Laisser vide = calendrier indices (valable toute année).
+ * Surcharge par année (liste explicite). 2026 = consignes H2 (W42/W44 combo).
  */
 export const WOM_COMBO_WEEK_KEYS_OVERRIDE: Readonly<Record<number, readonly string[]>> = {
-  // Exemple futur : 2026: ["2026-W04", "2026-W10", ...],
+  2026: WOM_COMBO_WEEK_KEYS_2026,
 }
 
 export type WeekendWomPattern =
@@ -221,11 +224,16 @@ export function listWomComboWeekKeys(year: number): string[] {
 }
 
 /**
- * Week-end combo = parmi les **5 prédéfinis / semestre** (sauf override année).
- * Semaines impaires (CH) : jamais combo.
+ * Week-end combo = calendrier prédéfini (override année / indices) **ou**
+ * preset `kind: "combo"`. Semaines impaires (CH) : jamais combo.
  */
 export function isWomComboWeekend(weekKey: string): boolean {
   if (!weekKey || isOddIsoWeek(weekKey)) return false
+
+  const preset = getWeekendWeekPreset(weekKey)
+  if (preset?.kind === "combo") return true
+  if (preset?.kind === "mono" || preset?.kind === "special") return false
+
   const year = Number.parseInt(weekKey.split("-W")[0] || "0", 10)
   if (!year) return false
 
@@ -260,8 +268,8 @@ function pickByEquity(
 }
 
 /**
- * Choisit le pattern WOM pour une semaine paire (équité 6 mois si fournie,
- * sinon rotation déterministe M→O→W).
+ * Choisit le pattern WOM : preset calendrier en priorité, sinon
+ * combo/mono selon calendrier + équité / rotation.
  */
 export function proposeWeekendWomPattern(
   weekKey: string,
@@ -270,6 +278,17 @@ export function proposeWeekendWomPattern(
   if (isOddIsoWeek(weekKey)) return null
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "0", 10)
   if (!weekNum) return null
+
+  const preset = getWeekendWeekPreset(weekKey)
+  if (preset?.kind === "mono") {
+    return { kind: "mono", atlDoctor: preset.atlDoctor }
+  }
+  if (preset?.kind === "combo") {
+    return { kind: "combo", atlSat: preset.atlSat, atlSun: preset.atlSun }
+  }
+  if (preset?.kind === "special") {
+    return null
+  }
 
   const rot = Math.floor(weekNum / 2)
   const a = WOM_ATL_DOCTORS[rot % 3]
@@ -283,6 +302,27 @@ export function proposeWeekendWomPattern(
 
   const atlDoctor = pickByEquity([...WOM_ATL_DOCTORS], equity, "weekend_count")
   return { kind: "mono", atlDoctor }
+}
+
+function applySpecialCells(
+  schedule: ScheduleData,
+  cells: WeekendSpecialCell[],
+  opts: { force?: boolean } = {},
+): ScheduleData {
+  const status: "validated" | "pending" = "validated"
+  let next = schedule
+  for (const cell of cells) {
+    if (!next[cell.row]?.[cell.day]) continue
+    const existing = next[cell.row][cell.day].value || []
+    const alreadyExact =
+      existing.length === cell.doctors.length &&
+      cell.doctors.every((d) => existing.includes(d))
+    if (alreadyExact) continue
+    if (!opts.force && existing.some(Boolean)) continue
+    // force=true : consigne prédéfinie (ex. MG W52) prime sur CH / rotation auto
+    next = setCellDoctors(next, cell.row, cell.day, cell.doctors, status)
+  }
+  return next
 }
 
 /**
@@ -395,8 +435,8 @@ function applyMonoDoctor(
 /**
  * Injecte / complète le pattern WOM (mono ou combo) sur cases **vides**.
  * Semaines impaires (CH) : no-op (CH déjà injecté ailleurs).
- * Combo (croisement Garde↔ATL) **uniquement** sur les 5 week-ends prédéfinis.
- * Saisie manuelle : jamais écrasée (`fillEmpty*`).
+ * Preset `special` : cases fixes seulement, pas de mono/combo week-end.
+ * Saisie manuelle : jamais écrasée (`fillEmpty*` / `fillCompletelyEmptyCell`).
  */
 export function applyWeekendWomPattern(
   schedule: ScheduleData,
@@ -405,7 +445,16 @@ export function applyWeekendWomPattern(
 ): ScheduleData {
   if (!weekKey || isOddIsoWeek(weekKey)) return schedule
 
+  const preset = getWeekendWeekPreset(weekKey)
+  if (preset?.kind === "special") {
+    return applySpecialCells(schedule, preset.specialCells, { force: true })
+  }
+
   let next = schedule
+  if (preset && "specialCells" in preset && preset.specialCells?.length) {
+    next = applySpecialCells(next, preset.specialCells, { force: false })
+  }
+
   const status: "validated" | "pending" = "validated"
   const pattern = proposeWeekendWomPattern(weekKey, equity)
   const isCombo = pattern?.kind === "combo"
@@ -470,7 +519,15 @@ export function applyWeekendWomRules(
   equity?: Record<string, EquityCounts>,
 ): ScheduleData {
   if (!schedule || !weekKey) return schedule
+  const preset = getWeekendWeekPreset(weekKey)
   let next = applyWeekendWomPattern(schedule, weekKey, equity)
+
+  if (preset?.kind === "special") {
+    if (preset.skipFriSatCoupling !== false) {
+      return next
+    }
+  }
+
   next = applyWeekendComboCrossCoupling(next, weekKey)
   next = applyFriSatAtlNightCoupling(next)
   next = applySaturdayGardeSingleDoctor(next)
