@@ -1,3 +1,5 @@
+import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
+
 export interface GuardConstraints {
   noFridayUsers: string[] // M, W, O
   offSiteDays: { [user: string]: string[] } // Days when users are off-site
@@ -477,8 +479,8 @@ export function generateAstreinteRotation(
       // W/O/M: nuits Lun/Mar/Ven (pas de nuits consécutives Lun–Ven) + weekend ATL
       // CH: nuits Mer/Jeu
       // Ven ATL Nuit = médecin Sat ATL (systématique).
-      // Combo (~10/13 week-ends WOM) : Sat ATL=user1, Sun ATL=user2 ;
-      //   (Garde Sam=user2 / Dim=user1 appliqué côté structural soft).
+      // Combo : exactement 5 week-ends WOM prédéfinis / semestre
+      //   Sat ATL=user1, Sun ATL=user2 ; Garde soft côté structural.
       // Mono : Sat+Sun ATL=user1.
       const user1 = usersOMW[userIndex % 3]
       const user2 = usersOMW[(userIndex + 1) % 3]
@@ -488,7 +490,8 @@ export function generateAstreinteRotation(
       rotation.wednesday = "CH"
       rotation.thursday = "CH"
       rotation.friday = user1 // = Sat ATL Nuit
-      const isCombo = ((((currentWeek / 2 - 1) % 13) + 13) % 13) < 10
+      const weekKey = `${currentYear}-W${String(currentWeek).padStart(2, "0")}`
+      const isCombo = isWomComboWeekend(weekKey)
       rotation.saturday1 = user1
       rotation.saturday2 = isCombo ? user2 : user1
       rotation.sunday = user1 // Dim Garde hint (combo) = atlSat
