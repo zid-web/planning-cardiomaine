@@ -400,6 +400,16 @@ export function canAssignDoctorToSlot(
     }
   }
 
+  // ETT Tessé : réservé à Val, S, B (confirmé utilisateur 31/07/2026)
+  if (rowKey === "Matin - ETT Tessé" || rowKey === "Apm - ETT Tessé") {
+    if (!["Val", "S", "B"].includes(doctorId)) {
+      return {
+        allowed: false,
+        reason: "ETT Tessé réservé à Val, S et B.",
+      }
+    }
+  }
+
   // Coro salle = M/O/W/FV (pas CH, pas R/V/T/G…)
   if (rowKey === "Matin - Coro" || rowKey === "Apm - Coro") {
     if (!isCoroEligibleDoctor(doctorId)) {
