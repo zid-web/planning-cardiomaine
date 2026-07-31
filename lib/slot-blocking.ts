@@ -22,6 +22,7 @@ import {
 import { isStressSlotClosed } from "@/lib/stress-rules"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
+import { isRoomUnderMaintenanceOnDate } from "@/lib/room-maintenance"
 
 export type DayPeriod = "matin" | "apm" | "nuit" | "day" | "meta"
 
@@ -405,6 +406,16 @@ export function canAssignDoctorToSlot(
       return {
         allowed: false,
         reason: "Coro réservé aux coronarographistes (M, O, W, FV).",
+      }
+    }
+    // Salle de coro en maintenance sur cette période (bug corrigé le
+    // 31/07/2026) : la génération automatique respectait déjà cette
+    // suspension, mais la saisie manuelle directe l'ignorait.
+    const coroSlot = rowKey === "Matin - Coro" ? "matin" : "am"
+    if (isRoomUnderMaintenanceOnDate(dateStr, coroSlot)) {
+      return {
+        allowed: false,
+        reason: "Salle de coronarographie indisponible (maintenance) sur cette période.",
       }
     }
   }
