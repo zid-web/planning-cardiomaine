@@ -14,6 +14,8 @@
  *   Val/Véro (bloc 3/4) pour identifier le partenaire du jour.
  */
 
+import type { DoctorVacation, ScheduleData } from "@/lib/types"
+
 export const NURSES = ["Val", "Véro", "Laura"] as const
 export type NurseId = (typeof NURSES)[number]
 
