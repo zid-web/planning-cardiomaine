@@ -35,7 +35,6 @@ import type { CellData, FullSchedule, ScheduleData } from "@/lib/types"
 import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
 import { adminEditsAreValidated } from "@/lib/staff-admin"
 import { generateWeekSchedule, getWeekDates, getWeekNumber, getFrenchPublicHolidays } from "@/lib/schedule-utils"
-import { generateNightGuardProposals, constraints2026, type GuardProposal } from "@/lib/guard-scheduler"
 import {
   calculateMonthlyWorkloadStats,
   sortedTaskEntries,
@@ -83,7 +82,6 @@ import {
   type ScheduleHistoryRow,
 } from "@/app/actions/schedule-actions"
 import type { ScheduleSaveSource } from "@/lib/schedule-diff"
-import { generateGuardsWithVacations } from "@/app/actions/guard-generation-actions"
 import { getLastSundayGuardDoctor, recordLastComboGardeFromSchedule } from "@/app/actions/guard-api-actions"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { getAllVacations } from "@/app/actions/vacation-actions"
@@ -174,8 +172,6 @@ export function ScheduleApp({
   const [statsMonth, setStatsMonth] = useState(() => new Date().getMonth() + 1)
   const [statsYear, setStatsYear] = useState(() => new Date().getFullYear())
   const [expandedWorkloadDoctor, setExpandedWorkloadDoctor] = useState<string | null>(null)
-  const [guardProposals, setGuardProposals] = useState<Map<string, GuardProposal[]>>(new Map())
-  const [showProposals, setShowProposals] = useState(false)
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
   /** false tant que getAllVacations n’a pas répondu — évite d’écraser Congés/Rythmo avec []. */
   const [vacationsReady, setVacationsReady] = useState(false)
@@ -1322,86 +1318,6 @@ export function ScheduleApp({
     return map
   }, [fullSchedule])
 
-  const handleGenerateGuards = async () => {
-    // Generate for current year through end of 2026
-    const startDate = new Date()
-    const endDate = new Date("2026-12-31")
-
-    try {
-      // Use new function that includes DB vacations
-      const result = await generateGuardsWithVacations(startDate, endDate)
-
-      if (result.error) {
-        toast.error(`Erreur: ${result.error}`)
-        return
-      }
-
-      const proposals = result.proposals
-
-      // Group proposals by week
-      const proposalsByWeek = new Map<string, GuardProposal[]>()
-      proposals.forEach((p) => {
-        if (!proposalsByWeek.has(p.weekKey)) proposalsByWeek.set(p.weekKey, [])
-        proposalsByWeek.get(p.weekKey)!.push(p)
-      })
-
-      setGuardProposals(proposalsByWeek)
-      setShowProposals(true)
-      toast.success(
-        `${proposals.length} proposition(s) Garde Nuit (Mar–Dim ; Lun = FV sauf vacances)`,
-      )
-    } catch (error) {
-      console.error("[app] Error generating guards:", error)
-      toast.error("Erreur lors de la génération des gardes")
-    }
-  }
-
-  const validateProposal = (proposal: GuardProposal) => {
-    const weekSchedule = fullSchedule[proposal.weekKey]
-    if (!weekSchedule) return
-
-    const newSchedule = { ...weekSchedule }
-
-    const dayIndex = DAYS.findIndex((d) => d === proposal.day)
-    if (dayIndex === -1) return
-
-    const day = DAYS[dayIndex]
-
-    if (newSchedule[proposal.type] && newSchedule[proposal.type][day]) {
-      const currentValues = newSchedule[proposal.type][day].value
-      if (!currentValues.includes(proposal.user)) {
-        newSchedule[proposal.type][day] = {
-          value: [...currentValues, proposal.user],
-          type: "doctor",
-          status: "validated",
-        }
-
-        // Update the fullSchedule state and save to DB
-        const updatedFullSchedule = {
-          ...fullSchedule,
-          [proposal.weekKey]: newSchedule,
-        }
-        setFullSchedule(updatedFullSchedule)
-        saveScheduleToDb(proposal.weekKey, newSchedule, currentUser || "unknown")
-
-        // Remove from proposals
-        const weekProposals = guardProposals.get(proposal.weekKey) || []
-        const filtered = weekProposals.filter(
-          (p) => !(p.date === proposal.date && p.type === proposal.type && p.user === proposal.user),
-        )
-        guardProposals.set(proposal.weekKey, filtered)
-        setGuardProposals(new Map(guardProposals))
-
-        toast.success(`Garde validée pour ${proposal.user}`)
-      }
-    }
-  }
-
-  const getCellProposal = (row: string, day: string) => {
-    const weekProposals = guardProposals.get(weekKey) || []
-    return weekProposals.find((p) => p.type === row && p.day === day)
-  }
-
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
       {/* Main Content Area — native overflow so mobile pan-x/pan-y works in Global */}
@@ -1556,17 +1472,6 @@ export function ScheduleApp({
                           </span>
                         </span>
 
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2 text-[11px]"
-                          onClick={handleGenerateGuards}
-                          title="Générer Gardes Nuit"
-                        >
-                          <Calendar className="mr-1 h-3.5 w-3.5" />
-                          <span className="hidden sm:inline">Gardes Nuit</span>
-                        </Button>
-
                         <VacationsButton
                           className="!gap-1 !rounded-md !px-2 !py-1 !text-xs"
                           onClick={() => {
@@ -1652,17 +1557,6 @@ export function ScheduleApp({
                         </Button>
 
                         {/* Bouton doublon "Générer avec Solveur" retiré : GuardGenerationButton = seule entrée. */}
-
-                        {showProposals && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
-                            onClick={() => setShowProposals(!showProposals)}
-                          >
-                            {showProposals ? "Masquer" : "Afficher"} Prop.
-                          </Button>
-                        )}
 
                         <Button
                           variant="outline"
@@ -1901,43 +1795,6 @@ export function ScheduleApp({
                                           Prop.
                                         </span>
                                       )}
-                                      {showProposals &&
-                                        (() => {
-                                          const proposal = getCellProposal(rowKey, day)
-                                          if (proposal) {
-                                            return (
-                                              <div className="absolute inset-0 border-2 border-amber-400 bg-amber-50/30 flex items-center justify-center">
-                                                <div className="flex flex-col items-center gap-1">
-                                                  <div className="flex items-center gap-1">
-                                                    <span className="text-lg">⭐</span>
-                                                    <span
-                                                      className={cn(
-                                                        "px-1 py-0.5 rounded text-white text-xs",
-                                                        DOCTOR_COLORS[proposal.user],
-                                                      )}
-                                                    >
-                                                      {proposal.user}
-                                                    </span>
-                                                  </div>
-                                                  {isAdmin && (
-                                                    <Button
-                                                      size="sm"
-                                                      variant="ghost"
-                                                      className="h-5 text-xs px-1"
-                                                      onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        validateProposal(proposal)
-                                                      }}
-                                                    >
-                                                      Valider
-                                                    </Button>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            )
-                                          }
-                                        })()}
-
                                       {/* Existing cell content (initiales + remplaçant) */}
                                       {!cellBlocked && (
                                         <div className="flex flex-wrap gap-0.5 justify-center items-center content-center h-full max-h-full overflow-visible">
@@ -2774,51 +2631,6 @@ export function ScheduleApp({
                   )
                 })
               )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {showProposals && (
-        <Dialog open={showProposals} onOpenChange={setShowProposals}>
-          <DialogContent className="max-w-lg">
-            <div className="sticky top-0 z-10 flex items-center justify-between bg-slate-50 py-2">
-              <DialogHeader className="space-y-1 text-left">
-                <DialogTitle className="text-xl font-bold text-slate-900">
-                  Propositions de Gardes
-                </DialogTitle>
-                <DialogDescription className="text-xs text-slate-500">
-                  Semaine {currentWeekInfo.week} - {currentWeekInfo.year}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setShowProposals(false)}>
-                  Fermer
-                </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-4 gap-4">
-              {Array.from(guardProposals.get(weekKey) || []).map((proposal) => (
-                <div
-                  key={`${proposal.type}-${proposal.day}-${proposal.user}`}
-                  className="flex items-center justify-between p-2 bg-slate-50 rounded"
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={cn(
-                        "w-6 h-6 rounded-full flex items-center justify-center text-xs text-white font-bold",
-                        DOCTOR_COLORS[proposal.user],
-                      )}
-                    >
-                      {proposal.user}
-                    </div>
-                    <span className="font-medium">{proposal.type}</span>
-                  </div>
-                  <Button variant="outline" onClick={() => validateProposal(proposal)}>
-                    Valider
-                  </Button>
-                </div>
-              ))}
             </div>
           </DialogContent>
         </Dialog>
