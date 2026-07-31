@@ -23,6 +23,7 @@ import { isStressSlotClosed } from "@/lib/stress-rules"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
 import { isRoomUnderMaintenanceOnDate } from "@/lib/room-maintenance"
+import { isNurse, isValidNursePartner, nurseRequiresBinome } from "@/lib/nurse-rules"
 
 export type DayPeriod = "matin" | "apm" | "nuit" | "day" | "meta"
 
@@ -406,6 +407,30 @@ export function canAssignDoctorToSlot(
       return {
         allowed: false,
         reason: "ETT Tessé réservé à Val, S et B.",
+      }
+    }
+  }
+
+  // Binôme infirmière/médecin (Val/Véro/Laura) sur Stress/EE (confirmé
+  // utilisateur 31/07/2026) : le médecin déjà présent doit être un
+  // partenaire valide pour l'infirmière qu'on ajoute (et vice versa).
+  if (nurseRequiresBinome(rowKey)) {
+    const currentListed = schedule[rowKey]?.[day]?.value || []
+    if (isNurse(doctorId)) {
+      const otherDoctor = currentListed.find((d) => !isNurse(d))
+      if (otherDoctor && !isValidNursePartner(otherDoctor, rowKey)) {
+        return {
+          allowed: false,
+          reason: `${otherDoctor} n'est pas un partenaire valide pour ${doctorId} sur cette vacation.`,
+        }
+      }
+    } else {
+      const otherNurse = currentListed.find((d) => isNurse(d))
+      if (otherNurse && !isValidNursePartner(doctorId, rowKey)) {
+        return {
+          allowed: false,
+          reason: `${doctorId} n'est pas un partenaire valide pour ${otherNurse} sur cette vacation.`,
+        }
       }
     }
   }
