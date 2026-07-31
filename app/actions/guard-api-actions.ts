@@ -16,6 +16,7 @@ import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
 import { toSolverClinicalRulesPayload } from "@/lib/group-clinical-rules";
 import { buildActivityMaintenancePayload } from "@/lib/activity-maintenance";
+import { buildRoomMaintenancePayload } from "@/lib/room-maintenance";
 import {
   buildWeekendComboSolverFields,
   LAST_COMBO_GARDE_DATE_KEY,
@@ -310,6 +311,11 @@ export async function generateGuardsViaAPI(
       rules_override: toSolverClinicalRulesPayload(),
       // Suspensions NCT / PSSL / LFB / CDL (périodes calendrier — optionnel)
       activity_maintenance: buildActivityMaintenancePayload(),
+      // Salle de coro indisponible (périodes calendrier — optionnel, même
+      // principe qu'activity_maintenance ci-dessus). Bug corrigé 31/07/2026 :
+      // les consignes vocales portant sur plusieurs semaines n'étaient
+      // jamais reprises par les générations normales ultérieures.
+      room_maintenance: buildRoomMaintenancePayload(),
       // Week-end combo M/O/W (uniquement semaines calendrier — sinon absent)
       ...(weekendComboFields ?? {}),
       // Rotations désignées admin (VISITE / LFB / PSSL) — optionnels
@@ -319,11 +325,20 @@ export async function generateGuardsViaAPI(
       ...(weekOverrides?.lfb_doctor
         ? { lfb_doctor: weekOverrides.lfb_doctor }
         : {}),
-      ...(typeof weekOverrides?.pssl_b_active === "boolean"
-        ? { pssl_b_active: weekOverrides.pssl_b_active }
-        : {}),
-      ...(typeof weekOverrides?.pssl_z_active === "boolean"
-        ? { pssl_z_active: weekOverrides.pssl_z_active }
+      ...(typeof weekOverrides?.pssl_b_active === "boolean" || typeof weekOverrides?.pssl_z_active === "boolean"
+        ? {
+            // Conversion au point de sortie uniquement (bug corrigé
+            // 31/07/2026) : le solveur attend désormais `pssl_doctor`
+            // ("B" | "Z"), pas les 2 anciens booléens séparés - on ne
+            // touche pas à l'UI/la logique interne (week-generation-params,
+            // guard-generation-button) qui continuent d'utiliser les 2
+            // booléens, seule la conversion finale change.
+            pssl_doctor: weekOverrides?.pssl_b_active
+              ? "B"
+              : weekOverrides?.pssl_z_active
+                ? "Z"
+                : undefined,
+          }
         : {}),
     };
 
