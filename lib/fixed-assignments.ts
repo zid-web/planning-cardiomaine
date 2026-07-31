@@ -1,6 +1,8 @@
 import { parseISO, isAfter, isBefore } from "date-fns"
 import { DAYS } from "@/lib/constants"
 import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
+import { valFixedSlotsForWeek } from "@/lib/nurse-rules"
+import { isFirstThursdayOfMonth } from "@/lib/stress-rules"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 
 /** Rotation Visite : uniquement U, A, B — une semaine chacun. */
@@ -255,6 +257,14 @@ export function applyFixedClinicalAssignments(
   for (const slot of DOC022_FIXED_CLINICAL_SLOTS) {
     if (!schedule[slot.row]) continue
     assignIfAvailable(schedule, slot.row, slot.day, slot.doctor, weekKey, vacations, assignOpts)
+  }
+
+  // --- Planning fixe de Val (infirmière) - confirmé utilisateur 31/07/2026 ---
+  const jeudiDateStr = dateStrForWeekDay(weekKey, "JEUDI")
+  const firstThursday = jeudiDateStr ? isFirstThursdayOfMonth(jeudiDateStr) : false
+  for (const slot of valFixedSlotsForWeek(weekKey, firstThursday)) {
+    if (!schedule[slot.row]) continue
+    assignIfAvailable(schedule, slot.row, slot.day, "Val", weekKey, vacations, assignOpts)
   }
 
   return schedule
