@@ -139,6 +139,19 @@ function isOddIsoWeekLocal(weekKey: string): boolean {
 }
 
 /**
+ * Planning fixe de Laura (infirmière) - confirmé utilisateur 31/07/2026 :
+ * repli automatique de Véro sur "Stress matin" le vendredi, semaines
+ * impaires uniquement (Véro est en absence fixe ce jour-là ces semaines-là).
+ * Comme les autres infirmières, Stress reste soumis au binôme obligatoire
+ * (voir `nurseRequiresBinome`/`isValidNursePartner`).
+ */
+export function lauraFixedSlotsForWeek(weekKey: string): ValFixedSlot[] {
+  const odd = isOddIsoWeekLocal(weekKey)
+  if (!odd) return []
+  return [{ row: "Matin - Stress", day: "VENDREDI", slot: "matin" }]
+}
+
+/**
  * Planning fixe de Véro (confirmé utilisateur 31/07/2026) :
  *
  * Semaine paire : Lun absence fixe ; Mar Stress matin (am libre, alternance
