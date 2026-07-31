@@ -137,3 +137,53 @@ function isOddIsoWeekLocal(weekKey: string): boolean {
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
   return weekNum % 2 === 1
 }
+
+/**
+ * Planning fixe de Véro (confirmé utilisateur 31/07/2026) :
+ *
+ * Semaine paire : Lun absence fixe ; Mar Stress matin (am libre, alternance
+ * manuelle avec Val) ; Mer Stress matin + absence fixe am ; Jeu suit
+ * EXACTEMENT le roulement de D (Stress matin toujours ; am Stress si 1er
+ * jeudi du mois, sinon EE1+EE2) ; Ven Stress matin + EE am.
+ *
+ * Semaine impaire : Lun Stress matin+am ; Mar Stress matin (am libre) ;
+ * Mer Stress matin + absence fixe am ; Jeu même roulement que D ;
+ * Ven absence fixe (repli possible : Laura, Stress matin uniquement, pas
+ * automatique - à assigner manuellement si besoin).
+ */
+export function veroFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean): ValFixedSlot[] {
+  const odd = isOddIsoWeekLocal(weekKey)
+  const thursdaySlots: ValFixedSlot[] = [
+    { row: "Matin - Stress", day: "JEUDI", slot: "matin" },
+  ]
+  if (isFirstThursday) {
+    thursdaySlots.push({ row: "Apm - Stress", day: "JEUDI", slot: "am" })
+  } else {
+    thursdaySlots.push({ row: "Apm - EE1", day: "JEUDI", slot: "am" })
+    thursdaySlots.push({ row: "Apm - EE2", day: "JEUDI", slot: "am" })
+  }
+
+  if (!odd) {
+    return [
+      // Lundi : absence fixe - rien à ajouter.
+      { row: "Matin - Stress", day: "MARDI", slot: "matin" },
+      // Mardi am : libre (alternance manuelle avec Val) - non forcé.
+      { row: "Matin - Stress", day: "MERCREDI", slot: "matin" },
+      // Mercredi am : absence fixe - rien à ajouter.
+      ...thursdaySlots,
+      { row: "Matin - Stress", day: "VENDREDI", slot: "matin" },
+      { row: "Apm - EE1", day: "VENDREDI", slot: "am" },
+    ]
+  }
+  return [
+    { row: "Matin - Stress", day: "LUNDI", slot: "matin" },
+    { row: "Apm - Stress", day: "LUNDI", slot: "am" },
+    { row: "Matin - Stress", day: "MARDI", slot: "matin" },
+    // Mardi am : libre (alternance manuelle avec Val) - non forcé.
+    { row: "Matin - Stress", day: "MERCREDI", slot: "matin" },
+    // Mercredi am : absence fixe - rien à ajouter.
+    ...thursdaySlots,
+    // Vendredi : absence fixe - rien à ajouter (repli Laura possible,
+    // manuel uniquement, voir doc ci-dessus).
+  ]
+}
