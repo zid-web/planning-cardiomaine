@@ -1,7 +1,7 @@
 import { parseISO, isAfter, isBefore } from "date-fns"
 import { DAYS } from "@/lib/constants"
 import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
-import { valFixedSlotsForWeek, veroFixedSlotsForWeek } from "@/lib/nurse-rules"
+import { valFixedSlotsForWeek, veroFixedSlotsForWeek, lauraFixedSlotsForWeek } from "@/lib/nurse-rules"
 import { isFirstThursdayOfMonth } from "@/lib/stress-rules"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 
@@ -222,7 +222,7 @@ export function applyNurseFixedAssignments(
 ): ScheduleData {
   const jeudiDateStr = dateStrForWeekDay(weekKey, "JEUDI")
   const firstThursday = jeudiDateStr ? isFirstThursdayOfMonth(jeudiDateStr) : false
-  const expected = ["Val", "Véro", "D"]
+  const expected = ["Val", "Véro", "D", "Laura"]
 
   for (const slot of valFixedSlotsForWeek(weekKey, firstThursday)) {
     if (!schedule[slot.row]) continue
@@ -231,6 +231,10 @@ export function applyNurseFixedAssignments(
   for (const slot of veroFixedSlotsForWeek(weekKey, firstThursday)) {
     if (!schedule[slot.row]) continue
     appendFixedOccupant(schedule, slot.row, slot.day, "Véro", weekKey, vacations, expected)
+  }
+  for (const slot of lauraFixedSlotsForWeek(weekKey)) {
+    if (!schedule[slot.row]) continue
+    appendFixedOccupant(schedule, slot.row, slot.day, "Laura", weekKey, vacations, expected)
   }
   return schedule
 }
