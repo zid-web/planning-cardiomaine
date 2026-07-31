@@ -596,6 +596,20 @@ export type ApplyStructuralConstraintsOptions = {
    * Optionnel — rotation déterministe si absent.
    */
   weekendEquity?: Record<string, EquityCounts>
+  /**
+   * true = semaine jamais chargée avant (squelette tout juste créé par
+   * `generateWeekSchedule`, aucune donnée sauvegardée) ; false = données
+   * déjà sauvegardées/éditées par un admin. Défaut true (rétrocompatible).
+   *
+   * Quand false, les mécanismes de remplissage par défaut sur case VIDE
+   * (créneaux fixes DOC022/IRM/FV/DAAS/Rythmo/Visite, couplage Garde/ATL
+   * weekend, mono/combo weekend WOM) sont désactivés — une case vide reste
+   * vide, elle n'est plus jamais réinterprétée comme "à remplir". Seule la
+   * récupération après garde de nuit (`applyNightRecovery`, section 6)
+   * continue de s'appliquer dans tous les cas (confirmé utilisateur
+   * 31/07/2026 : règle absolue, seule exception à la libre modification).
+   */
+  isFreshWeek?: boolean
 }
 
 /**
@@ -616,6 +630,7 @@ export function applyStructuralConstraints(
   // Clone profond : applyFixedClinicalAssignments mute les cellules en place
   let next: ScheduleData = structuredClone(schedule)
   const vacationsReady = opts.vacationsReady !== false
+  const isFreshWeek = opts.isFreshWeek !== false
 
   // 0) Congés d’abord — les règles fixes (Rythmo P/U/A, IRM, …) sautent si absent
   next = mergeVacancesIntoConges(next)
@@ -623,11 +638,16 @@ export function applyStructuralConstraints(
     next = populateCongesRowFromVacations(next, vacations, weekKey)
   }
 
-  // 1) Assignations cliniques fixes (IRM / FV / DAAS / Rythmo / Visite)
-  next = applyFixedClinicalAssignments(next, weekKey, vacations, {
-    vacationsReady,
-    visiteDoctor: opts.visiteDoctor,
-  })
+  // 1) Assignations cliniques fixes (IRM / FV / DAAS / Rythmo / Visite) -
+  // uniquement sur une semaine jamais chargée (confirmé utilisateur
+  // 31/07/2026 : une case vidée par un admin ne doit plus jamais être
+  // réinjectée automatiquement).
+  if (isFreshWeek) {
+    next = applyFixedClinicalAssignments(next, weekKey, vacations, {
+      vacationsReady,
+      visiteDoctor: opts.visiteDoctor,
+    })
+  }
 
   // 1bis) Stress fermé Mer/Ven Apm + D jeudi (1er = Stress apm ; sinon EE1+EE2)
   next = applyStressAndDRules(next, weekKey, vacations, { vacationsReady })
@@ -642,13 +662,19 @@ export function applyStructuralConstraints(
   next = applyAtlFollowsCoroConstraints(next)
 
   // 3a) Week-end WOM (semaines paires) : mono / combo M-O-W + Ven↔Sam ATL nuit
-  next = applyWeekendWomRules(next, weekKey, {
-    equity: opts.weekendEquity,
-    vacations,
-  })
+  // - uniquement sur une semaine fraîche (même principe qu'en 1).
+  if (isFreshWeek) {
+    next = applyWeekendWomRules(next, weekKey, {
+      equity: opts.weekendEquity,
+      vacations,
+    })
+  }
 
-  // 3bis) Weekend : couplage Garde + ATL (Sam/Dim) — soft fill
-  next = applyWeekendGardeAtlCoupling(next)
+  // 3bis) Weekend : couplage Garde + ATL (Sam/Dim) — soft fill, uniquement
+  // sur une semaine fraîche (même principe).
+  if (isFreshWeek) {
+    next = applyWeekendGardeAtlCoupling(next)
+  }
 
   // 4) NCT calendrier + LFB
   next = applyNctCalendarConstraints(next, weekKey)
