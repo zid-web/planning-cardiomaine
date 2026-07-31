@@ -398,6 +398,9 @@ function fillEmptyFromPriorityListedDoctors(
   for (const row of rows) {
     if (!next[row]?.[day]) continue
     if (listedInCell(next, row, day).length > 0) continue
+    // Case explicitement vidée par l'admin : ne jamais la re-remplir
+    // (confirmé utilisateur 31/07/2026).
+    if (next[row]![day]!.manuallyCleared) continue
     const remplacants = remplacantsInCell(next, row, day)
     next = setCellDoctors(next, row, day, [...chosen, ...remplacants], status)
   }
@@ -447,7 +450,8 @@ export function applyWeekendGardeAtlCoupling(schedule: ScheduleData): ScheduleDa
   if (
     samMatinListed.length > 0 &&
     next["Garde Matin"]?.SAMEDI &&
-    samMatinExisting.length === 0
+    samMatinExisting.length === 0 &&
+    !next["Garde Matin"]!.SAMEDI!.manuallyCleared
   ) {
     const remplacants = remplacantsInCell(next, "Garde Matin", "SAMEDI")
     const status =
