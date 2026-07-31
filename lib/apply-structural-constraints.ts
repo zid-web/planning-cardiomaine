@@ -8,6 +8,7 @@ import {
 } from "@/lib/activity-maintenance"
 import {
   applyFixedClinicalAssignments,
+  applyNurseFixedAssignments,
   clearFixedAssigneesOnVacation,
   dateStrForWeekDay,
   isOddIsoWeek,
@@ -651,6 +652,14 @@ export function applyStructuralConstraints(
 
   // 1bis) Stress fermé Mer/Ven Apm + D jeudi (1er = Stress apm ; sinon EE1+EE2)
   next = applyStressAndDRules(next, weekKey, vacations, { vacationsReady })
+
+  // 1ter) Planning fixe Val/Véro (infirmières) - APRÈS D pour pouvoir
+  // s'ajouter à côté de lui le jeudi sans être écrasées (confirmé
+  // utilisateur 31/07/2026) - uniquement sur une semaine fraîche, même
+  // principe qu'en 1.
+  if (isFreshWeek) {
+    next = applyNurseFixedAssignments(next, weekKey, vacations)
+  }
 
   // 2) CH astreintes (nuit semaine + ATL weekend selon roulement)
   next = applyChAstreinteConstraints(next, weekKey)
