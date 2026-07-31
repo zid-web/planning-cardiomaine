@@ -152,6 +152,12 @@ function assignIfAvailable(
     return
   }
   const current = schedule[rowKey]?.[day]?.value || []
+  // Case explicitement vidée par l'admin : ne jamais la re-remplir, même si
+  // elle est vide (confirmé utilisateur 31/07/2026 - toutes les cases
+  // pré-remplies, fixes ou proposées, doivent rester librement modifiables/
+  // supprimables, sauf la règle du lendemain de garde de nuit qui reste
+  // appliquée séparément et n'est pas concernée par ce marqueur).
+  if (schedule[rowKey]?.[day]?.manuallyCleared) return
   // Saisie manuelle / couverture différente du titulaire fixe : ne jamais écraser.
   // (Case vide ou uniquement le titulaire → injecter / idempotent.)
   // Inclut aussi vacationsReady=false (ex. P sur Rythmo avant chargement congés).
