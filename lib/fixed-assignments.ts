@@ -1,7 +1,7 @@
 import { parseISO, isAfter, isBefore } from "date-fns"
 import { DAYS } from "@/lib/constants"
 import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
-import { valFixedSlotsForWeek } from "@/lib/nurse-rules"
+import { valFixedSlotsForWeek, veroFixedSlotsForWeek } from "@/lib/nurse-rules"
 import { isFirstThursdayOfMonth } from "@/lib/stress-rules"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 
@@ -170,6 +170,72 @@ function assignIfAvailable(
 }
 
 /**
+ * Variante "ajout" (pas remplacement) de `assignIfAvailable`, pour les
+ * cases où PLUSIEURS occupants sont attendus simultanément (ex: Véro +
+ * D sur Stress/EE le jeudi, quand Véro suit exactement le roulement de D -
+ * confirmé utilisateur 31/07/2026). Respecte les mêmes règles de non-
+ * écrasement d'une saisie manuelle : si la case contient déjà quelqu'un
+ * en-dehors de `expectedOccupants`, on ne touche à rien.
+ */
+function appendFixedOccupant(
+  schedule: ScheduleData,
+  rowKey: string,
+  day: string,
+  doctor: string,
+  weekKey: string,
+  vacations: DoctorVacation[],
+  expectedOccupants: string[],
+): void {
+  const dateStr = dateStrForWeekDay(weekKey, day)
+  if (!dateStr) return
+  if (isDoctorAbsentForFixed(schedule, doctor, day, dateStr, vacations)) {
+    const current = schedule[rowKey]?.[day]?.value || []
+    if (current.includes(doctor)) {
+      setDoctors(
+        schedule,
+        rowKey,
+        day,
+        current.filter((d) => d !== doctor),
+      )
+    }
+    return
+  }
+  if (schedule[rowKey]?.[day]?.manuallyCleared) return
+  const current = schedule[rowKey]?.[day]?.value || []
+  if (current.includes(doctor)) return // déjà présent, idempotent
+  const onlyExpectedOrEmpty = current.every((d) => expectedOccupants.includes(d))
+  if (!onlyExpectedOrEmpty) return // saisie manuelle différente, ne pas toucher
+  setDoctors(schedule, rowKey, day, [...current, doctor])
+}
+
+/**
+ * Applique le planning fixe de Val et Véro (infirmières) - confirmé
+ * utilisateur 31/07/2026. À appliquer APRÈS `applyStressAndDRules` (D) dans
+ * le pipeline (voir apply-structural-constraints.ts) : le jeudi, Véro suit
+ * exactement le roulement de D et doit s'AJOUTER à côté de lui, pas être
+ * écrasée par l'assignation exclusive de D si l'ordre était inversé.
+ */
+export function applyNurseFixedAssignments(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[] = [],
+): ScheduleData {
+  const jeudiDateStr = dateStrForWeekDay(weekKey, "JEUDI")
+  const firstThursday = jeudiDateStr ? isFirstThursdayOfMonth(jeudiDateStr) : false
+  const expected = ["Val", "Véro", "D"]
+
+  for (const slot of valFixedSlotsForWeek(weekKey, firstThursday)) {
+    if (!schedule[slot.row]) continue
+    appendFixedOccupant(schedule, slot.row, slot.day, "Val", weekKey, vacations, expected)
+  }
+  for (const slot of veroFixedSlotsForWeek(weekKey, firstThursday)) {
+    if (!schedule[slot.row]) continue
+    appendFixedOccupant(schedule, slot.row, slot.day, "Véro", weekKey, vacations, expected)
+  }
+  return schedule
+}
+
+/**
  * Applique les assignations fixes (cases **vides** ou déjà au titulaire).
  * Une saisie manuelle différente n’est **jamais** écrasée (ETT ped S, Rythmo, IRM…).
  * - IRM : uniquement S — Lundi (matin) + Vendredi (après-midi), hors vacances
@@ -257,14 +323,6 @@ export function applyFixedClinicalAssignments(
   for (const slot of DOC022_FIXED_CLINICAL_SLOTS) {
     if (!schedule[slot.row]) continue
     assignIfAvailable(schedule, slot.row, slot.day, slot.doctor, weekKey, vacations, assignOpts)
-  }
-
-  // --- Planning fixe de Val (infirmière) - confirmé utilisateur 31/07/2026 ---
-  const jeudiDateStr = dateStrForWeekDay(weekKey, "JEUDI")
-  const firstThursday = jeudiDateStr ? isFirstThursdayOfMonth(jeudiDateStr) : false
-  for (const slot of valFixedSlotsForWeek(weekKey, firstThursday)) {
-    if (!schedule[slot.row]) continue
-    assignIfAvailable(schedule, slot.row, slot.day, "Val", weekKey, vacations, assignOpts)
   }
 
   return schedule
