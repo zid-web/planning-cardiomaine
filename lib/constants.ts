@@ -6,6 +6,9 @@ export const DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"
 // CH: Centre Hospitalier externe — astreintes ATL uniquement (jamais de garde)
 // DAAS: uniquement EE (Apm - EE2) chaque lundi après-midi (hors vacances)
 // D: Echo PSS stress consultation externe (jeudi)
+// Val, Véro: infirmières - EE/Stress/ETT Tessé/ETT2 en binôme avec un médecin
+// (voir lib/nurse-rules.ts) - Val seule autorisée sur ETT Tessé/ETT2.
+// Laura: infirmière - repli ponctuel pour Véro (Stress vendredi matin uniquement).
 // IRM: uniquement S — lundi matin + vendredi après-midi (hors vacances)
 // Visite: uniquement U, A, B en rotation hebdomadaire
 // Rythmo: A chaque lundi + jeudi après-midi
@@ -32,6 +35,8 @@ export const DOCTORS = [
   "FV",
   "D",
   "DAAS",
+  "Véro",
+  "Laura",
   "R",
   "T",
   "I",
@@ -56,6 +61,8 @@ export const STAFF_INITIALS = [
   "FV",
   "D",
   "DAAS",
+  "Véro",
+  "Laura",
   "R",
   "T",
   "I",
@@ -294,6 +301,8 @@ export const DOCTOR_COLORS: { [key: string]: string } = {
   FV: "bg-amber-500",
   D: "bg-stone-500",
   DAAS: "bg-slate-500",
+  Véro: "bg-fuchsia-700",
+  Laura: "bg-rose-700",
   R: "bg-red-700",
   T: "bg-emerald-700",
   I: "bg-sky-700",
@@ -305,6 +314,7 @@ export const CONGES_BADGE_COLOR = "bg-gray-500 opacity-75"
 export const ACTIVITY_ICONS: { [key: string]: string } = {
   "Cs PSS": "🩺",
   "Cs Tessée": "🩺",
+  "ETT Tessé": "💓",
   Visite: "👀",
   Stress: "🏃",
   "ETT salle 1": "💓",
