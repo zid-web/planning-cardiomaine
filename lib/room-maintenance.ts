@@ -53,3 +53,33 @@ export function buildRoomMaintenancePayload(
     ...(p.reason ? { reason: p.reason } : {}),
   }))
 }
+
+function parseIsoDay(iso: string): number {
+  return iso < "0000-01-01" ? NaN : Date.parse(`${iso}T00:00:00.000Z`)
+}
+
+/**
+ * True si `isoDate` (YYYY-MM-DD) + `slot` ("matin"|"am") tombe dans une
+ * suspension de la salle de coro. Utilisé par la validation manuelle de
+ * case (`canAssignDoctorToSlot`) pour bloquer une saisie manuelle sur Coro
+ * pendant la maintenance - bug corrigé le 31/07/2026 : la génération
+ * automatique respectait déjà cette suspension, mais la saisie manuelle
+ * directe dans une case l'ignorait complètement.
+ */
+export function isRoomUnderMaintenanceOnDate(
+  isoDate: string,
+  slot: RoomMaintenanceSlot,
+  periods: RoomMaintenancePeriod[] = buildDefaultRoomMaintenance2026(),
+): boolean {
+  if (!isoDate || !slot) return false
+  const t = parseIsoDay(isoDate)
+  if (!Number.isFinite(t)) return false
+  for (const p of periods) {
+    if (!p.slots.includes(slot)) continue
+    const a = parseIsoDay(p.start_date)
+    const b = parseIsoDay(p.end_date)
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue
+    if (t >= a && t <= b) return true
+  }
+  return false
+}
