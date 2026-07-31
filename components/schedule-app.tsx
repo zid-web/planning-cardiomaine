@@ -390,6 +390,7 @@ export function ScheduleApp({
     return applyStructuralConstraints(scheduleToUse, weekKey, vacations, {
       vacationsReady,
       previousSundayGuardDoctor,
+      isFreshWeek: !fullSchedule[weekKey],
     })
   }, [fullSchedule, weekKey, vacations, vacationsReady, previousSundayGuardDoctor])
 
@@ -442,6 +443,7 @@ export function ScheduleApp({
             const injected = applyStructuralConstraints(base, wk, vacations, {
               vacationsReady: true,
               previousSundayGuardDoctor: sundayDoc,
+              isFreshWeek: !source,
             })
             if (!schedulesDiffer(source, injected)) continue
 
@@ -613,7 +615,13 @@ export function ScheduleApp({
       type: "empty",
       status: "validated",
     }
-    const nextCell = patch(prevCell)
+    let nextCell = patch(prevCell)
+    // Dès qu'une case redevient non-vide (nouvel ajout après un vidage
+    // manuel), on lève le marqueur - il ne doit protéger qu'un état
+    // explicitement vide, pas bloquer un futur remplissage volontaire.
+    if (nextCell.manuallyCleared && (nextCell.value?.length || 0) > 0) {
+      nextCell = { ...nextCell, manuallyCleared: false }
+    }
     let newSchedule: ScheduleData = {
       ...schedule,
       [row]: {
@@ -865,6 +873,11 @@ export function ScheduleApp({
           cell.remplacant && removed === cell.remplacant ? undefined : cell.remplacant,
         type: newValues.length > 0 || (cell.remplacant && removed !== cell.remplacant) ? "doctor" : "empty",
         status: newStatus,
+        // Case réellement vidée par l'admin (plus aucun médecin/remplaçant) :
+        // empêche tout mécanisme de remplissage automatique de la re-remplir
+        // (confirmé utilisateur 31/07/2026).
+        manuallyCleared:
+          newValues.length === 0 && !(cell.remplacant && removed !== cell.remplacant) ? true : cell.manuallyCleared,
         request:
           newStatus === "pending"
             ? {
