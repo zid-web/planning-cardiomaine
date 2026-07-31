@@ -108,7 +108,7 @@ export function isDoctorAbsentForFixed(
   return legacy.includes(doctorId)
 }
 
-function setDoctors(
+export function setDoctors(
   schedule: ScheduleData,
   rowKey: string,
   day: string,
@@ -223,13 +223,22 @@ export function applyNurseFixedAssignments(
   const jeudiDateStr = dateStrForWeekDay(weekKey, "JEUDI")
   const firstThursday = jeudiDateStr ? isFirstThursdayOfMonth(jeudiDateStr) : false
   const expected = ["Val", "Véro", "D", "Laura"]
+  // D est le partenaire automatique du jeudi (Val/Véro suivent/complètent
+  // son roulement) - si D est en congé ce jeudi-là, le créneau devient
+  // indisponible pour elles aussi (confirmé utilisateur 31/07/2026 :
+  // "la vacation est indisponible si l'un du couple est absent").
+  const dAvailableThursday = jeudiDateStr
+    ? !isDoctorAbsentForFixed(schedule, "D", "JEUDI", jeudiDateStr, vacations)
+    : true
 
   for (const slot of valFixedSlotsForWeek(weekKey, firstThursday)) {
     if (!schedule[slot.row]) continue
+    if (slot.day === "JEUDI" && !dAvailableThursday) continue
     appendFixedOccupant(schedule, slot.row, slot.day, "Val", weekKey, vacations, expected)
   }
   for (const slot of veroFixedSlotsForWeek(weekKey, firstThursday)) {
     if (!schedule[slot.row]) continue
+    if (slot.day === "JEUDI" && !dAvailableThursday) continue
     appendFixedOccupant(schedule, slot.row, slot.day, "Véro", weekKey, vacations, expected)
   }
   for (const slot of lauraFixedSlotsForWeek(weekKey)) {
