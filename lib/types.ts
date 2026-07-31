@@ -4,6 +4,14 @@ export type CellData = {
   status: "validated" | "pending"
   /** Nom libre d’un remplaçant (admin), affiché en plus des initiales dans `value`. */
   remplacant?: string
+  /**
+   * True si un admin a explicitement vidé cette case (dernier médecin retiré
+   * manuellement). Empêche les mécanismes de remplissage automatique
+   * (créneaux fixes, couplages ATL/Garde weekend, etc.) de la re-remplir -
+   * distingue "jamais rempli" (peut recevoir un défaut) de "vidé
+   * volontairement" (doit rester vide). Confirmé utilisateur 31/07/2026.
+   */
+  manuallyCleared?: boolean
   request?: {
     requester: string
     status: "pending" | "validated"
