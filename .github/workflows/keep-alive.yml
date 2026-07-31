@@ -13,4 +13,4 @@ jobs:
       - name: Ping my Supabase project
         run: |
           curl -X GET "https://https://rmrxsaiianffhpxpntws.supabase.co/rest/v1/profiles?select=id&limit=1" \
-               -H "apikey: ${{ sb_publishable_NCr1RgEcA4MaWqMpWhlKaw_6wp2PZJE}}"
+               -H "apikey: ${{sb_publishable_NCr1RgEcA4MaWqMpWhlKaw_6wp2PZJE }}"
