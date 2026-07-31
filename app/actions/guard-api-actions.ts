@@ -3,6 +3,7 @@
 import { parseISO, subDays } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
 import { DoctorVacation, ScheduleData } from "@/lib/types";
+import { DAYS } from "@/lib/constants";
 import { generateWeekSchedule, getWeekNumber } from "@/lib/schedule-utils";
 import {
   accumulateEquityFromSchedules,
@@ -275,6 +276,43 @@ export async function generateGuardsViaAPI(
       weekendEquity,
     )
 
+    // 5bis. Positions des infirmières (Val/Véro/Laura) sur Stress/EE pour
+    // cette semaine - transmises au solveur via existing_schedule pour qu'il
+    // propose le médecin partenaire (confirmé utilisateur 31/07/2026).
+    const NURSE_STRESS_EE_ROWS = [
+      "Matin - Stress", "Apm - Stress",
+      "Matin - EE1", "Apm - EE1",
+      "Matin - EE2", "Apm - EE2",
+    ] as const
+    const NURSES = new Set(["Val", "Véro", "Laura"])
+    let nurseExistingSchedule: Record<string, string[]> = {}
+    try {
+      const supabaseCur = await createClient()
+      const { data: curRow } = await supabaseCur
+        .from("schedules")
+        .select("schedule_data")
+        .eq("week_key", currentWeekKey)
+        .single()
+      const currentSchedule = curRow?.schedule_data as ScheduleData | undefined
+      if (currentSchedule) {
+        for (const row of NURSE_STRESS_EE_ROWS) {
+          for (const day of DAYS) {
+            const cell = currentSchedule[row]?.[day]
+            const cellValue = cell?.value || []
+            const hasNurse = cellValue.some((d) => NURSES.has(d))
+            if (hasNurse) {
+              // Toute la case (infirmière + partenaire déjà confirmé s'il y
+              // en a un) - pas seulement l'infirmière filtrée, sinon le
+              // solveur croirait qu'aucun partenaire n'est encore choisi.
+              nurseExistingSchedule[`${row}||${day}`] = cellValue
+            }
+          }
+        }
+      }
+    } catch (nurseErr) {
+      console.warn("[generateGuardsViaAPI] positions infirmières ignorées:", nurseErr)
+    }
+
     // 5. Construit le payload pour Render
     const payload = {
       week_start_date: weekStartDate,
@@ -282,6 +320,10 @@ export async function generateGuardsViaAPI(
       weekend_mode: weekendMode,
       last_nct_doctor: lastNctDoctor || doctors[0]?.id || "M",
       previous_sunday_guard_doctor: previousSundayGuardDoctor,
+      // Positions déjà connues (infirmières Val/Véro/Laura sur Stress/EE
+      // pour l'instant) - permet au solveur de proposer le médecin
+      // partenaire sans écraser ce qui est déjà positionné.
+      existing_schedule: nurseExistingSchedule,
       vacations: vacations.map((v) => ({
         doctor_id: v.doctor_id,
         start_date: v.start_date,
