@@ -138,6 +138,7 @@ export const generateWeekSchedule = (
     // Vacations Matin
     "Matin - Cs PSS": createEmptyRow(),
     "Matin - Cs Tessée": createEmptyRow(),
+    "Matin - ETT Tessé": createEmptyRow(),
     "Matin - Stress": createEmptyRow(),
     "Matin - ETT salle 1": createEmptyRow(),
     "Matin - ETT salle 2": createEmptyRow(),
@@ -149,6 +150,7 @@ export const generateWeekSchedule = (
     // Vacations Après-midi
     "Apm - Cs PSS": createEmptyRow(),
     "Apm - Cs Tessée": createEmptyRow(),
+    "Apm - ETT Tessé": createEmptyRow(),
     "Apm - Stress": createEmptyRow(),
     "Apm - ETT salle 1": createEmptyRow(),
     "Apm - ETT salle 2": createEmptyRow(),
