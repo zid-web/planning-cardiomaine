@@ -228,7 +228,12 @@ export function applyFixedClinicalAssignments(
         ? opts.visiteDoctor
         : null
     const visiteUser = override || VISITE_ROTATION[((weekNum % 3) + 3) % 3]
-    for (const day of DAYS) {
+    // VISITE est un concept de semaine uniquement (lundi-vendredi) - jamais
+    // le weekend, sinon le médecin de visite se retrouve à tort "occupé"
+    // samedi/dimanche et bloque toute autre affectation (ex: Garde) via la
+    // règle d'exclusion mutuelle par créneau. Bug confirmé le 30/07/2026.
+    const visiteDays = DAYS.filter((d) => d !== "SAMEDI" && d !== "DIMANCHE")
+    for (const day of visiteDays) {
       assignIfAvailable(schedule, "Matin - Visite", day, visiteUser, weekKey, vacations, assignOpts)
     }
   }
