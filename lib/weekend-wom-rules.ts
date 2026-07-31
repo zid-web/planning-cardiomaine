@@ -560,6 +560,9 @@ function applyPresetCell(
   vacations: DoctorVacation[] | undefined,
 ): ScheduleData {
   if (!schedule[row]?.[day]) return schedule
+  // Case explicitement vidée par l'admin : ne jamais la re-remplir avec le
+  // préféré du preset (confirmé utilisateur 31/07/2026).
+  if (schedule[row]![day]!.manuallyCleared) return schedule
   const listed = listedInCell(schedule, row, day)
   const remplacants = remplacantsInCell(schedule, row, day)
   const availableListed = listed.filter((d) => doctorAvailable(d, day, weekKey, vacations))
