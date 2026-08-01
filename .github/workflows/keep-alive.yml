@@ -2,8 +2,7 @@ name: Keep Alive
 
 on:
   schedule:
-    # Toutes les 14 minutes (pour éviter le dormancy Render)
-    - cron: '*/10 * * * *'
+    - cron: '*/14 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -12,15 +11,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Ping Render deployment
-        run: |
-          curl -f \
-            -H "User-Agent: GitHub-Actions-Keep-Alive" \
-            https://planning-cardiomaine.onrender.com/api/health || true
+        run: curl -f -H "User-Agent: GitHub-Actions-Keep-Alive" https://planning-cardiomaine.onrender.com/api/health || true
         continue-on-error: true
 
       - name: Ping Guard API backend
-        run: |
-          curl -f \
-            -H "User-Agent: GitHub-Actions-Keep-Alive" \
-            https://guard-api-cardiomaine.onrender.com/health || true
+        run: curl -f -H "User-Agent: GitHub-Actions-Keep-Alive" https://guard-api-cardiomaine.onrender.com/health || true
         continue-on-error: true
