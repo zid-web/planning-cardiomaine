@@ -7,6 +7,7 @@ import { getWeekNumber } from "@/lib/schedule-utils";
 import { parseISO } from "date-fns";
 
 const GARDE_ROW_KEYS = new Set(["Garde Matin", "Garde Midi", "Garde Nuit"]);
+const NURSES = new Set(["Val", "Véro", "Laura"]);
 
 function isWeekendDayKey(day: string): boolean {
   return day === "SAMEDI" || day === "DIMANCHE";
@@ -52,6 +53,21 @@ function mergeCellDoctorsPreservingRemplacants(
   const value = isDoublonEligibleRow(rowKey)
     ? cleanedIncoming
     : Array.from(new Set(cleanedIncoming));
+
+  // Infirmière (Val/Véro/Laura) sur Stress/EE : le solveur ne connaît que le
+  // médecin partenaire proposé (ex: ["K"]) - il ne renvoie jamais
+  // l'infirmière puisqu'elle n'est pas dans son référentiel. Sans ce
+  // correctif, la fusion écrasait la case et perdait l'infirmière déjà
+  // positionnée (bug corrigé le 31/07/2026). On fusionne : infirmière déjà
+  // présente + proposition(s) du solveur.
+  const existingNurses = existingVals.filter((d) => NURSES.has(d));
+  if (existingNurses.length > 0) {
+    return {
+      value: Array.from(new Set([...existingNurses, ...value])),
+      remplacant: remField,
+    };
+  }
+
   return { value, remplacant: remField };
 }
 
@@ -530,8 +546,13 @@ export function mergeSolverWeekIntoExisting(
         if (!genVals.length) continue;
         const existingCell = existingRow[day];
         const existingVals = Array.isArray(existingCell?.value) ? existingCell.value : [];
-        const existingListed = existingVals.filter((d) => Boolean(d) && isListedDoctor(d));
-        // Saisie manuelle / validée (médecin listé) prime sur les propositions Générer
+        const existingListed = existingVals.filter(
+          (d) => Boolean(d) && isListedDoctor(d) && !NURSES.has(d),
+        );
+        // Saisie manuelle / validée (médecin listé, hors infirmière seule -
+        // une infirmière seule n'est pas une affectation complète, le
+        // partenaire doit pouvoir être proposé - corrigé le 31/07/2026)
+        // prime sur les propositions Générer
         if (existingCell?.status === "validated" && existingListed.length > 0) {
           continue;
         }
