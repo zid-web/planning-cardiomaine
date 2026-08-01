@@ -173,6 +173,12 @@ export function ScheduleApp({
   const [statsYear, setStatsYear] = useState(() => new Date().getFullYear())
   const [expandedWorkloadDoctor, setExpandedWorkloadDoctor] = useState<string | null>(null)
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
+  // Instantané du planning juste avant "Générer" (par semaine) - permet au
+  // bouton "Retour" de restaurer l'état d'avant sans valider les
+  // propositions (confirmé utilisateur 31/07/2026).
+  const [preGenerationSnapshot, setPreGenerationSnapshot] = useState<
+    Record<string, ScheduleData | undefined>
+  >({})
   /** false tant que getAllVacations n’a pas répondu — évite d’écraser Congés/Rythmo avec []. */
   const [vacationsReady, setVacationsReady] = useState(false)
   /** Garde nuit dimanche semaine précédente → ½ off lundi (apm / matin si habituel). */
@@ -320,6 +326,13 @@ export function ScheduleApp({
   const handleGenerationComplete = async (schedule: ScheduleData, warnings: string[]) => {
     const currentWeekKey = formatWeekKey(currentDate)
 
+    // Instantané d'avant génération - permet "Retour" sans valider (voir
+    // handleDiscardProposals plus bas).
+    setPreGenerationSnapshot((prev) => ({
+      ...prev,
+      [currentWeekKey]: fullSchedule[currentWeekKey],
+    }))
+
     let mergedWeekSchedule = mergeSolverWeekIntoExisting(
       fullSchedule[currentWeekKey],
       schedule,
@@ -364,6 +377,32 @@ export function ScheduleApp({
       toast.warning(
         "Génération terminée mais aucune proposition à valider sur les cases vides. Vérifiez les alertes du solveur.",
       )
+    }
+  }
+
+  /**
+   * Bouton "Retour" (confirmé utilisateur 31/07/2026) : restaure le planning
+   * tel qu'il était juste avant "Générer", sans valider les propositions.
+   * Les propositions ayant déjà été sauvegardées en base (handleGenerationComplete
+   * sauvegarde immédiatement), il faut ré-écraser explicitement avec l'instantané.
+   */
+  const handleDiscardProposals = async (weekKeyToRevert: string) => {
+    const snapshot = preGenerationSnapshot[weekKeyToRevert]
+    if (!snapshot) return
+    setFullSchedule((prev) => ({ ...prev, [weekKeyToRevert]: snapshot }))
+    setPreGenerationSnapshot((prev) => {
+      const next = { ...prev }
+      delete next[weekKeyToRevert]
+      return next
+    })
+    try {
+      await saveScheduleToDb(weekKeyToRevert, snapshot, currentUser || "unknown", {
+        source: "revert",
+      })
+      toast.success("Retour effectué : propositions annulées, planning restauré.")
+    } catch (error) {
+      toast.error("Retour affiché localement mais la sauvegarde a échoué. Réessayez.")
+      console.error("[schedule-app] Échec de sauvegarde après retour:", error)
     }
   }
 
@@ -1489,6 +1528,19 @@ export function ScheduleApp({
                             }}
                           />
                         </Suspense>
+
+                        {preGenerationSnapshot[weekKey] && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
+                            onClick={() => void handleDiscardProposals(weekKey)}
+                            title="Revenir au planning d'avant Générer, sans valider les propositions"
+                          >
+                            <span className="hidden sm:inline">Retour</span>
+                            <span className="sm:hidden">↩</span>
+                          </Button>
+                        )}
 
                         <Button
                           variant="outline"
