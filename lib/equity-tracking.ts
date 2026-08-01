@@ -21,6 +21,8 @@ export const ASTREINTE_ROWS = new Set([
 ])
 export const GARDE_ROWS = new Set(["Garde Matin", "Garde Midi", "Garde Nuit"])
 export const NCT_ROWS = new Set(["Hors site - NCT"])
+/** Rythmo (Groupe 2 : A, U, P) — une seule ligne, matin uniquement. */
+export const RYTHMO_ROWS = new Set(["Matin - Rythmo"])
 /** CORO : compté à part (`getCoroEquity`) — pas de colonne `coro_count` en base. */
 export const CORO_ROWS = new Set(["Matin - Coro", "Apm - Coro"])
 /** Groupe 1 (échographistes) — Cs PSS + Tessée confondus. */
@@ -376,3 +378,61 @@ export async function getGroupe1Equity(
 
 /** @deprecated Alias — préférer `getCoroEquity` (fenêtre 6 mois, plus mensuel). */
 export const getMonthlyCoroEquity = getCoroEquity
+
+/**
+ * Compte Garde week-end (Samedi/Dimanche) uniquement pour une semaine -
+ * distinct de `weekend_count` en base qui mélange astreinte + garde
+ * week-end ensemble. Confirmé utilisateur 31/07/2026 : Groupe 1 (M/O/W) a
+ * besoin de la garde week-end isolée, pas mélangée à l'astreinte.
+ */
+export function computeWeeklyGardeWeekend(scheduleData: ScheduleData): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const [rowKey, dayData] of Object.entries(scheduleData || {})) {
+    if (!GARDE_ROWS.has(rowKey)) continue
+    for (const [day, cell] of Object.entries(dayData || {})) {
+      if (!WEEKEND_DAYS.has(day.toUpperCase())) continue
+      const doctors = Array.isArray((cell as { value?: unknown })?.value)
+        ? ((cell as { value: string[] }).value as string[])
+        : []
+      for (const doc of doctors) {
+        if (!doc || doc === "CH" || doc === "I") continue
+        if (!isListedDoctor(doc)) continue
+        counts[doc] = (counts[doc] || 0) + 1
+      }
+    }
+  }
+  return counts
+}
+
+/** Équité Garde week-end (Samedi/Dimanche uniquement) — fenêtre glissante 6 mois. */
+export async function getGardeWeekendEquity(
+  now: Date = new Date(),
+): Promise<Record<string, number>> {
+  return accumulateFromScheduleWindow(
+    now,
+    computeWeeklyGardeWeekend,
+    (total, doc, n) => {
+      total[doc] = (total[doc] || 0) + n
+    },
+    "Garde week-end",
+  )
+}
+
+/** Compte Rythmo (Groupe 2 : A, U, P) pour une semaine. */
+export function computeWeeklyRythmo(scheduleData: ScheduleData): Record<string, number> {
+  return computeWeeklyRowBucket(scheduleData, RYTHMO_ROWS)
+}
+
+/** Équité Rythmo (Groupe 2 : A, U, P) — fenêtre glissante 6 mois. */
+export async function getRythmoEquity(
+  now: Date = new Date(),
+): Promise<Record<string, number>> {
+  return accumulateFromScheduleWindow(
+    now,
+    computeWeeklyRythmo,
+    (total, doc, n) => {
+      total[doc] = (total[doc] || 0) + n
+    },
+    "Rythmo",
+  )
+}
