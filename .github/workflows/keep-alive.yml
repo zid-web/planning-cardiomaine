@@ -2,12 +2,83 @@ name: Keep Alive
 
 on:
   schedule:
-    - cron: '*/14 * * * *'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
+
+env:
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
 
 jobs:
   keep-alive:
     runs-on: ubuntu-latest
     steps:
-      - run: curl -f https://planning-cardiomaine.onrender.com/api/health || exit 0
-      - run: curl -f https://guard-api-cardiomaine.onrender.com/health || exit 0
+      - name: Ping Frontend (Planning Cardiomaine)
+        id: frontend
+        run: |
+          echo "🔄 Pinging frontend..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -f https://planning-cardiomaine.onrender.com/api/health)
+          echo "Frontend Status: $RESPONSE"
+          if [ "$RESPONSE" != "200" ]; then
+            echo "❌ Frontend ping failed with status $RESPONSE"
+            exit 1
+          fi
+          echo "✅ Frontend ping successful"
+        continue-on-error: true
+
+      - name: Ping Backend (Guard API)
+        id: backend
+        run: |
+          echo "🔄 Pinging backend..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -f https://guard-api-cardiomaine.onrender.com/health)
+          echo "Backend Status: $RESPONSE"
+          if [ "$RESPONSE" != "200" ]; then
+            echo "❌ Backend ping failed with status $RESPONSE"
+            exit 1
+          fi
+          echo "✅ Backend ping successful"
+        continue-on-error: true
+
+      - name: Ping Supabase
+        id: supabase
+        run: |
+          echo "🔄 Pinging Supabase..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -f https://rmrxsaiianffhpxpntws.supabase.co)
+          echo "Supabase Status: $RESPONSE"
+          if [ "$RESPONSE" != "200" ]; then
+            echo "❌ Supabase ping failed with status $RESPONSE"
+            exit 1
+          fi
+          echo "✅ Supabase ping successful"
+        continue-on-error: true
+
+      - name: Check if any service failed
+        if: |
+          steps.frontend.outcome == 'failure' || 
+          steps.backend.outcome == 'failure' || 
+          steps.supabase.outcome == 'failure'
+        run: echo "⚠️ Some services failed. Sending Slack notification..."
+
+      - name: Send Slack Notification on Failure
+        if: |
+          failure() && env.SLACK_WEBHOOK != '' &&
+          (steps.frontend.outcome == 'failure' || 
+           steps.backend.outcome == 'failure' || 
+           steps.supabase.outcome == 'failure')
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🚨 Keep Alive Workflow Alert",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🚨 Keep Alive Service Down*\n*Repository:* planning-cardiomaine\n*Workflow Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>\n\n*Service Status:*\n• Frontend: ${{ steps.frontend.outcome == 'success' && '✅' || '❌' }}\n• Backend: ${{ steps.backend.outcome == 'success' && '✅' || '❌' }}\n• Supabase: ${{ steps.supabase.outcome == 'success' && '✅' || '❌' }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
