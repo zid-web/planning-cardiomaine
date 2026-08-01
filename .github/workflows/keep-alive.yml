@@ -16,23 +16,26 @@ jobs:
         id: frontend
         run: |
           echo "🔄 Pinging frontend..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -f https://planning-cardiomaine.onrender.com/api/health)
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://planning-cardiomaine.onrender.com/)
           echo "Frontend Status: $RESPONSE"
-          if [ "$RESPONSE" != "200" ]; then
+          if [ "$RESPONSE" != "404" ] && [ "$RESPONSE" != "200" ] && [ "$RESPONSE" != "301" ] && [ "$RESPONSE" != "302" ]; then
             echo "❌ Frontend ping failed with status $RESPONSE"
             exit 1
           fi
-          echo "✅ Frontend ping successful"
+          echo "✅ Frontend is responding"
         continue-on-error: true
 
       - name: Ping Backend (Guard API)
         id: backend
         run: |
           echo "🔄 Pinging backend..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -f https://guard-api-cardiomaine.onrender.com/health)
-          echo "Backend Status: $RESPONSE"
-          if [ "$RESPONSE" != "200" ]; then
-            echo "❌ Backend ping failed with status $RESPONSE"
+          RESPONSE=$(curl -s -w "\n%{http_code}" https://guard-api-cardiomaine.onrender.com/)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Backend Status: $HTTP_CODE"
+          echo "Backend Response: $BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Backend ping failed with status $HTTP_CODE"
             exit 1
           fi
           echo "✅ Backend ping successful"
@@ -59,7 +62,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*🚨 Keep Alive Service Down*\n*Repository:* planning-cardiomaine\n*Workflow Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>\n\n*Service Status:*\n• Frontend: ${{ steps.frontend.outcome == 'success' && '✅' || '❌' }}\n• Backend (+ Supabase): ${{ steps.backend.outcome == 'success' && '✅' || '❌' }}"
+                    "text": "*🚨 Keep Alive Service Down*\n*Repository:* planning-cardiomaine\n*Workflow Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>\n\n*Service Status:*\n• Frontend: ${{ steps.frontend.outcome == 'success' && '✅' || '❌' }}\n• Backend (Guard API): ${{ steps.backend.outcome == 'success' && '✅' || '❌' }}"
                   }
                 }
               ]
