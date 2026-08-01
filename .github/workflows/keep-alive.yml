@@ -8,12 +8,6 @@ on:
 jobs:
   keep-alive:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - name: Ping Render deployment
-        shell: bash
-        run: curl -f https://planning-cardiomaine.onrender.com/api/health || exit 0
-
-      - name: Ping Guard API backend
-        shell: bash
-        run: curl -f https://guard-api-cardiomaine.onrender.com/health || exit 0
+      - run: curl -f https://planning-cardiomaine.onrender.com/api/health || exit 0
+      - run: curl -f https://guard-api-cardiomaine.onrender.com/health || exit 0
