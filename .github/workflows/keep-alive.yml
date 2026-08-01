@@ -1,6 +1,8 @@
 name: Keep Alive
 
 on:
+  schedule:
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 env:
@@ -10,7 +12,41 @@ jobs:
   keep-alive:
     runs-on: ubuntu-latest
     steps:
-      - name: ⏸️ Workflow Disabled
+      - name: Ping Backend (Guard API)
+        id: backend
         run: |
-          echo "⏸️ Keep Alive workflow is temporarily disabled"
-          echo "Enable it in .github/workflows/keep-alive.yml by adding the schedule trigger back"
+          echo "🔄 Pinging backend..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" https://guard-api-cardiomaine.onrender.com/)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Backend Status: $HTTP_CODE"
+          echo "Backend Response: $BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Backend ping failed with status $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ Backend ping successful"
+        continue-on-error: true
+
+      - name: Send Slack Notification on Failure
+        if: |
+          failure() && env.SLACK_WEBHOOK != '' &&
+          steps.backend.outcome == 'failure'
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🚨 Keep Alive Workflow Alert",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*🚨 Backend Service Down*\n*Repository:* planning-cardiomaine\n*Service:* Guard Generation API\n*Workflow Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
