@@ -802,7 +802,10 @@ export function ScheduleApp({
       return
     }
 
-    if (alreadyCount >= 1) return
+    if (alreadyCount >= 1) {
+      toast.message(`${doctor} est déjà sur cette case`)
+      return
+    }
 
     // Vérifier congés / créneau / exclusions (date alignée sur contraintes structurelles)
     const dateStr =
