@@ -1,7 +1,4 @@
-on:
-  schedule:
-    - cron: '*/10 * * * *'
-  workflow_dispatch:name: Keep Alive
+name: Keep Alive
 
 on:
   schedule:
