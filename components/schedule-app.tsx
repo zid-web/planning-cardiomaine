@@ -1529,6 +1529,7 @@ export function ScheduleApp({
                             onGenerationComplete={(sched, warnings) => {
                               void handleGenerationComplete(sched, warnings)
                             }}
+                            currentSchedule={schedule}
                           />
                         </Suspense>
 
