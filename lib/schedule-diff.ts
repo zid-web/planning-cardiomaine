@@ -17,6 +17,7 @@ export type ScheduleSaveSource =
   | "change_request"
   | "system"
   | "constraints"
+  | "revert"
 
 function valuesEqual(a: string[], b: string[]) {
   if (a.length !== b.length) return false
