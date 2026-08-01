@@ -7,6 +7,8 @@ on:
 
 env:
   SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+  SUPABASE_URL: https://rmrxsaiianffhpxpntws.supabase.co
+  SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
 
 jobs:
   keep-alive:
@@ -28,10 +30,33 @@ jobs:
           echo "✅ Backend ping successful"
         continue-on-error: true
 
+      - name: Ping Supabase (évite la pause à 7 jours d'inactivité)
+        id: supabase
+        run: |
+          echo "🔄 Pinging Supabase..."
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "⚠️ SUPABASE_ANON_KEY absent (secret GitHub non configuré) - ping ignoré"
+            exit 0
+          fi
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/settings?select=*&limit=1")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Supabase Status: $HTTP_CODE"
+          echo "Supabase Response: $BODY"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Supabase ping failed with status $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ Supabase ping successful"
+        continue-on-error: true
+
       - name: Send Slack Notification on Failure
         if: |
           failure() && env.SLACK_WEBHOOK != '' &&
-          steps.backend.outcome == 'failure'
+          (steps.backend.outcome == 'failure' || steps.supabase.outcome == 'failure')
         uses: slackapi/slack-github-action@v1.24.0
         with:
           payload: |
@@ -42,7 +67,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*🚨 Backend Service Down*\n*Repository:* planning-cardiomaine\n*Service:* Guard Generation API\n*Workflow Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>"
+                    "text": "*🚨 Service Down*\n*Repository:* planning-cardiomaine\n*Backend:* ${{ steps.backend.outcome }}\n*Supabase:* ${{ steps.supabase.outcome }}\n*Workflow Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>"
                   }
                 }
               ]
