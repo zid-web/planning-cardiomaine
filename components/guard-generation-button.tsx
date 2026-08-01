@@ -38,6 +38,16 @@ interface GuardGenerationButtonProps {
   onGenerationComplete: (schedule: ScheduleData, warnings: string[]) => void
   disabled?: boolean
   className?: string
+  /**
+   * Planning actuellement affiché (avant sauvegarde en base) - transmis au
+   * solveur pour qu'il connaisse les positions déjà présentes (infirmières
+   * Val/Véro/Laura sur Stress/EE notamment) même si la semaine n'a jamais
+   * encore été enregistrée en base (confirmé bug utilisateur 31/07/2026 :
+   * sans ça, une semaine jamais sauvegardée n'avait aucune position
+   * d'infirmière à transmettre, le solveur ne proposait donc aucun
+   * partenaire médecin).
+   */
+  currentSchedule?: ScheduleData
 }
 
 export function GuardGenerationButton({
@@ -46,6 +56,7 @@ export function GuardGenerationButton({
   onGenerationComplete,
   disabled = false,
   className = '',
+  currentSchedule,
 }: GuardGenerationButtonProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [paramsOpen, setParamsOpen] = useState(false)
@@ -81,6 +92,7 @@ export function GuardGenerationButton({
         'ROTATION',
         undefined,
         overrides,
+        currentSchedule,
       )
 
       if (!result.success) {
