@@ -11,9 +11,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Ping Render deployment
-        run: 'curl -f https://planning-cardiomaine.onrender.com/api/health || true'
-        continue-on-error: true
+        shell: bash
+        run: curl -f https://planning-cardiomaine.onrender.com/api/health || exit 0
 
       - name: Ping Guard API backend
-        run: 'curl -f https://guard-api-cardiomaine.onrender.com/health || true'
-        continue-on-error: true
+        shell: bash
+        run: curl -f https://guard-api-cardiomaine.onrender.com/health || exit 0
