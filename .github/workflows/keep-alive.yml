@@ -12,19 +12,6 @@ jobs:
   keep-alive:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Frontend (Planning Cardiomaine)
-        id: frontend
-        run: |
-          echo "🔄 Pinging frontend..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://planning-cardiomaine.onrender.com/)
-          echo "Frontend Status: $RESPONSE"
-          if [ "$RESPONSE" != "404" ] && [ "$RESPONSE" != "200" ] && [ "$RESPONSE" != "301" ] && [ "$RESPONSE" != "302" ]; then
-            echo "❌ Frontend ping failed with status $RESPONSE"
-            exit 1
-          fi
-          echo "✅ Frontend is responding"
-        continue-on-error: true
-
       - name: Ping Backend (Guard API)
         id: backend
         run: |
@@ -41,17 +28,10 @@ jobs:
           echo "✅ Backend ping successful"
         continue-on-error: true
 
-      - name: Check if any service failed
-        if: |
-          steps.frontend.outcome == 'failure' || 
-          steps.backend.outcome == 'failure'
-        run: echo "⚠️ Some services failed. Sending Slack notification..."
-
       - name: Send Slack Notification on Failure
         if: |
           failure() && env.SLACK_WEBHOOK != '' &&
-          (steps.frontend.outcome == 'failure' || 
-           steps.backend.outcome == 'failure')
+          steps.backend.outcome == 'failure'
         uses: slackapi/slack-github-action@v1.24.0
         with:
           payload: |
@@ -62,7 +42,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*🚨 Keep Alive Service Down*\n*Repository:* planning-cardiomaine\n*Workflow Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>\n\n*Service Status:*\n• Frontend: ${{ steps.frontend.outcome == 'success' && '✅' || '❌' }}\n• Backend (Guard API): ${{ steps.backend.outcome == 'success' && '✅' || '❌' }}"
+                    "text": "*🚨 Backend Service Down*\n*Repository:* planning-cardiomaine\n*Service:* Guard Generation API\n*Workflow Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>"
                   }
                 }
               ]
