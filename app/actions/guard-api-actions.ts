@@ -197,6 +197,14 @@ export async function generateGuardsViaAPI(
     pssl_b_active?: boolean
     pssl_z_active?: boolean
   },
+  /**
+   * Planning actuellement affiché côté client (avant sauvegarde en base) -
+   * confirmé bug utilisateur 31/07/2026 : sans ça, une semaine jamais
+   * sauvegardée n'avait aucune position d'infirmière (Val/Véro/Laura sur
+   * Stress/EE) à extraire pour proposer le médecin partenaire. Prioritaire
+   * sur la lecture en base si fourni.
+   */
+  currentScheduleParam?: ScheduleData,
 ) {
   try {
     // 1. Récupère la liste des médecins depuis Supabase
@@ -287,13 +295,20 @@ export async function generateGuardsViaAPI(
     const NURSES = new Set(["Val", "Véro", "Laura"])
     let nurseExistingSchedule: Record<string, string[]> = {}
     try {
-      const supabaseCur = await createClient()
-      const { data: curRow } = await supabaseCur
-        .from("schedules")
-        .select("schedule_data")
-        .eq("week_key", currentWeekKey)
-        .single()
-      const currentSchedule = curRow?.schedule_data as ScheduleData | undefined
+      // Priorité au planning transmis directement par le front (toujours à
+      // jour, y compris pour une semaine jamais encore sauvegardée) - repli
+      // sur la base de données uniquement si non fourni (confirmé bug
+      // utilisateur 31/07/2026).
+      let currentSchedule: ScheduleData | undefined = currentScheduleParam
+      if (!currentSchedule) {
+        const supabaseCur = await createClient()
+        const { data: curRow } = await supabaseCur
+          .from("schedules")
+          .select("schedule_data")
+          .eq("week_key", currentWeekKey)
+          .single()
+        currentSchedule = curRow?.schedule_data as ScheduleData | undefined
+      }
       if (currentSchedule) {
         for (const row of NURSE_STRESS_EE_ROWS) {
           for (const day of DAYS) {
