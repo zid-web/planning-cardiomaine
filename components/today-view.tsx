@@ -202,22 +202,32 @@ export function TodayView({
           </div>
         </button>
       ) : (
-        hasNote && (
-          <div className="w-full rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-xl bg-sky-100 text-sky-700 ring-1 ring-sky-200">
-                <MessageSquare className="size-4" />
-              </span>
-              <div>
-                <h4 className="text-sm font-semibold text-slate-900">Notes du jour</h4>
-                <p className="text-[11px] text-slate-500">Partagée avec toute l’équipe</p>
-              </div>
-            </div>
-            <div className="min-h-[48px] rounded-xl bg-white/80 px-3 py-2.5 text-sm leading-relaxed text-slate-700">
-              {dayNote}
+        <div
+          className={cn(
+            "w-full rounded-2xl border p-4 shadow-sm",
+            hasNote
+              ? "border-sky-200 bg-gradient-to-br from-sky-50 to-white"
+              : "border-dashed border-slate-300 bg-white",
+          )}
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <span className="flex size-8 items-center justify-center rounded-xl bg-sky-100 text-sky-700 ring-1 ring-sky-200">
+              <MessageSquare className="size-4" />
+            </span>
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Notes du jour</h4>
+              <p className="text-[11px] text-slate-500">Partagée avec toute l’équipe</p>
             </div>
           </div>
-        )
+          <div
+            className={cn(
+              "min-h-[48px] rounded-xl px-3 py-2.5 text-sm leading-relaxed",
+              hasNote ? "bg-white/80 text-slate-700" : "bg-slate-50 text-slate-400 italic",
+            )}
+          >
+            {hasNote ? dayNote : "Aucune note pour ce jour."}
+          </div>
+        </div>
       )}
 
       {/* Note privée admin -> médecin (confirmé 01/08/2026) : visible
