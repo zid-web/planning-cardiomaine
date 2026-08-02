@@ -212,6 +212,9 @@ export function ScheduleApp({
   const [connectedUsers, setConnectedUsers] = useState<string[]>([])
   // Note privée admin -> médecin (confirmé utilisateur 01/08/2026).
   const [myPrivateNote, setMyPrivateNote] = useState("")
+  // UUID auth de l'utilisateur courant (distinct de currentUser = code
+  // médecin) - nécessaire pour filtrer "mes demandes" par requester_id.
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [privateNoteModal, setPrivateNoteModal] = useState<{ open: boolean; targetDoctor: string; text: string }>({
     open: false,
     targetDoctor: "",
@@ -225,6 +228,14 @@ export function ScheduleApp({
   const [remplacantInput, setRemplacantInput] = useState("")
 
   const supabase = useMemo(() => createClient(), [])
+
+  // UUID auth de l'utilisateur courant - nécessaire pour filtrer "mes
+  // demandes" par requester_id (confirmé utilisateur 01/08/2026).
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
+      setCurrentUserId(data.user?.id || null)
+    })
+  }, [supabase])
   const router = useRouter()
   const isGlobalView = activeTab === "all"
   const compactHeader = isGlobalView && !toolbarExpanded
@@ -335,6 +346,27 @@ export function ScheduleApp({
       void supabase.removeChannel(channel)
     }
   }, [supabase, isAdmin, currentUser, setFullSchedule])
+
+  // Demandes de modification en temps réel (confirmé utilisateur 01/08/2026)
+  // - sans ça, une nouvelle demande soumise par un non-admin n'apparaissait
+  // chez l'admin qu'après un changement de semaine (aucun rafraîchissement
+  // automatique auparavant).
+  useEffect(() => {
+    const requestsChannel = supabase
+      .channel("planning-change-requests")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "change_requests" },
+        () => {
+          void refreshRequests()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(requestsChannel)
+    }
+  }, [supabase, refreshRequests])
 
   // Présence temps réel : liste des utilisateurs actuellement connectés
   // (Supabase Realtime Presence), affichée dans le header - admin uniquement
@@ -1047,6 +1079,28 @@ export function ScheduleApp({
     () => changeRequests.filter((r) => r.status === "pending"),
     [changeRequests],
   )
+
+  // Coloration de la cloche (confirmé utilisateur 01/08/2026) : rouge = une
+  // demande à traiter (admin : n'importe laquelle ; non-admin : les
+  // siennes), bleu = seulement des demandes déjà traitées, gris = rien.
+  const myRequests = useMemo(
+    () => (currentUserId ? changeRequests.filter((r) => r.requester_id === currentUserId) : []),
+    [changeRequests, currentUserId],
+  )
+  const myPendingRequests = useMemo(
+    () => myRequests.filter((r) => r.status === "pending"),
+    [myRequests],
+  )
+  const relevantPendingCount = isAdmin ? pendingRequests.length : myPendingRequests.length
+  const relevantProcessedCount = isAdmin
+    ? changeRequests.filter((r) => r.status !== "pending").length
+    : myRequests.filter((r) => r.status !== "pending").length
+  const bellColorClass =
+    relevantPendingCount > 0
+      ? "bg-red-500 text-white border-red-500 hover:bg-red-600"
+      : relevantProcessedCount > 0
+        ? "bg-sky-500 text-white border-sky-500 hover:bg-sky-600"
+        : "bg-white text-slate-700 border-slate-200"
 
   const vacationPayload = useMemo(
     () =>
@@ -2653,13 +2707,23 @@ export function ScheduleApp({
       {/* Bouton demandes (tous rôles) + panneau vocal/PDF (admin) */}
       <button
         onClick={() => setShowRequests(true)}
-        className="fixed bottom-24 right-20 z-40 bg-white border shadow-lg rounded-full p-3 text-slate-700 md:bottom-20"
+        className={cn(
+          "fixed bottom-24 right-20 z-40 rounded-full border p-3 shadow-lg transition-colors md:bottom-20",
+          bellColorClass,
+        )}
         aria-label="Demandes"
+        title={
+          relevantPendingCount > 0
+            ? `${relevantPendingCount} demande(s) à traiter`
+            : relevantProcessedCount > 0
+              ? "Demande(s) traitée(s)"
+              : "Demandes"
+        }
       >
         <Bell className="w-5 h-5" />
-        {pendingRequests.length > 0 && (
-          <span className="absolute -top-1 -right-1 h-5 min-w-5 rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white flex items-center justify-center">
-            {pendingRequests.length}
+        {relevantPendingCount > 0 && (
+          <span className="absolute -top-1 -right-1 h-5 min-w-5 rounded-full bg-white px-1 text-[10px] font-bold text-red-600 flex items-center justify-center ring-2 ring-red-500">
+            {relevantPendingCount}
           </span>
         )}
       </button>
