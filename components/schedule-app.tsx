@@ -86,6 +86,7 @@ import {
 } from "@/app/actions/schedule-actions"
 import type { ScheduleSaveSource } from "@/lib/schedule-diff"
 import { getLastSundayGuardDoctor, recordLastComboGardeFromSchedule } from "@/app/actions/guard-api-actions"
+import { getMyPrivateNote, getAllPrivateNotesForDate, upsertPrivateNote, deletePrivateNote } from "@/app/actions/private-notes-actions"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { getAllVacations } from "@/app/actions/vacation-actions"
 import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions"
@@ -209,6 +210,13 @@ export function ScheduleApp({
   // Utilisateurs connectés en temps réel (Supabase Presence) - visible admin
   // uniquement, confirmé utilisateur 01/08/2026.
   const [connectedUsers, setConnectedUsers] = useState<string[]>([])
+  // Note privée admin -> médecin (confirmé utilisateur 01/08/2026).
+  const [myPrivateNote, setMyPrivateNote] = useState("")
+  const [privateNoteModal, setPrivateNoteModal] = useState<{ open: boolean; targetDoctor: string; text: string }>({
+    open: false,
+    targetDoctor: "",
+    text: "",
+  })
   /** In Global view the admin toolbar starts collapsed to free vertical space for the grid */
   const [toolbarExpanded, setToolbarExpanded] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -625,6 +633,22 @@ export function ScheduleApp({
   }
 
   const currentDayIndex = (currentDate.getDay() + 6) % 7 // 0 = Monday
+
+  // Note privée admin -> médecin : récupération pour le jour affiché
+  // (confirmé utilisateur 01/08/2026) - non-admin uniquement, la note leur
+  // est destinée personnellement.
+  useEffect(() => {
+    if (isAdmin) return
+    const dateStr = dateStrForWeekDay(weekKey, DAYS[currentDayIndex])
+    if (!dateStr) return
+    let cancelled = false
+    getMyPrivateNote(dateStr).then((note) => {
+      if (!cancelled) setMyPrivateNote(note?.note_text || "")
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin, weekKey, currentDayIndex])
 
   const getTaskSortOrder = (activity: string) => {
     if (activity.includes("Matin")) return 1
@@ -1273,6 +1297,48 @@ export function ScheduleApp({
     setNoteModalOpen(true)
   }
 
+  // Note privée admin -> médecin (confirmé utilisateur 01/08/2026).
+  const openPrivateNoteModal = async () => {
+    const dateStr = dateStrForWeekDay(weekKey, DAYS[currentDayIndex])
+    if (!dateStr) return
+    setPrivateNoteModal({ open: true, targetDoctor: "", text: "" })
+  }
+
+  const loadExistingPrivateNoteForDoctor = async (doctor: string) => {
+    const dateStr = dateStrForWeekDay(weekKey, DAYS[currentDayIndex])
+    if (!dateStr || !doctor) {
+      setPrivateNoteModal((prev) => ({ ...prev, targetDoctor: doctor, text: "" }))
+      return
+    }
+    const notes = await getAllPrivateNotesForDate(dateStr)
+    const existing = notes.find((n) => n.target_doctor === doctor)
+    setPrivateNoteModal((prev) => ({ ...prev, targetDoctor: doctor, text: existing?.note_text || "" }))
+  }
+
+  const savePrivateNote = async () => {
+    const dateStr = dateStrForWeekDay(weekKey, DAYS[currentDayIndex])
+    if (!dateStr || !privateNoteModal.targetDoctor) {
+      toast.error("Veuillez choisir un médecin destinataire")
+      return
+    }
+    if (!privateNoteModal.text.trim()) {
+      const result = await deletePrivateNote(dateStr, privateNoteModal.targetDoctor)
+      if (!result.success) {
+        toast.error(result.error || "Erreur lors de la suppression")
+        return
+      }
+      toast.success("Note privée supprimée")
+    } else {
+      const result = await upsertPrivateNote(dateStr, privateNoteModal.targetDoctor, privateNoteModal.text.trim())
+      if (!result.success) {
+        toast.error(result.error || "Erreur lors de l'enregistrement")
+        return
+      }
+      toast.success(`Note privée enregistrée pour ${privateNoteModal.targetDoctor}`)
+    }
+    setPrivateNoteModal({ open: false, targetDoctor: "", text: "" })
+  }
+
   const saveNote = () => {
     const trimmed = currentNote.trim()
     const prevCell = schedule["Notes du jour"]?.[noteDay] || {
@@ -1732,6 +1798,9 @@ export function ScheduleApp({
                 tasks={getAllTasksForDay(DAYS[currentDayIndex])}
                 onSelectDay={goToDay}
                 onEditNote={() => handleNoteClick(DAYS[currentDayIndex])}
+                myPrivateNote={myPrivateNote}
+                isAdmin={isAdmin}
+                onEditPrivateNote={() => void openPrivateNoteModal()}
               />
             )}
 
@@ -2341,6 +2410,51 @@ export function ScheduleApp({
                   setRequestedDoctor("")
                   setReason("")
                 }}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg font-medium transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Note privée admin -> médecin (confirmé utilisateur 01/08/2026) */}
+      {privateNoteModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white p-6 rounded-xl max-w-md w-full shadow-2xl">
+            <h3 className="text-lg font-bold mb-1">Note privée</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Visible uniquement par le médecin choisi et vous - {DAYS[currentDayIndex]}
+            </p>
+            <div className="space-y-3">
+              <select
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                value={privateNoteModal.targetDoctor}
+                onChange={(e) => void loadExistingPrivateNoteForDoctor(e.target.value)}
+              >
+                <option value="">Choisir un médecin…</option>
+                {DOCTORS.map((doc) => (
+                  <option key={doc} value={doc}>{doc}</option>
+                ))}
+              </select>
+              <textarea
+                placeholder="Note privée pour ce médecin…"
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                rows={4}
+                value={privateNoteModal.text}
+                onChange={(e) => setPrivateNoteModal((prev) => ({ ...prev, text: e.target.value }))}
+              />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => void savePrivateNote()}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg font-medium transition-colors"
+              >
+                {privateNoteModal.text.trim() ? "Enregistrer" : "Supprimer la note"}
+              </button>
+              <button
+                onClick={() => setPrivateNoteModal({ open: false, targetDoctor: "", text: "" })}
                 className="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg font-medium transition-colors"
               >
                 Annuler
