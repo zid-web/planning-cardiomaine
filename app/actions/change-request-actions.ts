@@ -5,6 +5,69 @@ import { revalidatePath } from 'next/cache';
 import { saveScheduleToDb } from '@/app/actions/schedule-actions';
 import type { ScheduleData } from '@/lib/types';
 
+const MAX_PROCESSED_REQUESTS = 10;
+
+/**
+ * Archive les demandes traitées (approuvées/rejetées) les plus anciennes
+ * au-delà de MAX_PROCESSED_REQUESTS, pour garder la liste active propre
+ * (confirmé utilisateur 01/08/2026). Les demandes en attente ("pending") ne
+ * sont jamais archivées. Best-effort : une erreur ici ne doit jamais faire
+ * échouer l'approbation/rejet en cours.
+ */
+async function archiveOldProcessedRequests() {
+  try {
+    const supabase = await createClient();
+    const { data: processed } = await supabase
+      .from('change_requests')
+      .select('*')
+      .neq('status', 'pending')
+      .order('updated_at', { ascending: false });
+
+    if (!processed || processed.length <= MAX_PROCESSED_REQUESTS) return;
+
+    const toArchive = processed.slice(MAX_PROCESSED_REQUESTS);
+    const historyRows = toArchive.map((r) => ({
+      original_id: r.id,
+      requester_id: r.requester_id,
+      week_key: r.week_key,
+      day_name: r.day_name,
+      row_key: r.row_key,
+      slot: r.slot,
+      current_doctor: r.current_doctor,
+      requested_doctor: r.requested_doctor,
+      reason: r.reason,
+      status: r.status,
+      admin_comment: r.admin_comment,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    }));
+
+    const { error: insertError } = await supabase.from('change_requests_history').insert(historyRows);
+    if (insertError) {
+      console.error('[change-request-actions] archive insert error:', insertError);
+      return;
+    }
+
+    const idsToDelete = toArchive.map((r) => r.id);
+    await supabase.from('change_requests').delete().in('id', idsToDelete);
+  } catch (err) {
+    console.error('[change-request-actions] archiveOldProcessedRequests:', err);
+  }
+}
+
+/**
+ * Récupère l'historique archivé des demandes traitées (lecture pour tous).
+ */
+export async function getChangeRequestsHistory(limit = 50) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('change_requests_history')
+    .select('*')
+    .order('archived_at', { ascending: false })
+    .limit(limit);
+  return data || [];
+}
+
 /**
  * Applique une demande de changement approuvée
  * - Vérifie que l'utilisateur est admin
@@ -105,7 +168,10 @@ export async function applyChangeRequest(requestId: string) {
     return { success: false, error: 'Erreur lors de la mise à jour du statut' };
   }
 
-  // 6. Revalider le cache
+  // 6. Archivage best-effort si trop de demandes traitées accumulées
+  await archiveOldProcessedRequests();
+
+  // 7. Revalider le cache
   revalidatePath('/protected/planning');
   revalidatePath('/protected/admin/requests');
 
@@ -166,6 +232,8 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
   if (updateError) {
     return { success: false, error: 'Erreur lors de la mise à jour' };
   }
+
+  await archiveOldProcessedRequests();
 
   revalidatePath('/protected/admin/requests');
 
