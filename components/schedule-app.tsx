@@ -629,7 +629,12 @@ export function ScheduleApp({
 
     try {
       // saveScheduleToDb historise + synchronise le blob full_schedule
-      await saveScheduleToDb(weekKey, newSchedule, currentUser || "unknown", { source })
+      const result = await saveScheduleToDb(weekKey, newSchedule, currentUser || "unknown", { source })
+      if (result?.error) {
+        console.error("[app] Failed to save to Supabase:", result.error)
+        toast.error(`Échec de l'enregistrement : ${result.error}`)
+        return
+      }
       toast.success("Planning enregistré")
     } catch (error) {
       console.error("[app] Failed to save to Supabase:", error)
