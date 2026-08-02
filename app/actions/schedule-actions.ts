@@ -58,7 +58,11 @@ export async function saveScheduleToDb(
 
   if (error) {
     console.error("[app] Error saving schedule to Supabase:", error)
-    throw new Error(`Failed to save schedule: ${error.message}`)
+    // Retourné (pas levé) : un throw traversant la frontière Server Action
+    // est réduit par Next.js en production à un message générique masqué
+    // (confirmé utilisateur 01/08/2026 - "An error occurred in the Server
+    // Components render..."). Retourner permet au vrai message de survivre.
+    return { data: null, error: error.message }
   }
 
   // Snapshot d'équité hebdo (CellData.value) — ne bloque jamais la sauvegarde
@@ -104,7 +108,7 @@ export async function saveScheduleToDb(
 
   revalidatePath("/")
   revalidatePath("/protected/planning")
-  return data
+  return { data, error: null }
 }
 
 export async function getScheduleFromDb(weekKey: string) {
