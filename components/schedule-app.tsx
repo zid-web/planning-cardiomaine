@@ -1289,8 +1289,13 @@ export function ScheduleApp({
   )
 
   const handleNoteClick = (day: string) => {
-    // Global : admin seulement ; Aujourd'hui / Semaine : tout utilisateur authentifié
-    if (activeTab === "all" && !isAdmin) return
+    // Notes du jour : édition/ajout/suppression réservés à l'admin uniquement
+    // (confirmé utilisateur 01/08/2026) - les autres utilisateurs peuvent
+    // uniquement LIRE la note, jamais la modifier.
+    if (!isAdmin) {
+      toast.message("Seul l'administrateur peut modifier les notes du jour")
+      return
+    }
 
     setNoteDay(day)
     setCurrentNote(schedule["Notes du jour"]?.[day]?.value?.[0] || "")
@@ -2376,10 +2381,37 @@ export function ScheduleApp({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-xl max-w-md w-full shadow-2xl">
             <h3 className="text-lg font-bold mb-2">Demander un changement</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              {requestModal.day} – {requestModal.row}
-              {requestModal.currentDoctor && ` (actuellement: ${requestModal.currentDoctor})`}
-            </p>
+            {requestModal.row && requestModal.day ? (
+              <p className="text-sm text-gray-600 mb-4">
+                {requestModal.day} – {requestModal.row}
+                {requestModal.currentDoctor && ` (actuellement: ${requestModal.currentDoctor})`}
+              </p>
+            ) : (
+              <div className="mb-4 grid grid-cols-2 gap-2">
+                <select
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  value={requestModal.row}
+                  onChange={(e) => setRequestModal((prev) => ({ ...prev, row: e.target.value }))}
+                >
+                  <option value="">Ligne…</option>
+                  {Object.keys(schedule)
+                    .filter((r) => r !== "Notes du jour" && r !== "Congés")
+                    .map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                </select>
+                <select
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  value={requestModal.day}
+                  onChange={(e) => setRequestModal((prev) => ({ ...prev, day: e.target.value }))}
+                >
+                  <option value="">Jour…</option>
+                  {DAYS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="space-y-3">
               <input
                 type="text"
@@ -2399,7 +2431,7 @@ export function ScheduleApp({
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() => void submitRequest()}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !requestModal.row || !requestModal.day}
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
               >
                 {isSubmitting ? "Envoi..." : "Envoyer"}
@@ -2548,6 +2580,17 @@ export function ScheduleApp({
                 <X className="size-5" />
               </button>
             </div>
+            {!isAdmin && (
+              <button
+                onClick={() => {
+                  setShowRequests(false)
+                  setRequestModal({ open: true, row: "", day: "" })
+                }}
+                className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <Bell className="size-4" /> Nouvelle demande
+              </button>
+            )}
             {changeRequests.length === 0 ? (
               <p className="py-8 text-center text-sm text-slate-400">Aucune demande pour cette semaine.</p>
             ) : (
