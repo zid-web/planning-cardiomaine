@@ -21,14 +21,21 @@ export async function applyChangeRequest(requestId: string) {
     return { success: false, error: 'Non authentifié' };
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role, doctor_code')
     .eq('id', user.id)
     .single();
 
   if (!profile || profile.role !== 'admin') {
-    return { success: false, error: 'Droits insuffisants (admin requis)' };
+    // DIAGNOSTIC TEMPORAIRE (confirmé utilisateur 01/08/2026) : affiche la
+    // vraie erreur de la requête pour comprendre "Droits insuffisants" -
+    // à retirer une fois la cause identifiée.
+    console.error('[change-request-actions] profile lookup:', { userId: user.id, profile, profileError });
+    return {
+      success: false,
+      error: `Droits insuffisants (admin requis) — diag: profile=${JSON.stringify(profile)} err=${profileError?.message || 'aucune'}`,
+    };
   }
 
   // 2. Récupérer la demande
@@ -120,14 +127,18 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
     return { success: false, error: 'Non authentifié' };
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single();
 
   if (!profile || profile.role !== 'admin') {
-    return { success: false, error: 'Droits insuffisants (admin requis)' };
+    console.error('[change-request-actions] reject profile lookup:', { userId: user.id, profile, profileError });
+    return {
+      success: false,
+      error: `Droits insuffisants (admin requis) — diag: profile=${JSON.stringify(profile)} err=${profileError?.message || 'aucune'}`,
+    };
   }
 
   // 2. Vérifier que la demande existe et est en attente
