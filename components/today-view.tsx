@@ -1,6 +1,6 @@
 "use client"
 
-import { Calendar, Edit3, MessageSquare, Plus, Sun, Moon, Sunrise, UserCircle } from "lucide-react"
+import { Calendar, Edit3, MessageSquare, Plus, Sun, Moon, Sunrise, UserCircle, Lock } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS } from "@/lib/constants"
 import {
@@ -26,6 +26,10 @@ type TodayViewProps = {
   tasks: DayTask[]
   onSelectDay: (dayIndex: number) => void
   onEditNote: () => void
+  /** Note privée admin -> médecin, visible uniquement du destinataire (confirmé 01/08/2026). */
+  myPrivateNote?: string
+  isAdmin?: boolean
+  onEditPrivateNote?: () => void
 }
 
 function periodMeta(activity: string): { label: string; Icon: typeof Sun; accent: string; chip: string } {
@@ -90,6 +94,9 @@ export function TodayView({
   tasks,
   onSelectDay,
   onEditNote,
+  myPrivateNote,
+  isAdmin,
+  onEditPrivateNote,
 }: TodayViewProps) {
   const myTasks = tasks.filter((task) => task.doctors.includes(doctorCode))
   const hasNote = Boolean(dayNote?.trim())
@@ -193,6 +200,42 @@ export function TodayView({
           {hasNote ? dayNote : "Aucune note pour ce jour. Ajoutez un rappel, une consigne…"}
         </div>
       </button>
+
+      {/* Note privée admin -> médecin (confirmé 01/08/2026) : visible
+          uniquement du destinataire, jamais des autres utilisateurs. */}
+      {!isAdmin && myPrivateNote?.trim() && (
+        <div className="w-full rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="flex size-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+              <Lock className="size-4" />
+            </span>
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Note privée pour vous</h4>
+              <p className="text-[11px] text-slate-500">Visible uniquement par vous et l’administrateur</p>
+            </div>
+          </div>
+          <div className="min-h-[48px] rounded-xl bg-white/80 px-3 py-2.5 text-sm leading-relaxed text-slate-700">
+            {myPrivateNote}
+          </div>
+        </div>
+      )}
+      {isAdmin && onEditPrivateNote && (
+        <button
+          type="button"
+          onClick={onEditPrivateNote}
+          className="group w-full rounded-2xl border border-dashed border-amber-300 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-md"
+        >
+          <div className="flex items-center gap-2">
+            <span className="flex size-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+              <Lock className="size-4" />
+            </span>
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">Note privée à un médecin</h4>
+              <p className="text-[11px] text-slate-500">Visible seulement de lui, pas des autres utilisateurs</p>
+            </div>
+          </div>
+        </button>
+      )}
 
       {/* Tasks */}
       <div className="space-y-3">
