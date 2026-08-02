@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   CalendarIcon,
   AlertTriangle,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -205,6 +206,9 @@ export function ScheduleApp({
   const [historyRows, setHistoryRows] = useState<ScheduleHistoryRow[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<"connecting" | "live" | "error">("connecting")
+  // Utilisateurs connectés en temps réel (Supabase Presence) - visible admin
+  // uniquement, confirmé utilisateur 01/08/2026.
+  const [connectedUsers, setConnectedUsers] = useState<string[]>([])
   /** In Global view the admin toolbar starts collapsed to free vertical space for the grid */
   const [toolbarExpanded, setToolbarExpanded] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -323,6 +327,36 @@ export function ScheduleApp({
       void supabase.removeChannel(channel)
     }
   }, [supabase, isAdmin, currentUser, setFullSchedule])
+
+  // Présence temps réel : liste des utilisateurs actuellement connectés
+  // (Supabase Realtime Presence), affichée dans le header - admin uniquement
+  // (confirmé utilisateur 01/08/2026).
+  useEffect(() => {
+    if (!isAdmin) return
+
+    const presenceChannel = supabase.channel("planning-presence", {
+      config: { presence: { key: currentUser || "unknown" } },
+    })
+
+    presenceChannel
+      .on("presence", { event: "sync" }, () => {
+        const state = presenceChannel.presenceState() as Record<string, Array<{ user?: string }>>
+        const users = Object.values(state)
+          .flat()
+          .map((p) => p.user)
+          .filter((u): u is string => Boolean(u))
+        setConnectedUsers(Array.from(new Set(users)).sort())
+      })
+      .subscribe(async (status: string) => {
+        if (status === "SUBSCRIBED") {
+          await presenceChannel.track({ user: currentUser || "unknown", online_at: new Date().toISOString() })
+        }
+      })
+
+    return () => {
+      void supabase.removeChannel(presenceChannel)
+    }
+  }, [supabase, isAdmin, currentUser])
 
   // Gère le résultat de « Générer » : propositions pending + contraintes structurelles validées
   const handleGenerationComplete = async (schedule: ScheduleData, warnings: string[]) => {
@@ -1527,6 +1561,35 @@ export function ScheduleApp({
                                 : "Connexion…"}
                           </span>
                         </span>
+
+                        {isAdmin && connectedUsers.length > 0 && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1 border-emerald-300 bg-emerald-50 px-2 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
+                                title="Utilisateurs connectés en temps réel"
+                              >
+                                <Users className="h-3.5 w-3.5" />
+                                {connectedUsers.length}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" className="w-56 p-2">
+                              <p className="mb-1 text-xs font-semibold text-slate-700">
+                                Connecté{connectedUsers.length > 1 ? "s" : ""} ({connectedUsers.length}) :
+                              </p>
+                              <ul className="space-y-0.5 text-[11px] text-slate-600">
+                                {connectedUsers.map((u) => (
+                                  <li key={u} className="flex items-center gap-1.5">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                    {u}
+                                  </li>
+                                ))}
+                              </ul>
+                            </PopoverContent>
+                          </Popover>
+                        )}
 
                         <VacationsButton
                           className="!gap-1 !rounded-md !px-2 !py-1 !text-xs"
