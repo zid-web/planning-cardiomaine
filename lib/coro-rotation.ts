@@ -107,6 +107,7 @@ function pickDoctor(
  * @param weekKey    Clé semaine ISO (ex. "2026-W44")
  * @param vacations  Liste des congés médecins pour calculer les absences
  * @param counts     Comptes Coro historiques Matin/Apm (calculés par computeCoroMOWCounts)
+ * @param lastWednesdayApmCoroDoctor  Le dernier médecin ("M" ou "W") à avoir couvert le mercredi Apm Coro en l'absence de O.
  * @returns          Planning mis à jour avec les propositions Coro pending
  */
 export function applyCoroWOMRotation(
@@ -114,6 +115,7 @@ export function applyCoroWOMRotation(
   weekKey: string,
   vacations: DoctorVacation[],
   counts: CoroMOWCounts,
+  lastWednesdayApmCoroDoctor?: "M" | "W" | null,
 ): ScheduleData {
   // Clone profond pour éviter les mutations
   let next: ScheduleData = { ...schedule }
@@ -123,6 +125,7 @@ export function applyCoroWOMRotation(
 
   for (const day of WEEKDAYS) {
     const isThursday = day === "JEUDI"
+    const isWednesday = day === "MERCREDI"
 
     // --- Coro Matin ---
     const maRow = "Matin - Coro"
@@ -161,7 +164,33 @@ export function applyCoroWOMRotation(
 
     // Apm (éviter même que Matin si possible)
     if (!apSkip && !apAlreadyFilled && availForDay.length > 0) {
-      chosenApm = pickDoctor(localApm, availForDay, chosenMatin)
+      // Cas particulier : MERCREDI après-midi quand O est absent
+      const oAbsent = isDoctorAbsentForCoro("O", "MERCREDI", weekKey, next, vacations)
+      if (isWednesday && oAbsent) {
+        // Détermine la cible selon l'alternance stricte
+        let target: "M" | "W" = "M" // défaut
+        if (lastWednesdayApmCoroDoctor === "M") {
+          target = "W"
+        } else if (lastWednesdayApmCoroDoctor === "W") {
+          target = "M"
+        }
+
+        const isTargetAvail = availForDay.includes(target)
+        const other: "M" | "W" = target === "M" ? "W" : "M"
+        const isOtherAvail = availForDay.includes(other)
+
+        if (isTargetAvail) {
+          chosenApm = target
+        } else if (isOtherAvail) {
+          chosenApm = other
+        }
+      }
+
+      // Si pas encore choisi (ou cas général)
+      if (!chosenApm) {
+        chosenApm = pickDoctor(localApm, availForDay, chosenMatin)
+      }
+
       if (chosenApm) {
         localApm[chosenApm]++
       }

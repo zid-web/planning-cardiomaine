@@ -505,7 +505,13 @@ export function canAssignDoctorToSlot(
   }
 
   if (doctorOnRow(schedule, HALF_DAY_OFF_APM_ROW, day, doctorId)) {
-    if (targetPeriod === "apm" || targetPeriod === "day") {
+    // Règle d'exception : M/W sur Coro Apm ou ATL Midi le mercredi
+    const isWednesdayCoroApmBypass =
+      day === "MERCREDI" &&
+      (doctorId === "M" || doctorId === "W") &&
+      (rowKey === "Apm - Coro" || rowKey === "Astreintes ATL Midi")
+
+    if (!isWednesdayCoroApmBypass && (targetPeriod === "apm" || targetPeriod === "day")) {
       return {
         allowed: false,
         reason: `${doctorId} est en ½ journée off Après-midi — pas d’activité l’après-midi.`,
@@ -651,6 +657,15 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
           const p = periodOfRow(row, day)
           if (p === "apm" || p === "day") {
             if (isGardeRow(row) && isWeekendDay(day) && cellHasRemplacant(next, row, day)) {
+              continue
+            }
+            // Règle d'exception : M/W sur Coro Apm ou ATL Midi le mercredi
+            const isWednesdayCoroApmBypass =
+              day === "MERCREDI" &&
+              (doctorId === "M" || doctorId === "W") &&
+              (row === "Apm - Coro" || row === "Astreintes ATL Midi")
+
+            if (isWednesdayCoroApmBypass) {
               continue
             }
             next = stripDoctorFromRow(next, row, day, doctorId)

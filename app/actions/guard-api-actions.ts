@@ -233,11 +233,12 @@ export async function generateGuardsViaAPI(
       getLastComboGardeState(),
     ]);
 
-    // 3. Récupère les congés + médecin de garde dimanche précédent + équité Coro M/O/W
-    const [congres, previousSundayGuardDoctor, coroMOWCounts] = await Promise.all([
+    // 3. Récupère les congés + médecin de garde dimanche précédent + équité Coro M/O/W + alternance mercredi
+    const [congres, previousSundayGuardDoctor, coroMOWCounts, lastWednesdayApmCoroDoctor] = await Promise.all([
       getCongres(),
       getLastSundayGuardDoctor(weekStartDate),
       getCoroMOWEquity(),
+      getHistoricalLastWednesdayApmCoroDoctor(),
     ]);
 
     // 4. Historique Cs/ETT/EE/hors site → `historical_patterns` pour le solveur
@@ -486,6 +487,7 @@ export async function generateGuardsViaAPI(
         weekKey,
         vacations,
         coroMOWCounts,
+        lastWednesdayApmCoroDoctor,
       );
     } catch (coroErr) {
       console.warn("[generateGuardsViaAPI] rotation Coro M/O/W ignorée:", coroErr);
@@ -669,5 +671,42 @@ function convertAPIResponseToSchedule(
   });
 }
 
+/**
+ * Retrouve le dernier médecin ("M" ou "W") à avoir fait la Coro le mercredi après-midi
+ * en l'absence de O.
+ */
+export async function getHistoricalLastWednesdayApmCoroDoctor(): Promise<"M" | "W" | null> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("schedules")
+      .select("schedule_data")
+      .neq("week_key", "full_schedule")
+      .order("week_key", { ascending: false })
+      .limit(30);
+
+    if (error || !data) return null;
+
+    for (const row of data) {
+      const schedule = row.schedule_data as ScheduleData;
+      if (!schedule) continue;
+
+      const apmCoroMercredi = schedule["Apm - Coro"]?.["MERCREDI"]?.value || [];
+      const hasM = apmCoroMercredi.includes("M");
+      const hasW = apmCoroMercredi.includes("W");
+      const hasO = apmCoroMercredi.includes("O");
+
+      // Si M ou W y était mais pas O (ce qui signifie que O était absent)
+      if ((hasM || hasW) && !hasO) {
+        return hasM ? "M" : "W";
+      }
+    }
+  } catch (err) {
+    console.warn("[guard-api-actions] getHistoricalLastWednesdayApmCoroDoctor failed:", err);
+  }
+  return null;
+}
+
 // Export pour compatibilité avec l'ancien code
 export { convertAPIResponseToSchedule };
+
