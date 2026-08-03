@@ -212,7 +212,6 @@ export function isCoroEligibleDoctor(doctorId: string): boolean {
  */
 export function toSolverClinicalRulesPayload() {
   return {
-    clinical_eligibility: DOC022_CLINICAL_ELIGIBILITY,
     doc022_fixed_slots: DOC022_FIXED_CLINICAL_SLOTS.map((s) => ({
       row_key: s.row,
       day_name: s.day,
