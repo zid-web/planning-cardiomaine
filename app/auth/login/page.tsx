@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { Smartphone, Share, X } from "lucide-react"
 
 export default function Page() {
   const [email, setEmail] = useState("")
@@ -15,6 +16,46 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const [showInstallBtn, setShowInstallBtn] = useState(false)
+  const [isIOS, setIsIOS] = useState(false)
+  const [showInstallGuide, setShowInstallGuide] = useState(false)
+
+  useEffect(() => {
+    const userAgent = window.navigator.userAgent.toLowerCase()
+    const ios = /iphone|ipad|ipod/.test(userAgent)
+    setIsIOS(ios)
+
+    const handler = (e: Event) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+      setShowInstallBtn(true)
+    }
+    window.addEventListener("beforeinstallprompt", handler)
+
+    if (ios && !(window.navigator as any).standalone) {
+      setShowInstallBtn(true)
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler)
+    }
+  }, [])
+
+  const handleInstallClick = () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt()
+      deferredPrompt.userChoice.then(({ outcome }: { outcome: string }) => {
+        if (outcome === 'accepted') {
+          setDeferredPrompt(null)
+          setShowInstallBtn(false)
+        }
+      })
+    } else {
+      setShowInstallGuide(true)
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -182,6 +223,68 @@ export default function Page() {
           </div>
         </main>
       </div>
+
+      {showInstallBtn && (
+        <button
+          type="button"
+          onClick={handleInstallClick}
+          className="absolute right-4 top-4 z-50 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-bold text-[#1B3A5C] shadow-sm backdrop-blur-md transition-all hover:bg-slate-50 hover:shadow-md"
+        >
+          <Smartphone className="size-3.5 text-slate-500" />
+          <span>Installer l&apos;application</span>
+        </button>
+      )}
+
+      {showInstallGuide && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-sm overflow-hidden rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 flex flex-col gap-4 text-slate-800">
+            <button
+              onClick={() => setShowInstallGuide(false)}
+              className="absolute right-4 top-4 rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+            >
+              <X className="size-5" />
+            </button>
+
+            <div className="flex flex-col items-center text-center gap-2 mt-2">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-[#0F2A47] text-white shadow-md">
+                <Smartphone className="size-6" />
+              </div>
+              <h3 className="text-lg font-bold tracking-tight text-slate-900 mt-2">Installer l&apos;application</h3>
+              <p className="text-xs text-slate-500">Cardiomaine Planning</p>
+            </div>
+
+            <div className="space-y-3.5 text-sm text-slate-600">
+              {isIOS ? (
+                <div className="text-xs leading-relaxed text-slate-700 space-y-1 bg-amber-50/50 border border-amber-100/50 rounded-xl p-3.5">
+                  <p className="font-bold">Sur iPhone & iPad (Safari) :</p>
+                  <p className="flex items-center gap-1 flex-wrap">
+                    1. Appuyez sur le bouton de partage <Share className="size-3.5 text-blue-600 inline" /> en bas de Safari.
+                  </p>
+                  <p>
+                    2. Sélectionnez <span className="font-bold">&ldquo;Sur l&apos;écran d&apos;accueil&rdquo;</span> (icône <span className="font-extrabold border rounded px-1">+</span>).
+                  </p>
+                  <p>
+                    3. Confirmez pour installer l&apos;application.
+                  </p>
+                </div>
+              ) : (
+                <div className="text-xs leading-relaxed text-slate-700 space-y-1 bg-blue-50/50 border border-blue-100/50 rounded-xl p-3.5">
+                  <p className="font-bold">Instructions :</p>
+                  <p>1. Appuyez sur le menu du navigateur (icône menu en haut à droite).</p>
+                  <p>2. Choisissez <span className="font-bold">&ldquo;Installer l&apos;application&rdquo;</span> ou <span className="font-bold">&ldquo;Ajouter à l&apos;écran d&apos;accueil&rdquo;</span>.</p>
+                </div>
+              )}
+            </div>
+
+            <Button
+              onClick={() => setShowInstallGuide(false)}
+              className="w-full bg-[#0F2A47] text-white hover:bg-[#1B3A5C] font-bold"
+            >
+              Fermer
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

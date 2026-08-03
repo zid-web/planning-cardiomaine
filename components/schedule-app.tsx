@@ -3090,11 +3090,7 @@ export function ScheduleApp({
               </p>
             </div>
 
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 text-center my-1">
-              <p className="text-xs italic font-semibold text-slate-600 leading-relaxed">
-                &ldquo;ECG : L&apos;Équilibre Clinique des Gardes &mdash; Votre planning en temps réel, au creux de votre main.&rdquo;
-              </p>
-            </div>
+
 
             <div className="space-y-3.5 text-sm text-slate-600">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Instructions d&apos;installation :</p>
