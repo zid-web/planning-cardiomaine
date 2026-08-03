@@ -310,21 +310,13 @@ export async function generateGuardsViaAPI(
         currentSchedule = curRow?.schedule_data as ScheduleData | undefined
       }
       if (currentSchedule) {
-        // Exclude external doctors and meta rows that cause solver conflicts when forced
-        const SOLVER_EXCLUDED_FORCED_DOCS = new Set(["FV", "CH", "I", "DAAS", "T", "V", "D", "R"])
-        for (const [row, rowObj] of Object.entries(currentSchedule)) {
-          if (!rowObj) continue
-          // Skip meta rows or structural rows managed outside solver
-          if (row === "Notes du jour" || row.includes("Congés") || row.includes("Vacances")) continue
+        for (const row of NURSE_STRESS_EE_ROWS) {
           for (const day of DAYS) {
-            const cell = rowObj[day]
+            const cell = currentSchedule[row]?.[day]
             const cellValue = cell?.value || []
-            // Filter to only send real valid assignments or nurses
-            const validForced = cellValue.filter(
-              (d) => Boolean(d) && (NURSES.has(d) || (!SOLVER_EXCLUDED_FORCED_DOCS.has(d) && cell?.status === "validated")),
-            )
-            if (validForced.length > 0) {
-              nurseExistingSchedule[`${row}||${day}`] = validForced
+            const hasNurse = cellValue.some((d) => NURSES.has(d))
+            if (hasNurse) {
+              nurseExistingSchedule[`${row}||${day}`] = cellValue
             }
           }
         }
