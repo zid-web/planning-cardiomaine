@@ -238,6 +238,7 @@ export function ScheduleApp({
     targetDoctor: "",
     text: "",
   })
+  const [praticienPopoverOpen, setPraticienPopoverOpen] = useState(false)
   /** In Global view the admin toolbar starts collapsed to free vertical space for the grid */
   const [toolbarExpanded, setToolbarExpanded] = useState(false)
   const [isExportingPdf, setIsExportingPdf] = useState(false)
@@ -1858,7 +1859,7 @@ export function ScheduleApp({
                 )}
 
                 {/* Practitioner Profile Dropdown */}
-                <Popover>
+                <Popover open={praticienPopoverOpen} onOpenChange={setPraticienPopoverOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -1884,7 +1885,7 @@ export function ScheduleApp({
                       </div>
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent align="end" className="w-56 p-1.5 shadow-xl border-slate-200 bg-white">
+                  <PopoverContent align="end" className="w-56 p-1.5 shadow-xl border-slate-200 bg-white z-[120]">
                     <div className="px-2.5 py-2 border-b border-slate-100 mb-1">
                       <p className="text-xs font-extrabold text-slate-900">Dr. {doctorCode || currentUser}</p>
                       <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Espace Praticien</p>
@@ -1896,6 +1897,7 @@ export function ScheduleApp({
                         onClick={() => {
                           setRequestsTab("messages")
                           setShowRequests(true)
+                          setPraticienPopoverOpen(false)
                         }}
                         className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                       >
@@ -1915,6 +1917,7 @@ export function ScheduleApp({
                         onClick={() => {
                           setSelectedDoctorForVacations("")
                           setVacationsModalOpen(true)
+                          setPraticienPopoverOpen(false)
                         }}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                       >
@@ -1924,18 +1927,22 @@ export function ScheduleApp({
 
                       <button
                         type="button"
-                        onClick={openWorkloadStats}
+                        onClick={() => {
+                          openWorkloadStats()
+                          setPraticienPopoverOpen(false)
+                        }}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                       >
                         <BarChart3 className="size-4 text-blue-600" />
                         <span>Statistiques de charge</span>
                       </button>
 
-
-
                       <button
                         type="button"
-                        onClick={onChangePassword}
+                        onClick={() => {
+                          onChangePassword()
+                          setPraticienPopoverOpen(false)
+                        }}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                       >
                         <Key className="size-4 text-indigo-600" />
@@ -2629,9 +2636,8 @@ export function ScheduleApp({
         </div>
       )}
 
-      {/* Note privée admin -> médecin (confirmé utilisateur 01/08/2026) */}
       {privateNoteModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-xl max-w-md w-full shadow-2xl">
             <h3 className="text-lg font-bold mb-1">Note privée</h3>
             <p className="text-sm text-gray-600 mb-4">
@@ -2740,7 +2746,7 @@ export function ScheduleApp({
       {/* Panneau des demandes (semaine courante) */}
       {showRequests && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[160] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
           onClick={() => setShowRequests(false)}
         >
           <div
