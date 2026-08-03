@@ -266,7 +266,7 @@ export function GuardGenerationButton({
         disabled={disabled || isLoading}
         size="sm"
         className="h-7 gap-1 bg-gradient-to-r from-blue-600 to-blue-700 px-2 text-[11px] hover:from-blue-700 hover:to-blue-800"
-        title="Une seule génération : gardes/astreintes/Coro + Cs/ETT/EE/hors site — pending à valider"
+        title="Générer et compléter toutes les cases vides ou manquantes sans modifier les affectations validées"
       >
         {isLoading ? (
           <>
@@ -276,7 +276,7 @@ export function GuardGenerationButton({
         ) : (
           <>
             <Zap className="h-3.5 w-3.5" />
-            <span>Générer</span>
+            <span>Générer (remplir cases vides)</span>
           </>
         )}
       </Button>

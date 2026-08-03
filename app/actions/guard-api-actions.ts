@@ -310,15 +310,16 @@ export async function generateGuardsViaAPI(
         currentSchedule = curRow?.schedule_data as ScheduleData | undefined
       }
       if (currentSchedule) {
-        for (const row of NURSE_STRESS_EE_ROWS) {
+        for (const [row, rowObj] of Object.entries(currentSchedule)) {
+          if (!rowObj) continue
           for (const day of DAYS) {
-            const cell = currentSchedule[row]?.[day]
+            const cell = rowObj[day]
             const cellValue = cell?.value || []
-            const hasNurse = cellValue.some((d) => NURSES.has(d))
-            if (hasNurse) {
-              // Toute la case (infirmière + partenaire déjà confirmé s'il y
-              // en a un) - pas seulement l'infirmière filtrée, sinon le
-              // solveur croirait qu'aucun partenaire n'est encore choisi.
+            const cellListed = cellValue.filter(
+              (d) => Boolean(d) && (NURSES.has(d) || cell?.status === "validated" || cell?.request),
+            )
+            if (cellValue.length > 0) {
+              // Nurse or validated doctor assignments -> send to solver as fixed context
               nurseExistingSchedule[`${row}||${day}`] = cellValue
             }
           }

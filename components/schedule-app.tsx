@@ -1976,7 +1976,7 @@ export function ScheduleApp({
                           }
 
                           return (
-                            <>
+                            <React.Fragment key={rowKey}>
                               {sectionTitle && (
                                 <tr className="bg-slate-200">
                                   <td
@@ -2119,7 +2119,7 @@ export function ScheduleApp({
                                   )
                                 })}
                               </tr>
-                            </>
+                            </React.Fragment>
                           )
                         })}
                       </tbody>
