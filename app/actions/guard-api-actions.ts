@@ -300,11 +300,34 @@ export async function generateGuardsViaAPI(
     ] as const
     const NURSES = new Set(["Val", "Véro", "Laura"])
     let nurseExistingSchedule: Record<string, string[]> = {}
+    
+    // Détecte les conflits de congés complets sur les vacations fixes CDL, LFB, PSSL
+    // pour y injecter un médecin fictif temporaire dans existing_schedule.
+    // Cela évite de faire planter le solveur (infeasibility) tout en laissant la case vide à la fin.
+    const conflictsToPostClean: Array<{ row: string; day: string; doctor: string }> = [];
+
+    const handleVirtualFixedSlotPlaceholder = (
+      dayName: string,
+      rowKey: string,
+      candidates: string[]
+    ) => {
+      const dateStr = dateStrForWeekDay(currentWeekKey, dayName);
+      if (!dateStr) return;
+
+      const allAbsent = candidates.every((doc) =>
+        isDoctorOnVacationForFixed(doc, dateStr, vacations)
+      );
+
+      if (allAbsent && candidates[0]) {
+        const placeholderDoc = candidates[0];
+        nurseExistingSchedule[`${rowKey}||${dayName}`] = [placeholderDoc];
+        conflictsToPostClean.push({ row: rowKey, day: dayName, doctor: placeholderDoc });
+        console.log(`[Solver Bypass] Injection temporaire de ${placeholderDoc} sur ${rowKey} le ${dayName} (${dateStr})`);
+      }
+    };
+
     try {
-      // Priorité au planning transmis directement par le front (toujours à
-      // jour, y compris pour une semaine jamais encore sauvegardée) - repli
-      // sur la base de données uniquement si non fourni (confirmé bug
-      // utilisateur 31/07/2026).
+      // Priorité au planning transmis directement par le front
       let currentSchedule: ScheduleData | undefined = currentScheduleParam
       if (!currentSchedule) {
         const supabaseCur = await createClient()
@@ -327,6 +350,12 @@ export async function generateGuardsViaAPI(
           }
         }
       }
+
+      // Applique le bypass pour les créneaux fixes du solveur si tout le monde est en vacances
+      handleVirtualFixedSlotPlaceholder("MARDI", "Hors site - CDL", ["O", "V"]);
+      handleVirtualFixedSlotPlaceholder("JEUDI", "Hors site - LFB", ["H", "S", "G"]);
+      handleVirtualFixedSlotPlaceholder("JEUDI", "Hors site - PSSL", ["B", "Z"]);
+
     } catch (nurseErr) {
       console.warn("[generateGuardsViaAPI] positions infirmières ignorées:", nurseErr)
     }
@@ -370,54 +399,7 @@ export async function generateGuardsViaAPI(
       // Consignes DOC022 (éligibilités + créneaux) — merge côté solveur si supporté
       rules_override: toSolverClinicalRulesPayload(currentWeekKey, vacations),
       // Suspensions NCT / PSSL / LFB / CDL (périodes calendrier — optionnel)
-      activity_maintenance: (() => {
-        const defaultPeriods = buildDefaultActivityMaintenance2026();
-        const nextPeriods = [...defaultPeriods];
-
-        // Vérification dynamique des absences pour éviter l'infeasibility du solveur
-        const checkActivityAbsence = (
-          dayName: string,
-          candidates: string[],
-          activity: "CDL" | "LFB" | "PSSL"
-        ) => {
-          const dateStr = dateStrForWeekDay(currentWeekKey, dayName);
-          if (!dateStr) return;
-
-          // Si tous les candidats pour cette activité sont en vacances ce jour-là
-          const allAbsent = candidates.every((doc) =>
-            isDoctorOnVacationForFixed(doc, dateStr, vacations)
-          );
-
-          if (allAbsent) {
-            console.log(`⚠️ Aucun médecin disponible pour ${activity} le ${dayName} (${dateStr}). Suspension automatique de la contrainte.`);
-            // Recherche s'il y a déjà une période couvrant ce jour
-            const monday = mondayOfIsoWeekKey(currentWeekKey);
-            if (monday) {
-              const sunday = new Date(monday.getTime());
-              sunday.setDate(monday.getDate() + 6);
-              const start_date = monday.toISOString().split("T")[0];
-              const end_date = sunday.toISOString().split("T")[0];
-
-              // Ajoute la suspension pour la semaine
-              nextPeriods.push({
-                start_date,
-                end_date,
-                activities: [activity],
-                reason: `Absence de tous les candidats pour ${activity} sur S${wnEarly.week}`,
-              });
-            }
-          }
-        };
-
-        // CDL: Mardi (O, V)
-        checkActivityAbsence("MARDI", ["O", "V"], "CDL");
-        // LFB: Jeudi (H, S, G)
-        checkActivityAbsence("JEUDI", ["H", "S", "G"], "LFB");
-        // PSSL: Jeudi (B, Z)
-        checkActivityAbsence("JEUDI", ["B", "Z"], "PSSL");
-
-        return buildActivityMaintenancePayload(nextPeriods);
-      })(),
+      activity_maintenance: buildActivityMaintenancePayload(),
       // Salle de coro indisponible (périodes calendrier — optionnel, même
       // principe qu'activity_maintenance ci-dessus). Bug corrigé 31/07/2026 :
       // les consignes vocales portant sur plusieurs semaines n'étaient
@@ -492,6 +474,25 @@ export async function generateGuardsViaAPI(
     } catch (coroErr) {
       console.warn("[generateGuardsViaAPI] rotation Coro M/O/W ignorée:", coroErr);
     }
+
+    // 7ter. Post-nettoyage des médecins virtuels injectés pour éviter le crash solveur
+    // (laisse les cases vides pour l'utilisateur car les médecins sont en vacances).
+    conflictsToPostClean.forEach(({ row, day, doctor }) => {
+      if (scheduleData[row]?.[day]) {
+        const cell = scheduleData[row][day];
+        const values = cell.value || [];
+        if (values.includes(doctor)) {
+          const filtered = values.filter((d) => d !== doctor);
+          scheduleData[row][day] = {
+            ...cell,
+            value: filtered,
+            type: filtered.length ? "doctor" : "empty",
+            status: "validated",
+          };
+          console.log(`[Solver Bypass] Nettoyage post-solveur : retrait de ${doctor} de ${row} le ${day}`);
+        }
+      }
+    });
 
     // Persiste qui a *réellement* le rôle Garde Sam (peut différer de l’ancre)
     if (isWomComboWeekend(weekKey)) {
