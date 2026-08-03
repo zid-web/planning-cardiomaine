@@ -206,6 +206,8 @@ export function ScheduleApp({
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([])
   const [showRequests, setShowRequests] = useState(false)
+  const [requestsTab, setRequestsTab] = useState<"messages" | "demandes">("messages")
+  const [privateNotesList, setPrivateNotesList] = useState<any[]>([])
   // Historique des demandes archivées (confirmé utilisateur 01/08/2026).
   const [showRequestsHistory, setShowRequestsHistory] = useState(false)
   const [requestsHistory, setRequestsHistory] = useState<any[]>([])
@@ -675,6 +677,22 @@ export function ScheduleApp({
       cancelled = true
     }
   }, [isAdmin, weekKey, currentDayIndex])
+
+  // Chargement des notes privées pour l'administrateur
+  useEffect(() => {
+    if (!isAdmin || !showRequests) return
+    const dateStr = dateStrForWeekDay(weekKey, DAYS[currentDayIndex])
+    if (!dateStr) return
+    let cancelled = false
+    getAllPrivateNotesForDate(dateStr)
+      .then((notes) => {
+        if (!cancelled) setPrivateNotesList(notes || [])
+      })
+      .catch(console.error)
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin, showRequests, weekKey, currentDayIndex])
 
   const getTaskSortOrder = (activity: string) => {
     if (activity.includes("Matin")) return 1
@@ -1389,6 +1407,9 @@ export function ScheduleApp({
       }
       toast.success(`Note privée enregistrée pour ${privateNoteModal.targetDoctor}`)
     }
+    // Rafraîchir la liste locale des notes privées
+    const notes = await getAllPrivateNotesForDate(dateStr)
+    setPrivateNotesList(notes || [])
     setPrivateNoteModal({ open: false, targetDoctor: "", text: "" })
   }
 
@@ -1813,55 +1834,12 @@ export function ScheduleApp({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 border-slate-300 bg-white px-2.5 text-[11px] font-semibold !text-slate-900 shadow-sm hover:bg-slate-100 hover:!text-slate-900"
-                          onClick={() => void openHistoryPanel()}
-                          title="Journal des modifications de la semaine (qui a changé quoi)"
-                          disabled={historyLoading}
-                        >
-                          {historyLoading ? (
-                            <Loader2 className="mr-1 h-3.5 w-3.5 shrink-0 animate-spin !text-slate-900" strokeWidth={2.25} />
-                          ) : (
-                            <History className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
-                          )}
-                          <span className="inline">Journal</span>
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
-                          onClick={() => router.push("/protected/admin/requests")}
-                          title="Tableau de bord des demandes"
-                        >
-                          <Bell className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
-                          <span className="hidden lg:inline">Demandes</span>
-                          {pendingRequests.length > 0 && (
-                            <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
-                              {pendingRequests.length}
-                            </span>
-                          )}
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
                           className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => router.push("/protected/admin/users")}
                           title="Gestion des comptes"
                         >
                           <UserCog className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden xl:inline">Comptes</span>
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
-                          onClick={() => router.push("/protected/admin/feedback")}
-                          title="Feedback utilisateurs"
-                        >
-                          <MessageSquare className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
-                          <span className="hidden xl:inline">Feedback</span>
                         </Button>
 
                         <Button
@@ -1885,7 +1863,7 @@ export function ScheduleApp({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 gap-2 border-slate-200 bg-white px-2.5 shadow-2xs hover:bg-slate-50"
+                      className="h-8 gap-2 border-slate-200 bg-white px-2.5 shadow-2xs hover:bg-slate-50 relative"
                     >
                       <div
                         className={cn(
@@ -1898,7 +1876,12 @@ export function ScheduleApp({
                       <span className="text-xs font-bold text-slate-800">
                         Dr. {doctorCode || currentUser || "—"}
                       </span>
-                      <User className="size-3.5 text-slate-400" />
+                      <div className="relative">
+                        <User className="size-3.5 text-slate-400" />
+                        {(isAdmin ? relevantPendingCount > 0 : (myPrivateNote || relevantPendingCount > 0)) && (
+                          <span className="absolute -top-1 -right-1 flex h-2 w-2 rounded-full bg-red-500 ring-1 ring-white animate-pulse" />
+                        )}
+                      </div>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="end" className="w-56 p-1.5 shadow-xl border-slate-200 bg-white">
@@ -1911,20 +1894,19 @@ export function ScheduleApp({
                       <button
                         type="button"
                         onClick={() => {
-                          if (myPrivateNote) {
-                            alert(`Message de l'administrateur :\n\n${myPrivateNote}`)
-                          } else {
-                            alert("Vous n'avez aucun nouveau message privé aujourd'hui.")
-                          }
+                          setRequestsTab("messages")
+                          setShowRequests(true)
                         }}
                         className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                       >
                         <div className="flex items-center gap-2">
-                          <Mail className={cn("size-4", myPrivateNote ? "text-red-500" : "text-slate-400")} />
-                          <span>Messages privés</span>
+                          <Mail className={cn("size-4", (isAdmin ? relevantPendingCount > 0 : (myPrivateNote || relevantPendingCount > 0)) ? "text-red-500 animate-pulse" : "text-slate-400")} />
+                          <span>Messages & Demandes</span>
                         </div>
-                        {myPrivateNote && (
-                          <span className="flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm animate-pulse">1</span>
+                        {(isAdmin ? relevantPendingCount > 0 : (myPrivateNote || relevantPendingCount > 0)) && (
+                          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shadow-sm animate-pulse">
+                            {isAdmin ? relevantPendingCount : (myPrivateNote ? 1 : 0) + relevantPendingCount}
+                          </span>
                         )}
                       </button>
                       
@@ -2767,148 +2749,217 @@ export function ScheduleApp({
           >
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-slate-900">Demandes de modification</h3>
+                <h3 className="font-bold text-slate-900">Messagerie & Demandes</h3>
                 <p className="text-xs text-slate-500">
-                  {isAdmin ? "Vue administrateur" : "Mes demandes"} · {weekKey}
+                  {isAdmin ? "Vue administrateur" : "Espace Praticien"} · Semaine {weekKey}
                 </p>
               </div>
               <button onClick={() => setShowRequests(false)} className="p-2 hover:bg-gray-100 rounded-full">
                 <X className="size-5" />
               </button>
             </div>
-            {!isAdmin && (
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-200 mb-4">
               <button
-                onClick={() => {
-                  setShowRequests(false)
-                  setRequestModal({ open: true, row: "", day: "" })
-                }}
-                className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                type="button"
+                onClick={() => setRequestsTab("messages")}
+                className={cn(
+                  "flex-1 pb-2 text-sm font-semibold text-center border-b-2 transition-all",
+                  requestsTab === "messages"
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                )}
               >
-                <Bell className="size-4" /> Nouvelle demande
+                Messages {(!isAdmin && myPrivateNote) && <span className="ml-1 inline-block h-2 w-2 rounded-full bg-red-500" />}
               </button>
-            )}
-            <button
-              onClick={() => {
-                const next = !showRequestsHistory
-                setShowRequestsHistory(next)
-                if (next) void getChangeRequestsHistory().then(setRequestsHistory)
-              }}
-              className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-            >
-              <History className="size-4" />
-              {showRequestsHistory ? "Retour aux demandes actives" : "Voir l'historique archivé"}
-            </button>
-            {showRequestsHistory ? (
-              requestsHistory.length === 0 ? (
-                <p className="py-8 text-center text-sm text-slate-400">Aucune demande archivée.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {requestsHistory.map((req) => (
-                    <li key={req.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 opacity-80">
-                      <div className="text-sm">
-                        <div className="font-medium text-slate-700">
-                          {req.row_key} — {req.day_name} · {req.week_key}
+              <button
+                type="button"
+                onClick={() => setRequestsTab("demandes")}
+                className={cn(
+                  "flex-1 pb-2 text-sm font-semibold text-center border-b-2 transition-all",
+                  requestsTab === "demandes"
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                )}
+              >
+                Demandes {relevantPendingCount > 0 && (
+                  <span className="ml-1 inline-block rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                    {relevantPendingCount}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {requestsTab === "messages" ? (
+              isAdmin ? (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center mb-1">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Messages privés envoyés ({dateStrForWeekDay(weekKey, DAYS[currentDayIndex])})</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPrivateNoteModal({ open: true, targetDoctor: "", text: "" })
+                      }}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                    >
+                      + Écrire un message
+                    </button>
+                  </div>
+                  {privateNotesList.length === 0 ? (
+                    <p className="text-center py-8 text-sm text-slate-400">Aucun message privé envoyé pour ce jour.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      {privateNotesList.map((n) => (
+                        <div key={n.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs relative">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-extrabold text-slate-900">Pour Dr. {n.target_doctor}</span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setPrivateNoteModal({ open: true, targetDoctor: n.target_doctor, text: n.note_text })
+                              }}
+                              className="text-[10px] font-bold text-amber-700 hover:text-amber-800"
+                            >
+                              Modifier
+                            </button>
+                          </div>
+                          <p className="text-slate-600 whitespace-pre-wrap leading-relaxed">{n.note_text}</p>
                         </div>
-                        <div className="mt-0.5 text-xs text-slate-500">
-                          {req.current_doctor || "vide"} →{" "}
-                          <span className="font-semibold text-teal-700">{req.requested_doctor}</span>
-                        </div>
-                        <span
-                          className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                            req.status === "approved"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {req.status === "approved" ? "Approuvée" : "Rejetée"}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : changeRequests.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">Aucune demande pour cette semaine.</p>
-            ) : (
-              <ul className="space-y-2">
-                {changeRequests.map((req) => (
-                  <li key={req.id} className="rounded-lg border border-slate-200 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="text-sm">
-                        <div className="font-medium text-slate-800">
-                          {req.row_key} — {req.day_name}
-                        </div>
-                        <div className="mt-0.5 text-xs text-slate-500">
-                          {req.current_doctor || "vide"} →{" "}
-                          <span className="font-semibold text-teal-700">{req.requested_doctor}</span>
-                        </div>
-                        {req.reason && (
-                          <div className="mt-1 text-xs italic text-slate-400">« {req.reason} »</div>
-                        )}
-                      </div>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          req.status === "pending"
-                            ? "bg-amber-100 text-amber-700"
-                            : req.status === "approved"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {req.status === "pending"
-                          ? "En attente"
-                          : req.status === "approved"
-                            ? "Approuvée"
-                            : "Rejetée"}
-                      </span>
+                      ))}
                     </div>
-                    {isAdmin && req.status === "pending" && (
-                      <div className="mt-2 flex gap-2">
-                        <button
-                          onClick={() => void approveRequest(req)}
-                          className="flex flex-1 items-center justify-center gap-1 rounded-md bg-green-600 py-1.5 text-xs font-medium text-white hover:bg-green-700"
-                        >
-                          <Check className="size-3" /> Approuver
-                        </button>
-                        <button
-                          onClick={() => void rejectRequest(req)}
-                          className="flex-1 rounded-md bg-red-100 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200"
-                        >
-                          Rejeter
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {myPrivateNote ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-slate-800 text-sm shadow-2xs">
+                      <p className="font-extrabold text-[#1B3A5C] mb-1.5 flex items-center gap-1.5">
+                        <Mail className="size-4 text-amber-600 animate-pulse" />
+                        Message de l'administrateur :
+                      </p>
+                      <div className="whitespace-pre-wrap leading-relaxed font-medium">{myPrivateNote}</div>
+                    </div>
+                  ) : (
+                    <p className="text-center py-8 text-sm text-slate-400">Aucun message de l'administrateur aujourd'hui ({dateStrForWeekDay(weekKey, DAYS[currentDayIndex])}).</p>
+                  )}
+                </div>
+              )
+            ) : (
+              <div>
+                {!isAdmin && (
+                  <button
+                    onClick={() => {
+                      setShowRequests(false)
+                      setRequestModal({ open: true, row: "", day: "" })
+                    }}
+                    className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    <Bell className="size-4" /> Nouvelle demande
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    const next = !showRequestsHistory
+                    setShowRequestsHistory(next)
+                    if (next) void getChangeRequestsHistory().then(setRequestsHistory)
+                  }}
+                  className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  <History className="size-4" />
+                  {showRequestsHistory ? "Retour aux demandes actives" : "Voir l'historique archivé"}
+                </button>
+                {showRequestsHistory ? (
+                  requestsHistory.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-slate-400">Aucune demande archivée.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {requestsHistory.map((req) => (
+                        <li key={req.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 opacity-80">
+                          <div className="text-sm">
+                            <div className="font-medium text-slate-700">
+                              {req.row_key} — {req.day_name} · {req.week_key}
+                            </div>
+                            <div className="mt-0.5 text-xs text-slate-500">
+                              {req.current_doctor || "vide"} →{" "}
+                              <span className="font-semibold text-teal-700">{req.requested_doctor}</span>
+                            </div>
+                            <span
+                              className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                req.status === "approved"
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-red-100 text-red-700"
+                              }`}
+                            >
+                              {req.status === "approved" ? "Approuvée" : "Rejetée"}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )
+                ) : changeRequests.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-slate-400">Aucune demande pour cette semaine.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {changeRequests.map((req) => (
+                      <li key={req.id} className="rounded-lg border border-slate-200 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-sm">
+                            <div className="font-medium text-slate-800">
+                              {req.row_key} — {req.day_name}
+                            </div>
+                            <div className="mt-0.5 text-xs text-slate-500">
+                              {req.current_doctor || "vide"} →{" "}
+                              <span className="font-semibold text-teal-700">{req.requested_doctor}</span>
+                            </div>
+                            {req.reason && (
+                              <div className="mt-1 text-xs italic text-slate-400">« {req.reason} »</div>
+                            )}
+                          </div>
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              req.status === "pending"
+                                ? "bg-amber-100 text-amber-700"
+                                : req.status === "approved"
+                                  ? "bg-green-100 text-green-700"
+                                  : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {req.status === "pending"
+                              ? "En attente"
+                              : req.status === "approved"
+                                ? "Approuvée"
+                                : "Rejetée"}
+                          </span>
+                        </div>
+                        {isAdmin && req.status === "pending" && (
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              onClick={() => void approveRequest(req)}
+                              className="flex flex-1 items-center justify-center gap-1 rounded-md bg-green-600 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                            >
+                              <Check className="size-3" /> Approuver
+                            </button>
+                            <button
+                              onClick={() => void rejectRequest(req)}
+                              className="flex-1 rounded-md bg-red-100 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200"
+                            >
+                              Rejeter
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Bouton demandes (tous rôles) + panneau vocal/PDF (admin) */}
-      <button
-        onClick={() => setShowRequests(true)}
-        className={cn(
-          "fixed bottom-24 right-20 z-40 rounded-full border p-3 shadow-lg transition-colors md:bottom-20",
-          bellColorClass,
-        )}
-        aria-label="Demandes"
-        title={
-          relevantPendingCount > 0
-            ? `${relevantPendingCount} demande(s) à traiter`
-            : relevantProcessedCount > 0
-              ? "Demande(s) traitée(s)"
-              : "Demandes"
-        }
-      >
-        <Bell className="w-5 h-5" />
-        {relevantPendingCount > 0 && (
-          <span className="absolute -top-1 -right-1 h-5 min-w-5 rounded-full bg-white px-1 text-[10px] font-bold text-red-600 flex items-center justify-center ring-2 ring-red-500">
-            {relevantPendingCount}
-          </span>
-        )}
-      </button>
+
       {isAdmin && (
         <>
           <button

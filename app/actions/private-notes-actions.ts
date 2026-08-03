@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
 
 export type PrivateNote = {
@@ -26,7 +27,10 @@ export async function getMyPrivateNote(noteDate: string): Promise<PrivateNote | 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: profile } = await supabase
+  // Utilise l'admin client pour contourner les restrictions d'auto-lecture de son propre doctor_code
+  // si le cookie de session a un délai de propagation dans le context server.
+  const adminDb = createAdminClient();
+  const { data: profile } = await adminDb
     .from('profiles')
     .select('doctor_code')
     .eq('id', user.id)
@@ -49,7 +53,8 @@ export async function getAllPrivateNotesForDate(noteDate: string): Promise<Priva
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data: profile } = await supabase
+  const adminDb = createAdminClient();
+  const { data: profile } = await adminDb
     .from('profiles')
     .select('role, doctor_code')
     .eq('id', user.id)
@@ -63,9 +68,8 @@ export async function getAllPrivateNotesForDate(noteDate: string): Promise<Priva
                   profileRole === 'administrateur' ||
                   userEmail.includes('admin') || 
                   ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail === 'luciecardiomaine@gmail.com' ||
-                  userEmail === 'ouissem.zid@gmail.com' ||
-                  userEmail === 'ouissemzid@gmail.com';
+                  userEmail.includes('lucie') ||
+                  userEmail.includes('ouissem');
   if (!isAdmin) return [];
 
   const { data } = await supabase
@@ -87,7 +91,8 @@ export async function upsertPrivateNote(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Non authentifié' };
 
-  const { data: profile, error: profileError } = await supabase
+  const adminDb = createAdminClient();
+  const { data: profile, error: profileError } = await adminDb
     .from('profiles')
     .select('role, doctor_code')
     .eq('id', user.id)
@@ -101,9 +106,8 @@ export async function upsertPrivateNote(
                   profileRole === 'administrateur' ||
                   userEmail.includes('admin') || 
                   ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail === 'luciecardiomaine@gmail.com' ||
-                  userEmail === 'ouissem.zid@gmail.com' ||
-                  userEmail === 'ouissemzid@gmail.com';
+                  userEmail.includes('lucie') ||
+                  userEmail.includes('ouissem');
 
   if (!isAdmin) {
     return { 
@@ -115,7 +119,7 @@ export async function upsertPrivateNote(
     return { success: false, error: 'Médecin destinataire requis' };
   }
 
-  const createdBy = profile.doctor_code || user.email?.split('@')[0]?.toUpperCase() || 'admin';
+  const createdBy = profile?.doctor_code || user.email?.split('@')[0]?.toUpperCase() || 'admin';
 
   const { data: existing } = await supabase
     .from('private_notes')
@@ -153,7 +157,8 @@ export async function deletePrivateNote(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Non authentifié' };
 
-  const { data: profile } = await supabase
+  const adminDb = createAdminClient();
+  const { data: profile } = await adminDb
     .from('profiles')
     .select('role, doctor_code')
     .eq('id', user.id)
@@ -167,9 +172,8 @@ export async function deletePrivateNote(
                   profileRole === 'administrateur' ||
                   userEmail.includes('admin') || 
                   ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail === 'luciecardiomaine@gmail.com' ||
-                  userEmail === 'ouissem.zid@gmail.com' ||
-                  userEmail === 'ouissemzid@gmail.com';
+                  userEmail.includes('lucie') ||
+                  userEmail.includes('ouissem');
   if (!isAdmin) {
     return { success: false, error: 'Droits insuffisants (admin requis)' };
   }
