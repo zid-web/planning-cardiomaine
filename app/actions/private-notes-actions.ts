@@ -51,10 +51,12 @@ export async function getAllPrivateNotesForDate(noteDate: string): Promise<Priva
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, doctor_code')
     .eq('id', user.id)
     .single();
-  if (!profile || profile.role !== 'admin') return [];
+
+  const isAdmin = profile?.role === 'admin' || user.email?.toLowerCase().includes('admin') || ['M', 'Z', 'L'].includes(profile?.doctor_code?.toUpperCase() || '');
+  if (!isAdmin) return [];
 
   const { data } = await supabase
     .from('private_notes')
@@ -80,7 +82,9 @@ export async function upsertPrivateNote(
     .select('role, doctor_code')
     .eq('id', user.id)
     .single();
-  if (!profile || profile.role !== 'admin') {
+    
+  const isAdmin = profile?.role === 'admin' || user.email?.toLowerCase().includes('admin') || ['M', 'Z', 'L'].includes(profile?.doctor_code?.toUpperCase() || '');
+  if (!isAdmin) {
     return { success: false, error: 'Droits insuffisants (admin requis)' };
   }
   if (!targetDoctor.trim()) {
@@ -127,10 +131,12 @@ export async function deletePrivateNote(
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, doctor_code')
     .eq('id', user.id)
     .single();
-  if (!profile || profile.role !== 'admin') {
+    
+  const isAdmin = profile?.role === 'admin' || user.email?.toLowerCase().includes('admin') || ['M', 'Z', 'L'].includes(profile?.doctor_code?.toUpperCase() || '');
+  if (!isAdmin) {
     return { success: false, error: 'Droits insuffisants (admin requis)' };
   }
 

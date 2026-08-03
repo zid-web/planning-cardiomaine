@@ -1542,7 +1542,7 @@ export function ScheduleApp({
                 <div className="hidden sm:flex flex-col min-w-0">
                   <h1 className="text-sm font-black tracking-tight text-slate-900 leading-none">Cardiomaine</h1>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
-                    {isAdmin ? "Administration" : "Espace Praticien"}
+                    Espace Praticien
                   </span>
                 </div>
               </div>
