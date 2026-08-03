@@ -224,16 +224,14 @@ export default function Page() {
         </main>
       </div>
 
-      {showInstallBtn && (
-        <button
-          type="button"
-          onClick={handleInstallClick}
-          className="absolute right-4 top-4 z-50 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-bold text-[#1B3A5C] shadow-sm backdrop-blur-md transition-all hover:bg-slate-50 hover:shadow-md"
-        >
-          <Smartphone className="size-3.5 text-slate-500" />
-          <span>Installer l&apos;application</span>
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={handleInstallClick}
+        className="absolute right-4 top-4 z-50 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-bold text-[#1B3A5C] shadow-sm backdrop-blur-md transition-all hover:bg-slate-50 hover:shadow-md"
+      >
+        <Smartphone className="size-3.5 text-slate-500" />
+        <span>Installer l&apos;application</span>
+      </button>
 
       {showInstallGuide && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">

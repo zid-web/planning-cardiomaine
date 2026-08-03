@@ -189,17 +189,6 @@ export function ScheduleApp({
   const [noteDay, setNoteDay] = useState("")
   const [learnMoreOpen, setLearnMoreOpen] = useState(false)
   const [showWorkloadStats, setShowWorkloadStats] = useState(false)
-  const [installModalOpen, setInstallModalOpen] = useState(false)
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault()
-      setDeferredPrompt(e)
-    }
-    window.addEventListener("beforeinstallprompt", handler)
-    return () => window.removeEventListener("beforeinstallprompt", handler)
-  }, [])
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
   // Instantané du planning juste avant "Générer" (par semaine) - permet au
   // bouton "Retour" de restaurer l'état d'avant sans valider les
@@ -1960,14 +1949,7 @@ export function ScheduleApp({
                         <span>Statistiques de charge</span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => setInstallModalOpen(true)}
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50"
-                      >
-                        <Smartphone className="size-4 text-blue-600 animate-pulse" />
-                        <span>Installer l&apos;application</span>
-                      </button>
+
 
                       <button
                         type="button"
@@ -3069,93 +3051,7 @@ export function ScheduleApp({
         fullSchedule={fullSchedule}
       />
 
-      {/* Installation Modal */}
-      {installModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 flex flex-col gap-4 text-slate-800">
-            <button
-              onClick={() => setInstallModalOpen(false)}
-              className="absolute right-4 top-4 rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-            >
-              <X className="size-5" />
-            </button>
 
-            <div className="flex flex-col items-center text-center gap-2 mt-2">
-              <div className="flex size-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-slate-900 text-white shadow-lg ring-4 ring-blue-50">
-                <Activity className="size-8" />
-              </div>
-              <h3 className="text-xl font-bold tracking-tight text-slate-900 mt-2">Cardiomaine</h3>
-              <p className="text-[11px] font-bold text-blue-600 uppercase tracking-widest bg-blue-50 px-2.5 py-1 rounded-full">
-                Installation Mobile
-              </p>
-            </div>
-
-
-
-            <div className="space-y-3.5 text-sm text-slate-600">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Instructions d&apos;installation :</p>
-              
-              {/* iOS instructions */}
-              <div className="flex gap-3 items-start bg-amber-50/50 border border-amber-100/50 rounded-xl p-3.5">
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800 text-xs font-bold">iOS</span>
-                <div className="text-xs leading-relaxed text-slate-700 space-y-1">
-                  <p className="font-bold">Sur iPhone & iPad (Safari) :</p>
-                  <p className="flex items-center gap-1 flex-wrap">
-                    1. Appuyez sur le bouton de partage <Share className="size-3.5 text-blue-600 inline" /> dans la barre de Safari.
-                  </p>
-                  <p>
-                    2. Sélectionnez <span className="font-bold">&ldquo;Sur l&apos;écran d&apos;accueil&rdquo;</span> (icône <span className="font-extrabold border rounded px-1">+</span>).
-                  </p>
-                  <p>
-                    3. Confirmez pour installer l&apos;application sur votre écran d&apos;accueil.
-                  </p>
-                </div>
-              </div>
-
-              {/* Android/Chrome instructions */}
-              <div className="flex gap-3 items-start bg-blue-50/50 border border-blue-100/50 rounded-xl p-3.5">
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-800 text-xs font-bold">Android</span>
-                <div className="text-xs leading-relaxed text-slate-700 space-y-2">
-                  <p className="font-bold">Sur Android (Chrome) :</p>
-                  {deferredPrompt ? (
-                    <Button
-                      onClick={async () => {
-                        if (deferredPrompt) {
-                          deferredPrompt.prompt()
-                          const { outcome } = await deferredPrompt.userChoice
-                          if (outcome === 'accepted') {
-                            setDeferredPrompt(null)
-                            setInstallModalOpen(false)
-                          }
-                        }
-                      }}
-                      className="w-full h-9 bg-blue-600 text-white hover:bg-blue-700 text-xs font-bold rounded-lg shadow-xs flex items-center justify-center gap-1.5 transition-all mt-1"
-                    >
-                      <Smartphone className="size-3.5" />
-                      Installer maintenant
-                    </Button>
-                  ) : (
-                    <div className="space-y-1">
-                      <p>1. Appuyez sur le menu <span className="font-bold">&ldquo;&bull;&bull;&bull;&rdquo;</span> en haut à droite de Chrome.</p>
-                      <p>2. Choisissez <span className="font-bold">&ldquo;Installer l&apos;application&rdquo;</span> ou <span className="font-bold">&ldquo;Ajouter à l&apos;écran d&apos;accueil&rdquo;</span>.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end mt-2">
-              <Button
-                variant="outline"
-                onClick={() => setInstallModalOpen(false)}
-                className="w-full border-slate-200 bg-white text-slate-700 hover:bg-slate-50 font-bold"
-              >
-                Fermer
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Vacations Modal */}
       <Suspense fallback={null}>
