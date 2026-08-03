@@ -496,7 +496,8 @@ export function canAssignDoctorToSlot(
   const compatCtx: CompatibilityContext = { schedule, day, doctorId, targetRow: rowKey }
 
   if (doctorOnRow(schedule, HALF_DAY_OFF_MATIN_ROW, day, doctorId)) {
-    if (targetPeriod === "matin" || targetPeriod === "day") {
+    const isAstreinteOrGarde = rowKey.includes("Astreintes ATL") || rowKey.includes("Garde")
+    if (!isAstreinteOrGarde && (targetPeriod === "matin" || targetPeriod === "day")) {
       return {
         allowed: false,
         reason: `${doctorId} est en ½ journée off Matin — pas d’activité le matin.`,
@@ -505,13 +506,14 @@ export function canAssignDoctorToSlot(
   }
 
   if (doctorOnRow(schedule, HALF_DAY_OFF_APM_ROW, day, doctorId)) {
-    // Règle d'exception : M/W sur Coro Apm ou ATL Midi le mercredi
+    // Règle d'exception : M/W sur Coro Apm ou ATL Midi le mercredi, ou toute Astreinte/Garde
+    const isAstreinteOrGarde = rowKey.includes("Astreintes ATL") || rowKey.includes("Garde")
     const isWednesdayCoroApmBypass =
       day === "MERCREDI" &&
       (doctorId === "M" || doctorId === "W") &&
       (rowKey === "Apm - Coro" || rowKey === "Astreintes ATL Midi")
 
-    if (!isWednesdayCoroApmBypass && (targetPeriod === "apm" || targetPeriod === "day")) {
+    if (!isAstreinteOrGarde && !isWednesdayCoroApmBypass && (targetPeriod === "apm" || targetPeriod === "day")) {
       return {
         allowed: false,
         reason: `${doctorId} est en ½ journée off Après-midi — pas d’activité l’après-midi.`,
@@ -643,10 +645,8 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
         for (const row of Object.keys(next)) {
           const p = periodOfRow(row, day)
           if (p === "matin" || p === "day") {
-            // Garde week-end + remplaçant : conserver l’association
-            if (isGardeRow(row) && isWeekendDay(day) && cellHasRemplacant(next, row, day)) {
-              continue
-            }
+            const isAstreinteOrGarde = row.includes("Astreintes ATL") || isGardeRow(row)
+            if (isAstreinteOrGarde) continue
             next = stripDoctorFromRow(next, row, day, doctorId)
           }
         }
@@ -656,18 +656,8 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
         for (const row of Object.keys(next)) {
           const p = periodOfRow(row, day)
           if (p === "apm" || p === "day") {
-            if (isGardeRow(row) && isWeekendDay(day) && cellHasRemplacant(next, row, day)) {
-              continue
-            }
-            // Règle d'exception : M/W sur Coro Apm ou ATL Midi le mercredi
-            const isWednesdayCoroApmBypass =
-              day === "MERCREDI" &&
-              (doctorId === "M" || doctorId === "W") &&
-              (row === "Apm - Coro" || row === "Astreintes ATL Midi")
-
-            if (isWednesdayCoroApmBypass) {
-              continue
-            }
+            const isAstreinteOrGarde = row.includes("Astreintes ATL") || isGardeRow(row)
+            if (isAstreinteOrGarde) continue
             next = stripDoctorFromRow(next, row, day, doctorId)
           }
         }

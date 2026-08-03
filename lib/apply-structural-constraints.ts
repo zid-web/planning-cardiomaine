@@ -223,8 +223,12 @@ export function applyMOWWeekendExcludesMonTueNights(
     const cell = next["Astreintes ATL Nuit"]?.[day]
     if (!cell) continue
 
-    // Retire chaque médecin weekend de la case (même si validé) —
-    // règle structurelle absolue, identique à removeDoctorFromCell pour CH.
+    // Si l'administrateur a validé/saisi la case (statut 'validated' avec médecin),
+    // on préserve la saisie manuelle (ex: O d'astreinte ATL Nuit le Lundi 03/08 et Mardi 04/08)
+    if (cell.status === "validated" && cell.value && cell.value.length > 0) {
+      continue
+    }
+
     for (const doc of [...weekendDoctors]) {
       next = removeDoctorFromCell(next, "Astreintes ATL Nuit", day, doc)
     }
