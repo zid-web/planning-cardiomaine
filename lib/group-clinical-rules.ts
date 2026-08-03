@@ -66,8 +66,12 @@ export const DOC022_CLINICAL_ELIGIBILITY = {
   irm: ["S"],
   /** Scintigraphie */
   scinti: ["T", "R"],
-  /** Cs cabinet Tessé (préférence) */
-  cs_tesse: ["B", "S", "V", "U"],
+  /** Cs cabinet Tessé (préférence : S, B, V, U, Val - jamais M, O, W) */
+  cs_tesse: ["S", "B", "V", "U", "Val"],
+  /** Cs cabinet PSS (M, O, W principalement ; S, B, Val n'y vont jamais) */
+  cs_pss: ["M", "O", "W", "A", "H", "Z", "K", "P", "R", "G", "V", "U", "T"],
+  /** ETT PSS : M ~20%, W ~10%, O jamais ETT */
+  ett_pss_weights: { M: 0.2, W: 0.1, O: 0.0 },
 } as const
 
 /**
