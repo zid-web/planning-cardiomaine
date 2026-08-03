@@ -19,8 +19,9 @@ import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
 import { toSolverClinicalRulesPayload } from "@/lib/group-clinical-rules";
-import { buildActivityMaintenancePayload } from "@/lib/activity-maintenance";
+import { buildActivityMaintenancePayload, buildDefaultActivityMaintenance2026 } from "@/lib/activity-maintenance";
 import { buildRoomMaintenancePayload } from "@/lib/room-maintenance";
+import { dateStrForWeekDay, isDoctorOnVacationForFixed, mondayOfIsoWeekKey } from "@/lib/fixed-assignments";
 import {
   buildWeekendComboSolverFields,
   LAST_COMBO_GARDE_DATE_KEY,
@@ -368,7 +369,54 @@ export async function generateGuardsViaAPI(
       // Consignes DOC022 (éligibilités + créneaux) — merge côté solveur si supporté
       rules_override: toSolverClinicalRulesPayload(currentWeekKey, vacations),
       // Suspensions NCT / PSSL / LFB / CDL (périodes calendrier — optionnel)
-      activity_maintenance: buildActivityMaintenancePayload(),
+      activity_maintenance: (() => {
+        const defaultPeriods = buildDefaultActivityMaintenance2026();
+        const nextPeriods = [...defaultPeriods];
+
+        // Vérification dynamique des absences pour éviter l'infeasibility du solveur
+        const checkActivityAbsence = (
+          dayName: string,
+          candidates: string[],
+          activity: "CDL" | "LFB" | "PSSL"
+        ) => {
+          const dateStr = dateStrForWeekDay(currentWeekKey, dayName);
+          if (!dateStr) return;
+
+          // Si tous les candidats pour cette activité sont en vacances ce jour-là
+          const allAbsent = candidates.every((doc) =>
+            isDoctorOnVacationForFixed(doc, dateStr, vacations)
+          );
+
+          if (allAbsent) {
+            console.log(`⚠️ Aucun médecin disponible pour ${activity} le ${dayName} (${dateStr}). Suspension automatique de la contrainte.`);
+            // Recherche s'il y a déjà une période couvrant ce jour
+            const monday = mondayOfIsoWeekKey(currentWeekKey);
+            if (monday) {
+              const sunday = new Date(monday.getTime());
+              sunday.setDate(monday.getDate() + 6);
+              const start_date = monday.toISOString().split("T")[0];
+              const end_date = sunday.toISOString().split("T")[0];
+
+              // Ajoute la suspension pour la semaine
+              nextPeriods.push({
+                start_date,
+                end_date,
+                activities: [activity],
+                reason: `Absence de tous les candidats pour ${activity} sur S${wnEarly.week}`,
+              });
+            }
+          }
+        };
+
+        // CDL: Mardi (O, V)
+        checkActivityAbsence("MARDI", ["O", "V"], "CDL");
+        // LFB: Jeudi (H, S, G)
+        checkActivityAbsence("JEUDI", ["H", "S", "G"], "LFB");
+        // PSSL: Jeudi (B, Z)
+        checkActivityAbsence("JEUDI", ["B", "Z"], "PSSL");
+
+        return buildActivityMaintenancePayload(nextPeriods);
+      })(),
       // Salle de coro indisponible (périodes calendrier — optionnel, même
       // principe qu'activity_maintenance ci-dessus). Bug corrigé 31/07/2026 :
       // les consignes vocales portant sur plusieurs semaines n'étaient
