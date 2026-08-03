@@ -179,18 +179,20 @@ export function applyChAstreinteConstraints(
 }
 
 /**
- * Règle d'équité M/O/W : le médecin qui assure l'ATL Nuit Vendredi
- * **et/ou** l'ATL weekend (Samedi/Dimanche, toutes périodes) est exclu
- * des Astreintes ATL Nuit **Lundi** et **Mardi** de la même semaine.
+ * Règle structurelle absolue M/O/W : le médecin qui assure l'ATL Nuit Vendredi
+ * **et/ou** l'ATL weekend (Samedi/Dimanche, toutes périodes) est **toujours**
+ * exclu des Astreintes ATL Nuit **Lundi** et **Mardi** de la même semaine,
+ * même si la case est en statut validé.
  *
- * Principe : ce médecin a déjà 4–5 astreintes sur la semaine (Ven + Sam + Dim) ;
- * lui retirer Lun/Mar rééquilibre la charge au sein du trio.
+ * Comportement identique aux contraintes CH (toujours appliquées) :
+ * - Si la case Lun/Mar ATL Nuit ne contient QUE le médecin weekend → vidée.
+ * - Si la case contient le médecin weekend + d'autres → le médecin weekend
+ *   est retiré, les autres restent.
+ * - Si la case contient UNIQUEMENT des médecins qui NE font PAS le weekend
+ *   → la case est préservée intégralement (saisie admin).
  *
  * S'applique après `applyChAstreinteConstraints` et `applyWeekendWomRules`
  * pour pouvoir lire les cases Ven/Sam/Dim déjà remplies.
- *
- * Ne touche **jamais** une case Lun/Mar ATL Nuit déjà **validée** avec un
- * médecin listé différent (saisie admin prioritaire).
  */
 export function applyMOWWeekendExcludesMonTueNights(
   schedule: ScheduleData,
@@ -220,26 +222,11 @@ export function applyMOWWeekendExcludesMonTueNights(
   for (const day of ["LUNDI", "MARDI"] as const) {
     const cell = next["Astreintes ATL Nuit"]?.[day]
     if (!cell) continue
-    const values = cell.value || []
-    const listedDocs = values.filter((d) => Boolean(d) && d.length > 0)
 
-    // Ne pas toucher une case validée avec un médecin différent des candidats à retirer
-    const hasOtherValidated =
-      cell.status === "validated" &&
-      listedDocs.some((d) => !weekendDoctors.has(d))
-    if (hasOtherValidated) continue
-
-    const filtered = values.filter((d) => !weekendDoctors.has(d))
-    if (filtered.length !== values.length) {
-      next = removeDoctorFromCell(next, "Astreintes ATL Nuit", day,
-        // On retire chaque médecin impliqué un par un
-        // (removeDoctorFromCell ne retire qu'un médecin à la fois)
-        [...weekendDoctors][0]!,
-      )
-      // Plusieurs médecins à retirer : boucle
-      for (const doc of [...weekendDoctors].slice(1)) {
-        next = removeDoctorFromCell(next, "Astreintes ATL Nuit", day, doc)
-      }
+    // Retire chaque médecin weekend de la case (même si validé) —
+    // règle structurelle absolue, identique à removeDoctorFromCell pour CH.
+    for (const doc of [...weekendDoctors]) {
+      next = removeDoctorFromCell(next, "Astreintes ATL Nuit", day, doc)
     }
   }
 
