@@ -1542,7 +1542,7 @@ export function ScheduleApp({
                 <div className="hidden sm:flex flex-col min-w-0">
                   <h1 className="text-sm font-black tracking-tight text-slate-900 leading-none">Cardiomaine</h1>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
-                    Espace Praticien
+                    {isAdmin ? "Administration" : "Espace Praticien"}
                   </span>
                 </div>
               </div>
@@ -1687,99 +1687,6 @@ export function ScheduleApp({
                         <span className="hidden sm:inline">Mes créneaux</span>
                       </Button>
                     )}
-
-                    {/* Practitioner Profile Dropdown */}
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-2 border-slate-200 bg-white px-2.5 shadow-2xs hover:bg-slate-50"
-                        >
-                          <div
-                            className={cn(
-                              "flex size-5 items-center justify-center rounded-full text-[10px] font-black text-white shadow-xs",
-                              DOCTOR_COLORS[doctorCode] || "bg-blue-600",
-                            )}
-                          >
-                            {doctorCode || "P"}
-                          </div>
-                          <span className="text-xs font-bold text-slate-800">
-                            Dr. {doctorCode || currentUser || "—"}
-                          </span>
-                          <User className="size-3.5 text-slate-400" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent align="end" className="w-56 p-1.5 shadow-xl border-slate-200 bg-white">
-                        <div className="px-2.5 py-2 border-b border-slate-100 mb-1">
-                          <p className="text-xs font-extrabold text-slate-900">Dr. {doctorCode || currentUser}</p>
-                          <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Espace Praticien</p>
-                        </div>
-                        
-                        <div className="space-y-0.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (myPrivateNote) {
-                                alert(`Message de l'administrateur :\n\n${myPrivateNote}`)
-                              } else {
-                                alert("Vous n'avez aucun nouveau message privé aujourd'hui.")
-                              }
-                            }}
-                            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            <div className="flex items-center gap-2">
-                              <Mail className={cn("size-4", myPrivateNote ? "text-red-500" : "text-slate-400")} />
-                              <span>Messages privés</span>
-                            </div>
-                            {myPrivateNote && (
-                              <span className="flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm animate-pulse">1</span>
-                            )}
-                          </button>
-                          
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedDoctorForVacations("")
-                              setVacationsModalOpen(true)
-                            }}
-                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            <Palmtree className="size-4 text-emerald-600" />
-                            <span>Mes Congés & Absences</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={openWorkloadStats}
-                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            <BarChart3 className="size-4 text-blue-600" />
-                            <span>Statistiques de charge</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={onChangePassword}
-                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            <Key className="size-4 text-indigo-600" />
-                            <span>Changer de mot de passe</span>
-                          </button>
-
-                          <div className="my-1 border-t border-slate-100" />
-
-                          <button
-                            type="button"
-                            onClick={onLogout}
-                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
-                          >
-                            <LogOut className="size-4 text-red-500" />
-                            <span>Se déconnecter</span>
-                          </button>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
                   </div>
                 )}
 
@@ -1969,6 +1876,100 @@ export function ScheduleApp({
                     )}
                   </>
                 )}
+
+                {/* Practitioner Profile Dropdown */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-2 border-slate-200 bg-white px-2.5 shadow-2xs hover:bg-slate-50"
+                    >
+                      <div
+                        className={cn(
+                          "flex size-5 items-center justify-center rounded-full text-[10px] font-black text-white shadow-xs",
+                          DOCTOR_COLORS[doctorCode] || "bg-blue-600",
+                        )}
+                      >
+                        {doctorCode || "P"}
+                      </div>
+                      <span className="text-xs font-bold text-slate-800">
+                        Dr. {doctorCode || currentUser || "—"}
+                      </span>
+                      <User className="size-3.5 text-slate-400" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-56 p-1.5 shadow-xl border-slate-200 bg-white">
+                    <div className="px-2.5 py-2 border-b border-slate-100 mb-1">
+                      <p className="text-xs font-extrabold text-slate-900">Dr. {doctorCode || currentUser}</p>
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Espace Praticien</p>
+                    </div>
+                    
+                    <div className="space-y-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (myPrivateNote) {
+                            alert(`Message de l'administrateur :\n\n${myPrivateNote}`)
+                          } else {
+                            alert("Vous n'avez aucun nouveau message privé aujourd'hui.")
+                          }
+                        }}
+                        className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Mail className={cn("size-4", myPrivateNote ? "text-red-500" : "text-slate-400")} />
+                          <span>Messages privés</span>
+                        </div>
+                        {myPrivateNote && (
+                          <span className="flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm animate-pulse">1</span>
+                        )}
+                      </button>
+                      
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDoctorForVacations("")
+                          setVacationsModalOpen(true)
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        <Palmtree className="size-4 text-emerald-600" />
+                        <span>Mes Congés & Absences</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={openWorkloadStats}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        <BarChart3 className="size-4 text-blue-600" />
+                        <span>Statistiques de charge</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={onChangePassword}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        <Key className="size-4 text-indigo-600" />
+                        <span>Changer de mot de passe</span>
+                      </button>
+
+                      <div className="my-1 border-t border-slate-100" />
+
+                      <button
+                        type="button"
+                        onClick={onLogout}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        <LogOut className="size-4 text-red-500" />
+                        <span>Se déconnecter</span>
+                      </button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
                 <Button
                   variant="ghost"
                   size="icon"

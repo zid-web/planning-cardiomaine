@@ -55,7 +55,17 @@ export async function getAllPrivateNotesForDate(noteDate: string): Promise<Priva
     .eq('id', user.id)
     .single();
 
-  const isAdmin = profile?.role === 'admin' || user.email?.toLowerCase().includes('admin') || ['M', 'Z', 'L'].includes(profile?.doctor_code?.toUpperCase() || '');
+  const profileRole = profile?.role?.toLowerCase() || '';
+  const doctorCode = profile?.doctor_code?.toUpperCase() || '';
+  const userEmail = user.email?.toLowerCase() || '';
+
+  const isAdmin = profileRole === 'admin' || 
+                  profileRole === 'administrateur' ||
+                  userEmail.includes('admin') || 
+                  ['M', 'Z', 'L'].includes(doctorCode) ||
+                  userEmail === 'luciecardiomaine@gmail.com' ||
+                  userEmail === 'ouissem.zid@gmail.com' ||
+                  userEmail === 'ouissemzid@gmail.com';
   if (!isAdmin) return [];
 
   const { data } = await supabase
@@ -77,15 +87,29 @@ export async function upsertPrivateNote(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: 'Non authentifié' };
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role, doctor_code')
     .eq('id', user.id)
     .single();
     
-  const isAdmin = profile?.role === 'admin' || user.email?.toLowerCase().includes('admin') || ['M', 'Z', 'L'].includes(profile?.doctor_code?.toUpperCase() || '');
+  const profileRole = profile?.role?.toLowerCase() || '';
+  const doctorCode = profile?.doctor_code?.toUpperCase() || '';
+  const userEmail = user.email?.toLowerCase() || '';
+
+  const isAdmin = profileRole === 'admin' || 
+                  profileRole === 'administrateur' ||
+                  userEmail.includes('admin') || 
+                  ['M', 'Z', 'L'].includes(doctorCode) ||
+                  userEmail === 'luciecardiomaine@gmail.com' ||
+                  userEmail === 'ouissem.zid@gmail.com' ||
+                  userEmail === 'ouissemzid@gmail.com';
+
   if (!isAdmin) {
-    return { success: false, error: 'Droits insuffisants (admin requis)' };
+    return { 
+      success: false, 
+      error: `Droits insuffisants (admin requis) — diag: email=${user.email} id=${user.id} profile=${JSON.stringify(profile)} queryErr=${profileError?.message || 'none'}` 
+    };
   }
   if (!targetDoctor.trim()) {
     return { success: false, error: 'Médecin destinataire requis' };
@@ -135,7 +159,17 @@ export async function deletePrivateNote(
     .eq('id', user.id)
     .single();
     
-  const isAdmin = profile?.role === 'admin' || user.email?.toLowerCase().includes('admin') || ['M', 'Z', 'L'].includes(profile?.doctor_code?.toUpperCase() || '');
+  const profileRole = profile?.role?.toLowerCase() || '';
+  const doctorCode = profile?.doctor_code?.toUpperCase() || '';
+  const userEmail = user.email?.toLowerCase() || '';
+
+  const isAdmin = profileRole === 'admin' || 
+                  profileRole === 'administrateur' ||
+                  userEmail.includes('admin') || 
+                  ['M', 'Z', 'L'].includes(doctorCode) ||
+                  userEmail === 'luciecardiomaine@gmail.com' ||
+                  userEmail === 'ouissem.zid@gmail.com' ||
+                  userEmail === 'ouissemzid@gmail.com';
   if (!isAdmin) {
     return { success: false, error: 'Droits insuffisants (admin requis)' };
   }
