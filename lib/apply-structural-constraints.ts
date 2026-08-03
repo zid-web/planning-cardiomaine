@@ -11,6 +11,7 @@ import {
   applyNurseFixedAssignments,
   clearFixedAssigneesOnVacation,
   dateStrForWeekDay,
+  isDoctorOnVacationForFixed,
   isOddIsoWeek,
   mondayOfIsoWeekKey,
 } from "@/lib/fixed-assignments"
@@ -194,10 +195,44 @@ export function applyChAstreinteConstraints(
  * S'applique après `applyChAstreinteConstraints` et `applyWeekendWomRules`
  * pour pouvoir lire les cases Ven/Sam/Dim déjà remplies.
  */
+function isDoctorPresentAllWeek(
+  doctorId: string,
+  schedule: ScheduleData,
+  vacations: DoctorVacation[] = [],
+  weekKey?: string,
+): boolean {
+  for (const day of DAYS) {
+    const conges = schedule["Congés"]?.[day]?.value || []
+    if (conges.includes(doctorId)) return false
+    const legacy = schedule["Vacances"]?.[day]?.value || []
+    if (legacy.includes(doctorId)) return false
+    if (weekKey) {
+      const dateStr = dateStrForWeekDay(weekKey, day)
+      if (dateStr && isDoctorOnVacationForFixed(doctorId, dateStr, vacations)) {
+        return false
+      }
+    }
+  }
+  return true
+}
+
+/**
+  * Règle M/O/W : le médecin qui assure l'ATL Nuit Vendredi et/ou l'ATL weekend
+  * est exclu des Astreintes ATL Nuit Lundi et Mardi de la même semaine.
+  *
+  * CRITIQUE : Cette règle n'est valable QUE SI M, O et W sont TOUS LES 3 PRÉSENTS
+  * pendant la semaine (aucune absence / congés sur l'un des 3).
+  */
 export function applyMOWWeekendExcludesMonTueNights(
   schedule: ScheduleData,
+  vacations: DoctorVacation[] = [],
+  weekKey?: string,
 ): ScheduleData {
   const MOW = ["M", "O", "W"] as const
+
+  // La règle n'est appliquée QUE si M, O et W sont tous les 3 présents toute la semaine
+  const all3Present = MOW.every((doc) => isDoctorPresentAllWeek(doc, schedule, vacations, weekKey))
+  if (!all3Present) return schedule
 
   // Détecte les médecins M/O/W présents dans l'ATL Ven Nuit ou ATL Sam/Dim (toutes lignes)
   const weekendDoctors = new Set<string>()
@@ -744,8 +779,8 @@ export function applyStructuralConstraints(
     next = applyWeekendGardeAtlCoupling(next)
   }
 
-  // 3ter) Équité M/O/W : médecin en ATL Ven nuit ou weekend → exclu ATL Nuit Lun/Mar
-  next = applyMOWWeekendExcludesMonTueNights(next)
+  // 3ter) Équité M/O/W : médecin en ATL Ven nuit ou weekend → exclu ATL Nuit Lun/Mar (si tous les 3 présents)
+  next = applyMOWWeekendExcludesMonTueNights(next, vacations, weekKey)
 
   // 4) NCT calendrier + LFB
   next = applyNctCalendarConstraints(next, weekKey)
@@ -780,8 +815,8 @@ export function applyStructuralConstraints(
   // 9bis) Re-filtre ATL/Coro après strips
   next = applyAtlCoronarographisteEligibility(next)
 
-  // 9ter) Re-applique équité M/O/W weekend → Lun/Mar nuit (après strips qui peuvent avoir changé Ven/Sam/Dim)
-  next = applyMOWWeekendExcludesMonTueNights(next)
+  // 9ter) Re-applique équité M/O/W weekend → Lun/Mar nuit (si tous les 3 présents)
+  next = applyMOWWeekendExcludesMonTueNights(next, vacations, weekKey)
 
   // 10) Re-miroir Coro→ATL après strips (si Coro a perdu un médecin)
   next = applyAtlFollowsCoroConstraints(next)
