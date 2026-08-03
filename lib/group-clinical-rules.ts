@@ -66,10 +66,8 @@ export const DOC022_CLINICAL_ELIGIBILITY = {
   irm: ["S"],
   /** Scintigraphie */
   scinti: ["T", "R"],
-  /** Cs cabinet Tessé (préférence : S, B, V, U, Val - jamais M, O, W) */
-  cs_tesse: ["S", "B", "V", "U", "Val"],
-  /** Cs cabinet PSS (M, O, W principalement ; S, B, Val n'y vont jamais) */
-  cs_pss: ["M", "O", "W", "A", "H", "Z", "K", "P", "R", "G", "V", "U", "T"],
+  /** Cs cabinet Tessé (préférence) */
+  cs_tesse: ["B", "S", "V", "U"],
 } as const
 
 /**
@@ -210,9 +208,6 @@ export function isCoroEligibleDoctor(doctorId: string): boolean {
  */
 export function toSolverClinicalRulesPayload() {
   return {
-    clinical_eligibility: {
-      ...DOC022_CLINICAL_ELIGIBILITY,
-    },
     doc022_fixed_slots: DOC022_FIXED_CLINICAL_SLOTS.map((s) => ({
       row_key: s.row,
       day_name: s.day,
@@ -220,10 +215,8 @@ export function toSolverClinicalRulesPayload() {
       note: s.note,
     })),
     half_days_off: DOC022_HALF_DAYS_OFF,
-    // Aligné DOC022 + déjà en prod
     reeduc_allowed: [...DOC022_CLINICAL_ELIGIBILITY.reeduc],
     coro_allowed: [...DOC022_CLINICAL_ELIGIBILITY.coro],
-    /** ATL pool solveur = M/O/W/CH. FV ATL jeudi Midi = sync structurelle Coro (pas de vars ASTREINTE globales FV côté solveur). */
     astreinte_allowed: [...DOC022_CLINICAL_ELIGIBILITY.atl],
     rythmo_allowed: [...DOC022_CLINICAL_ELIGIBILITY.rythmo],
     nct_allowed: ["M", "W"],
