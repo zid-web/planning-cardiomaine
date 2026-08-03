@@ -244,6 +244,60 @@ export function computeWeeklyCoro(scheduleData: ScheduleData): Record<string, nu
   return computeWeeklyRowBucket(scheduleData, CORO_ROWS)
 }
 
+/** Type pour les comptes Coro Matin/Apm séparés par médecin M/O/W. */
+export type CoroMOWSplitCounts = {
+  matin: Record<string, number>
+  apm: Record<string, number>
+}
+
+const CORO_WOM_SET = new Set(["M", "O", "W"])
+
+/**
+ * Compte Coro Matin et Coro Apm **séparément** pour M, O, W sur une semaine.
+ * Utilisé pour la rotation équitable M/O/W intra-semaine.
+ */
+export function computeWeeklyCoroMOW(scheduleData: ScheduleData): CoroMOWSplitCounts {
+  const matin: Record<string, number> = { M: 0, O: 0, W: 0 }
+  const apm: Record<string, number> = { M: 0, O: 0, W: 0 }
+  const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"]
+  for (const day of WEEKDAYS) {
+    for (const doc of (scheduleData["Matin - Coro"]?.[day]?.value || []) as string[]) {
+      if (CORO_WOM_SET.has(doc)) matin[doc] = (matin[doc] || 0) + 1
+    }
+    for (const doc of (scheduleData["Apm - Coro"]?.[day]?.value || []) as string[]) {
+      if (CORO_WOM_SET.has(doc)) apm[doc] = (apm[doc] || 0) + 1
+    }
+  }
+  return { matin, apm }
+}
+
+/**
+ * Équité Coro Matin/Apm séparés pour M/O/W — fenêtre glissante 6 mois.
+ * Scan JSON (pas de colonnes DB).
+ */
+export async function getCoroMOWEquity(
+  now: Date = new Date(),
+): Promise<CoroMOWSplitCounts> {
+  const result = await accumulateFromScheduleWindow(
+    now,
+    computeWeeklyCoroMOW,
+    (total, doc, weekVal) => {
+      if (!total.matin) total.matin = { M: 0, O: 0, W: 0 }
+      if (!total.apm) total.apm = { M: 0, O: 0, W: 0 }
+      const wv = weekVal as CoroMOWSplitCounts
+      for (const d of ["M", "O", "W"]) {
+        total.matin[d] = (total.matin[d] || 0) + (wv.matin?.[d] || 0)
+        total.apm[d] = (total.apm[d] || 0) + (wv.apm?.[d] || 0)
+      }
+    },
+    "CORO-MOW-Matin/Apm",
+  )
+  return {
+    matin: (result as unknown as CoroMOWSplitCounts).matin || { M: 0, O: 0, W: 0 },
+    apm: (result as unknown as CoroMOWSplitCounts).apm || { M: 0, O: 0, W: 0 },
+  }
+}
+
 /** Compteurs Cs / ETT / Stress pour une semaine (vacations cliniques). */
 export function computeWeeklyGroupe1Clinical(
   scheduleData: ScheduleData,

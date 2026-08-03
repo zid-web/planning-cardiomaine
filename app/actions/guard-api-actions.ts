@@ -8,10 +8,13 @@ import { generateWeekSchedule, getWeekNumber } from "@/lib/schedule-utils";
 import {
   accumulateEquityFromSchedules,
   getCoroEquity,
+  getCoroMOWEquity,
   getCumulativeEquityFromTable,
   getGroupe1Equity,
   type EquityCounts,
+  type CoroMOWSplitCounts,
 } from "@/lib/equity-tracking";
+import { applyCoroWOMRotation } from "@/lib/coro-rotation";
 import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
@@ -229,10 +232,11 @@ export async function generateGuardsViaAPI(
       getLastComboGardeState(),
     ]);
 
-    // 3. Récupère les congés + médecin de garde dimanche précédent
-    const [congres, previousSundayGuardDoctor] = await Promise.all([
+    // 3. Récupère les congés + médecin de garde dimanche précédent + équité Coro M/O/W
+    const [congres, previousSundayGuardDoctor, coroMOWCounts] = await Promise.all([
       getCongres(),
       getLastSundayGuardDoctor(weekStartDate),
+      getCoroMOWEquity(),
     ]);
 
     // 4. Historique Cs/ETT/EE/hors site → `historical_patterns` pour le solveur
@@ -421,9 +425,23 @@ export async function generateGuardsViaAPI(
     // Cs/ETT/EE/Stress + hors site (CDL/IRM/…) viennent des assignments Render
     // (HIST:: / HORSSITE:: → activity suffixe) → pending via GENERATOR_PROPOSAL_ROW_KEYS.
     const weekKey = currentWeekKey;
-    const scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations, {
+    let scheduleData = convertAPIResponseToSchedule(data, weekKey, vacations, {
       previousSundayGuardDoctor,
     });
+
+    // 7bis. Rotation équitable Coro Matin/Apm entre M, O, W (lundi-vendredi).
+    // Ne remplace JAMAIS une case déjà validée par un médecin listé.
+    // Propositions en statut pending (admin peut modifier/valider).
+    try {
+      scheduleData = applyCoroWOMRotation(
+        scheduleData,
+        weekKey,
+        vacations,
+        coroMOWCounts,
+      );
+    } catch (coroErr) {
+      console.warn("[generateGuardsViaAPI] rotation Coro M/O/W ignorée:", coroErr);
+    }
 
     // Persiste qui a *réellement* le rôle Garde Sam (peut différer de l’ancre)
     if (isWomComboWeekend(weekKey)) {
