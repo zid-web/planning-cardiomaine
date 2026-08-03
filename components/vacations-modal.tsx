@@ -21,6 +21,7 @@ interface VacationsModalProps {
   /** Liste à jour optionnelle pour appliquer le planning sans attendre un 2ᵉ fetch. */
   onVacationsUpdated?: (next?: DoctorVacation[]) => void | Promise<void>
   showDoctorSelector?: boolean
+  isAdmin?: boolean
 }
 
 type FormMode = 'idle' | 'create' | 'edit'
@@ -54,6 +55,7 @@ export function VacationsModal({
   isOpen,
   onClose,
   onVacationsUpdated,
+  isAdmin = false,
 }: VacationsModalProps) {
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
   const [filterDoctor, setFilterDoctor] = useState<string>('all')
@@ -293,15 +295,17 @@ export function VacationsModal({
                 ))}
               </select>
             </div>
-            <button
-              type="button"
-              onClick={openCreate}
-              disabled={isLoading || formMode === 'create'}
-              className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:bg-gray-300"
-            >
-              <Plus className="h-4 w-4" />
-              Ajouter un congé
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={openCreate}
+                disabled={isLoading || formMode === 'create'}
+                className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:bg-gray-300"
+              >
+                <Plus className="h-4 w-4" />
+                Ajouter un congé
+              </button>
+            )}
           </div>
 
           {(formMode === 'create' || formMode === 'edit') && (
@@ -406,74 +410,52 @@ export function VacationsModal({
                 {filterDoctor !== 'all' ? ` pour Dr. ${filterDoctor}` : ''}
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-gray-200">
-                <table className="w-full min-w-[560px] text-left text-sm">
-                  <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-600">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Médecin</th>
-                      <th className="px-3 py-2 font-semibold">Période</th>
-                      <th className="px-3 py-2 font-semibold">Durée</th>
-                      <th className="px-3 py-2 font-semibold">Motif</th>
-                      <th className="px-3 py-2 text-right font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredVacations.map((vacation) => {
-                      const color = DOCTOR_COLORS[vacation.doctor_id] || 'bg-slate-500'
-                      const isEditing = editingId === vacation.id
-                      return (
-                        <tr
-                          key={vacation.id}
-                          className={cn('bg-white', isEditing && 'bg-amber-50')}
-                        >
-                          <td className="px-3 py-2.5">
-                            <span
-                              className={cn(
-                                'inline-flex min-w-[2rem] justify-center rounded px-2 py-0.5 text-xs font-semibold text-white',
-                                color,
-                              )}
-                            >
-                              {vacation.doctor_id}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 font-medium text-gray-900">
-                            {formatDateRange(vacation.start_date, vacation.end_date)}
-                          </td>
-                          <td className="px-3 py-2.5 text-gray-600">
-                            {getVacationDayCount(vacation.start_date, vacation.end_date)} j
-                          </td>
-                          <td className="px-3 py-2.5 text-gray-600">
-                            {vacation.reason?.trim() || '—'}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <div className="flex justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => openEdit(vacation)}
-                                disabled={isLoading}
-                                className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-50"
-                                title="Modifier"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                                Modifier
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleDelete(vacation.id)}
-                                disabled={isLoading}
-                                className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
-                                title="Supprimer"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Supprimer
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+              <div className="flex flex-col gap-4">
+                {Object.entries(
+                  filteredVacations.reduce((acc, v) => {
+                    if (!acc[v.doctor_id]) acc[v.doctor_id] = []
+                    acc[v.doctor_id].push(v)
+                    return acc
+                  }, {} as Record<string, DoctorVacation[]>)
+                ).map(([docId, vacs]) => (
+                  <div key={docId} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm transition-all hover:shadow-md">
+                    <div className="flex items-center gap-3 mb-3 border-b border-gray-50 pb-2">
+                      <span className={cn('inline-flex items-center justify-center rounded-lg w-8 h-8 text-sm font-bold text-white', DOCTOR_COLORS[docId] || 'bg-slate-500')}>
+                        {docId}
+                      </span>
+                      <h4 className="font-semibold text-gray-900">Dr. {docId}</h4>
+                      <span className="ml-auto text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                        {vacs.length} période{vacs.length > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      {vacs.map(vacation => {
+                        const isEditing = editingId === vacation.id
+                        return (
+                          <div key={vacation.id} className={cn("flex items-center gap-3 border rounded-lg px-3 py-2 text-sm transition-colors", isEditing ? "border-amber-400 bg-amber-50" : "bg-gray-50 border-gray-200 hover:border-gray-300")}>
+                             <div className="flex flex-col">
+                               <span className="font-semibold text-gray-800">{formatDateRange(vacation.start_date, vacation.end_date)}</span>
+                               <span className="text-xs text-gray-500 mt-0.5">
+                                 {getVacationDayCount(vacation.start_date, vacation.end_date)} jours
+                                 {vacation.reason ? <span className="ml-1 px-1.5 py-0.5 bg-gray-200 text-gray-700 rounded text-[10px] uppercase font-bold tracking-wider">{vacation.reason}</span> : ''}
+                               </span>
+                             </div>
+                             {isAdmin && (
+                               <div className="flex flex-col gap-1.5 ml-2 border-l border-gray-200 pl-3">
+                                  <button onClick={() => openEdit(vacation)} className="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 p-1 rounded transition-colors" title="Modifier">
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button onClick={() => handleDelete(vacation.id)} className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 p-1 rounded transition-colors" title="Supprimer">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                               </div>
+                             )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

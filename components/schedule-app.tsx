@@ -25,6 +25,7 @@ import {
   List,
   Loader2,
   LogOut,
+  Mail,
   MessageSquare,
   Mic,
   Palmtree,
@@ -1498,6 +1499,16 @@ export function ScheduleApp({
     // NCT: Block Mon, Tue, Wed, Fri
     if (row.includes("NCT") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) return true
 
+    // Astreintes ATL Midi : fermées (non attribuables) de Lundi à Vendredi de S31 à S34 inclus — levée auto dès S35
+    if (
+      row.includes("Astreintes ATL Midi") &&
+      currentWeekInfo.week >= 31 &&
+      currentWeekInfo.week <= 34 &&
+      ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"].includes(day)
+    ) {
+      return true
+    }
+
     if (row.includes("Entrées PSS") && ["MERCREDI", "JEUDI", "VENDREDI"].includes(day)) return true
 
     return false
@@ -1706,6 +1717,26 @@ export function ScheduleApp({
                         </div>
                         
                         <div className="space-y-0.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (myPrivateNote) {
+                                alert(`Message de l'administrateur :\n\n${myPrivateNote}`)
+                              } else {
+                                alert("Vous n'avez aucun nouveau message privé aujourd'hui.")
+                              }
+                            }}
+                            className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Mail className={cn("size-4", myPrivateNote ? "text-red-500" : "text-slate-400")} />
+                              <span>Messages privés</span>
+                            </div>
+                            {myPrivateNote && (
+                              <span className="flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm animate-pulse">1</span>
+                            )}
+                          </button>
+                          
                           <button
                             type="button"
                             onClick={() => {
@@ -3023,6 +3054,7 @@ export function ScheduleApp({
           isOpen={vacationsModalOpen}
           onClose={() => setVacationsModalOpen(false)}
           onVacationsUpdated={handleVacationsUpdated}
+          isAdmin={isAdmin}
         />
       </Suspense>
     </div>
