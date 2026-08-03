@@ -3,28 +3,39 @@
 import React, { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
   Bell,
   Calendar,
+  CalendarDays,
+  CalendarIcon,
   Check,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  EyeOff,
   FileDown,
   History,
   Home,
+  Info,
+  Key,
+  LayoutGrid,
   List,
   Loader2,
+  LogOut,
   MessageSquare,
   Mic,
+  Palmtree,
+  Sparkles,
+  Sun,
+  User,
   UserCog,
+  Users,
   Wifi,
   WifiOff,
   X,
-  Info,
-  BarChart3,
-  CheckCircle2,
-  CalendarIcon,
-  AlertTriangle,
-  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -167,6 +178,7 @@ export function ScheduleApp({
   onChangePassword: () => void
 }) {
   const [activeTab, setActiveTab] = useState<"today" | "week" | "all">("today")
+  const [highlightMyShifts, setHighlightMyShifts] = useState(false)
   const [currentDate, setCurrentDate] = useState(new Date()) // Track current date
   const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null)
   const [noteModalOpen, setNoteModalOpen] = useState(false)
@@ -1507,55 +1519,104 @@ export function ScheduleApp({
           >
             <div
               className={cn(
-                "sticky top-0 z-30 flex shrink-0 flex-wrap items-center justify-between gap-1.5 rounded-lg border bg-white/95 shadow-sm backdrop-blur-sm",
-                compactHeader ? "mb-1.5 p-1.5" : "mb-2 p-2 md:mb-3 md:p-3",
+                "sticky top-0 z-30 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/90 bg-white/95 shadow-sm backdrop-blur-md transition-all",
+                compactHeader ? "mb-1.5 p-1.5" : "mb-3 p-2.5 md:p-3",
               )}
             >
-              <div className="flex flex-wrap items-center gap-1 md:gap-1.5">
+              {/* Left: Branding & Role Badge */}
+              <div className="flex items-center gap-2">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-slate-900 text-white shadow-sm ring-1 ring-white/20">
+                  <Activity className="size-4" />
+                </div>
+                <div className="hidden sm:flex flex-col min-w-0">
+                  <h1 className="text-sm font-black tracking-tight text-slate-900 leading-none">Cardiomaine</h1>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                    {isAdmin ? "Administration" : "Espace Praticien"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Center: Desktop 3-Tab Segmented Switcher */}
+              <div className="hidden md:flex items-center rounded-xl bg-slate-100/90 p-1 border border-slate-200/80 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("today")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all duration-200",
+                    activeTab === "today"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
+                  )}
+                >
+                  <Sun className="size-3.5 text-amber-400" />
+                  <span>Aujourd&apos;hui</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("week")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all duration-200",
+                    activeTab === "week"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
+                  )}
+                >
+                  <CalendarDays className="size-3.5 text-indigo-400" />
+                  <span>Semaine</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("all")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all duration-200",
+                    activeTab === "all"
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
+                  )}
+                >
+                  <LayoutGrid className="size-3.5 text-blue-400" />
+                  <span>Global</span>
+                </button>
+              </div>
+
+              {/* Week Navigator Pill */}
+              <div className="flex items-center gap-1 bg-slate-50/80 p-0.5 rounded-xl border border-slate-200/80">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   onClick={prevWeek}
-                  className={cn("shrink-0", compactHeader ? "h-7 w-7" : "h-8 w-8")}
+                  className="h-7 w-7 rounded-lg text-slate-700 hover:bg-white hover:text-slate-900"
                 >
-                  <ChevronLeft className={compactHeader ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                  <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <div className="min-w-0 px-0.5 text-center">
-                  <h2
-                    className={cn(
-                      "font-bold leading-tight text-slate-900",
-                      compactHeader ? "text-sm" : "text-sm md:text-base",
-                    )}
-                  >
-                    {compactHeader ? `S${currentWeekInfo.week}` : `Semaine ${currentWeekInfo.week}`}
-                  </h2>
-                  {!compactHeader && (
-                    <p className="text-[10px] leading-none text-slate-500">{currentWeekInfo.year}</p>
-                  )}
+                <div className="px-1 text-center min-w-[70px]">
+                  <span className="text-xs font-extrabold text-slate-900 tracking-tight">
+                    S{currentWeekInfo.week}
+                  </span>
+                  <span className="hidden sm:inline text-[10px] text-slate-500 ml-1 font-medium">
+                    ({currentWeekInfo.year})
+                  </span>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   onClick={nextWeek}
-                  className={cn("shrink-0", compactHeader ? "h-7 w-7" : "h-8 w-8")}
+                  className="h-7 w-7 rounded-lg text-slate-700 hover:bg-white hover:text-slate-900"
                 >
-                  <ChevronRight className={compactHeader ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   onClick={goToToday}
                   title="Semaine actuelle"
-                  className={cn("shrink-0", compactHeader ? "h-7 w-7" : "h-8 w-8")}
+                  className="h-7 w-7 rounded-lg text-blue-600 hover:bg-blue-50"
                 >
-                  <CalendarIcon className={compactHeader ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                  <CalendarIcon className="h-3.5 w-3.5" />
                 </Button>
-                {!compactHeader && (
-                  <Button variant="ghost" size="sm" onClick={goToToday} className="hidden h-8 px-2 text-xs sm:inline-flex">
-                    Aujourd&apos;hui
-                  </Button>
-                )}
               </div>
+
+              {/* Warnings / Solver proposals warnings */}
               {(() => {
                 const actionableWarnings = generatedScheduleWarnings.filter(
                   (w) =>
@@ -1570,14 +1631,14 @@ export function ScheduleApp({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="mb-1 h-7 gap-1.5 self-start border-yellow-300 bg-yellow-50 px-2 text-[11px] font-semibold text-yellow-900 hover:bg-yellow-100"
+                        className="h-7 gap-1.5 border-yellow-300 bg-yellow-50 px-2 text-[11px] font-bold text-yellow-900 hover:bg-yellow-100"
                       >
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                        {actionableWarnings.length} alerte{actionableWarnings.length > 1 ? "s" : ""} de génération
+                        <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" />
+                        {actionableWarnings.length} alerte{actionableWarnings.length > 1 ? "s" : ""}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent align="start" className="max-h-80 w-80 overflow-y-auto p-3">
-                      <p className="mb-1 text-xs font-semibold text-yellow-900">Alertes de génération :</p>
+                      <p className="mb-1 text-xs font-bold text-yellow-900">Alertes de génération :</p>
                       <ul className="list-inside list-disc text-[11px] text-yellow-800">
                         {actionableWarnings.map((warning, i) => (
                           <li key={i} className="mb-1">{warning}</li>
@@ -1587,39 +1648,118 @@ export function ScheduleApp({
                   </Popover>
                 )
               })()}
-              {solverProposalCount > 0 && !compactHeader && isGlobalView && (
-                <div className="mb-1 flex w-full flex-wrap items-center gap-3 rounded-md border border-violet-200 bg-violet-50 px-2 py-1.5 text-[11px] text-violet-900">
-                  <span className="font-semibold">Légende :</span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-block size-3 rounded-sm bg-violet-50 ring-2 ring-inset ring-violet-400" />
-                    <span className="rounded bg-violet-600 px-1 text-[8px] font-bold uppercase text-white">
-                      Prop.
-                    </span>
-                    Proposition Générer ({solverProposalCount}) — à valider
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-slate-600">
-                    <span className="inline-block size-3 rounded-sm border border-gray-300 bg-white" />
-                    Fixe / saisie validée
-                  </span>
-                  <span className="inline-flex items-center gap-1.5 text-orange-800">
-                    <span className="inline-block size-3 rounded-sm bg-orange-50 ring-1 ring-orange-300" />
-                    Demande de changement
-                  </span>
+
+              {/* Right Side Actions */}
+              <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">
+                <div className="hidden xl:block">
+                  <LiveClock />
                 </div>
-              )}
-              <div className="flex max-w-full flex-wrap items-center justify-end gap-1">
-                {!compactHeader && (
-                  <div className="hidden sm:block">
-                    <LiveClock />
+
+                {/* Non-Admin Menu & Controls */}
+                {!isAdmin && (
+                  <div className="flex items-center gap-1.5">
+                    {/* Highlight My Shifts toggle in Global View */}
+                    {isGlobalView && (
+                      <Button
+                        variant={highlightMyShifts ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setHighlightMyShifts((v) => !v)}
+                        className={cn(
+                          "h-7 gap-1 text-[11px] font-bold transition-all",
+                          highlightMyShifts
+                            ? "bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
+                            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+                        )}
+                        title="Mettre en surbrillance mes créneaux dans la grille globale"
+                      >
+                        {highlightMyShifts ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                        <span className="hidden sm:inline">Mes créneaux</span>
+                      </Button>
+                    )}
+
+                    {/* Practitioner Profile Dropdown */}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-2 border-slate-200 bg-white px-2.5 shadow-2xs hover:bg-slate-50"
+                        >
+                          <div
+                            className={cn(
+                              "flex size-5 items-center justify-center rounded-full text-[10px] font-black text-white shadow-xs",
+                              DOCTOR_COLORS[doctorCode] || "bg-blue-600",
+                            )}
+                          >
+                            {doctorCode || "P"}
+                          </div>
+                          <span className="text-xs font-bold text-slate-800">
+                            Dr. {doctorCode || currentUser || "—"}
+                          </span>
+                          <User className="size-3.5 text-slate-400" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-56 p-1.5 shadow-xl border-slate-200 bg-white">
+                        <div className="px-2.5 py-2 border-b border-slate-100 mb-1">
+                          <p className="text-xs font-extrabold text-slate-900">Dr. {doctorCode || currentUser}</p>
+                          <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Espace Praticien</p>
+                        </div>
+                        
+                        <div className="space-y-0.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDoctorForVacations("")
+                              setVacationsModalOpen(true)
+                            }}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            <Palmtree className="size-4 text-emerald-600" />
+                            <span>Mes Congés & Absences</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={openWorkloadStats}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            <BarChart3 className="size-4 text-blue-600" />
+                            <span>Statistiques de charge</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={onChangePassword}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            <Key className="size-4 text-indigo-600" />
+                            <span>Changer de mot de passe</span>
+                          </button>
+
+                          <div className="my-1 border-t border-slate-100" />
+
+                          <button
+                            type="button"
+                            onClick={onLogout}
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                          >
+                            <LogOut className="size-4 text-red-500" />
+                            <span>Se déconnecter</span>
+                          </button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 )}
+
+                {/* Admin Menu & Toolbar */}
                 {isAdmin && (
                   <>
                     {isGlobalView && (
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2 text-[11px]"
+                        className="h-7 px-2 text-[11px] font-bold"
                         onClick={() => setToolbarExpanded((v) => !v)}
                         title={toolbarExpanded ? "Réduire la barre d’outils" : "Afficher tous les outils"}
                       >
@@ -1783,8 +1923,6 @@ export function ScheduleApp({
                           <MessageSquare className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden xl:inline">Feedback</span>
                         </Button>
-
-                        {/* Bouton doublon "Générer avec Solveur" retiré : GuardGenerationButton = seule entrée. */}
 
                         <Button
                           variant="outline"
@@ -1957,7 +2095,6 @@ export function ScheduleApp({
                                   {rowKey.replace("Matin - ", "").replace("Apm - ", "").replace("Hors site - ", "")}
                                 </td>
                                 {DAYS.map((day, dayIndex) => {
-                                  // Ensure rowData exists before accessing day
                                   const cellData: CellData = rowData?.[day] ?? {
                                     value: [],
                                     type: "empty",
@@ -1977,24 +2114,28 @@ export function ScheduleApp({
                                   const isHoliday = !!holidayName
                                   const isRestrictedHoliday = isHoliday && !isAllowedOnHoliday(rowKey)
                                   const cellBlocked = isCellBlocked(rowKey, day)
+                                  const isMyShift = Boolean(highlightMyShifts && doctorCode && displayAssignees.includes(doctorCode))
 
                                   return (
                                     <td
                                       key={`${rowKey}-${day}`}
                                       className={cn(
-                                        "border border-gray-300 p-1 min-h-[60px] h-auto relative group min-w-[85px] text-[11px] align-middle",
+                                        "border border-gray-300 p-1 min-h-[60px] h-auto relative group min-w-[85px] text-[11px] align-middle transition-all duration-150",
                                         cellBlocked
                                           ? "bg-black cursor-not-allowed opacity-40"
                                           : "cursor-pointer hover:bg-gray-50",
                                         isHoliday && "bg-red-50 border-l-4 border-r-4 border-red-400",
+                                        isMyShift && !cellBlocked && "bg-blue-100/90 ring-2 ring-blue-600 shadow-sm z-10 font-bold",
                                         // Proposition solveur « Générer » — distincte des fixes (validated)
                                         // et des demandes de changement (anneau orange sur badge).
                                         isSolverProposal &&
                                           !cellBlocked &&
+                                          !isMyShift &&
                                           "bg-violet-50/90 ring-2 ring-inset ring-violet-400/70",
                                         isChangeRequestPending &&
                                           !cellBlocked &&
                                           !isSolverProposal &&
+                                          !isMyShift &&
                                           "bg-orange-50/60",
                                       )}
                                       onClick={() => {
@@ -2087,48 +2228,48 @@ export function ScheduleApp({
           </div>
       </div>
 
-      {/* Bottom Navigation — above FABs so Global stays tappable on mobile */}
-      <nav className="safe-area-pb relative z-[95] shrink-0 border-t border-slate-200 bg-white/95 p-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur">
-        <div className="mx-auto grid max-w-lg grid-cols-3 items-stretch gap-1">
+      {/* Bottom Navigation */}
+      <nav className="safe-area-pb relative z-[95] shrink-0 border-t border-slate-200/80 bg-white/95 p-2 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur-md">
+        <div className="mx-auto grid max-w-md grid-cols-3 items-stretch gap-1.5">
           <Button
-            variant={activeTab === "today" ? "default" : "ghost"}
+            variant="ghost"
             className={cn(
-              "flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2",
+              "flex h-auto min-h-12 w-full flex-col items-center gap-1 rounded-xl px-2 py-1.5 transition-all duration-200",
               activeTab === "today"
-                ? "bg-slate-900 text-white hover:bg-slate-800"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                ? "bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
             )}
             onClick={() => setActiveTab("today")}
           >
-            <Home className="size-5" />
-            <span className="text-[10px] font-semibold">Aujourd&apos;hui</span>
+            <Sun className={cn("size-5 transition-transform", activeTab === "today" ? "text-amber-400 scale-110" : "")} />
+            <span className="text-[10px] font-extrabold tracking-tight">Aujourd&apos;hui</span>
           </Button>
           <Button
-            variant={activeTab === "week" ? "default" : "ghost"}
+            variant="ghost"
             className={cn(
-              "flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2",
+              "flex h-auto min-h-12 w-full flex-col items-center gap-1 rounded-xl px-2 py-1.5 transition-all duration-200",
               activeTab === "week"
-                ? "bg-slate-900 text-white hover:bg-slate-800"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                ? "bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
             )}
             onClick={() => setActiveTab("week")}
           >
-            <Calendar className="size-5" />
-            <span className="text-[10px] font-semibold">Semaine</span>
+            <CalendarDays className={cn("size-5 transition-transform", activeTab === "week" ? "text-indigo-400 scale-110" : "")} />
+            <span className="text-[10px] font-extrabold tracking-tight">Semaine</span>
           </Button>
           <Button
-            variant={activeTab === "all" ? "default" : "ghost"}
+            variant="ghost"
             className={cn(
-              "flex h-auto min-h-12 w-full flex-col items-center gap-1 px-2 py-2",
+              "flex h-auto min-h-12 w-full flex-col items-center gap-1 rounded-xl px-2 py-1.5 transition-all duration-200",
               activeTab === "all"
-                ? "bg-slate-900 text-white hover:bg-slate-800"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                ? "bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
             )}
             data-testid="nav-global"
             onClick={() => setActiveTab("all")}
           >
-            <List className="size-5" />
-            <span className="text-[10px] font-semibold">Global</span>
+            <LayoutGrid className={cn("size-5 transition-transform", activeTab === "all" ? "text-blue-400 scale-110" : "")} />
+            <span className="text-[10px] font-extrabold tracking-tight">Global</span>
           </Button>
         </div>
       </nav>
