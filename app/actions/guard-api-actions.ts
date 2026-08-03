@@ -366,7 +366,7 @@ export async function generateGuardsViaAPI(
       })),
       historical_patterns: historicalPatterns,
       // Consignes DOC022 (éligibilités + créneaux) — merge côté solveur si supporté
-      rules_override: toSolverClinicalRulesPayload(),
+      rules_override: toSolverClinicalRulesPayload(currentWeekKey, vacations),
       // Suspensions NCT / PSSL / LFB / CDL (périodes calendrier — optionnel)
       activity_maintenance: buildActivityMaintenancePayload(),
       // Salle de coro indisponible (périodes calendrier — optionnel, même

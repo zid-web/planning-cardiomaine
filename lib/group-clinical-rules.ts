@@ -201,14 +201,32 @@ export function isCoroEligibleDoctor(doctorId: string): boolean {
   return (DOC022_CLINICAL_ELIGIBILITY.coro as readonly string[]).includes(doctorId)
 }
 
+import { isDoctorOnVacationForFixed, dateStrForWeekDay } from "./fixed-assignments"
+import type { DoctorVacation } from "./types"
+
 /**
  * Payload additionnel pour `rules_override` / merge rules_config solveur.
  * Le backend ignore les clés inconnues tant qu’elles ne sont pas dans
  * `rules_config.json` (sauf si `merge_rules` accepte les nouvelles clés — patch).
+ *
+ * Filtre dynamiquement les créneaux fixes dont le médecin titulaire est en congé
+ * afin d'éviter de forcer le solveur à des affectations impossibles (infeasibility).
  */
-export function toSolverClinicalRulesPayload() {
+export function toSolverClinicalRulesPayload(
+  weekKey?: string,
+  vacations: DoctorVacation[] = [],
+) {
+  const filteredSlots = DOC022_FIXED_CLINICAL_SLOTS.filter((slot) => {
+    if (!weekKey) return true
+    const dateStr = dateStrForWeekDay(weekKey, slot.day)
+    if (!dateStr) return true
+    // Si le médecin est en congé ce jour-là, on ne soumet pas ce créneau fixe au solveur
+    const onVacation = isDoctorOnVacationForFixed(slot.doctor, dateStr, vacations)
+    return !onVacation
+  })
+
   return {
-    doc022_fixed_slots: DOC022_FIXED_CLINICAL_SLOTS.map((s) => ({
+    doc022_fixed_slots: filteredSlots.map((s) => ({
       row_key: s.row,
       day_name: s.day,
       doctor: s.doctor,
