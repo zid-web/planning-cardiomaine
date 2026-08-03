@@ -431,8 +431,8 @@ export async function generateGuardsViaAPI(
         : {}),
     };
 
-    // 6. Appel à l'API Render
-    const response = await fetch(`${GUARD_API_URL}/generate-week`, {
+    // 6. Appel à l'API Render (avec tentative de repli sans patterns si échec)
+    let response = await fetch(`${GUARD_API_URL}/generate-week`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -441,9 +441,31 @@ export async function generateGuardsViaAPI(
       body: JSON.stringify(payload),
     });
 
+    let usingFallback = false;
+    if (!response.ok) {
+      const firstErrorText = await response.text();
+      console.warn(`⚠️ Premier essai du solveur infructueux (${response.status} : ${firstErrorText}). Tentative de repli sans patterns historiques...`);
+      
+      const payloadFallback = {
+        ...payload,
+        historical_patterns: {}, // On retire les contraintes de patterns historiques pour libérer des degrés de liberté
+      };
+
+      response = await fetch(`${GUARD_API_URL}/generate-week`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(GUARD_API_KEY ? { "X-API-Key": GUARD_API_KEY } : {}),
+        },
+        body: JSON.stringify(payloadFallback),
+      });
+
+      usingFallback = true;
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("❌ Erreur Render :", response.status, errorText);
+      console.error("❌ Erreur Render (y compris repli) :", response.status, errorText);
       return {
         success: false,
         error: `Erreur ${response.status}: ${errorText}`,
@@ -451,6 +473,11 @@ export async function generateGuardsViaAPI(
     }
 
     const data = await response.json();
+    if (usingFallback) {
+      // Ajoute un warning pour informer l'utilisateur qu'on a allégé les contraintes historiques
+      if (!data.warnings) data.warnings = [];
+      data.warnings.push("Le solveur a dû désactiver l'équité des vacations cliniques (historique) pour trouver une solution valide avec vos congés.");
+    }
 
     // 7. Convertit la réponse : assignments solveur + règles fixes (IRM/FV/DAAS/…)
     // Cs/ETT/EE/Stress + hors site (CDL/IRM/…) viennent des assignments Render
