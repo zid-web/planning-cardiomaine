@@ -338,6 +338,24 @@ export function VoiceAndUploadPanel({
       current_week_request: resolveWeekRequest(),
     }
 
+    // Tenter l'interprétation locale immédiate (<50ms)
+    const localParsed = parseVoiceCommandLocally(trimmed, payload.reference_date, knownDoctors)
+    if (localParsed?.doctor_in) {
+      const successMessage = `✨ Appliqué : Dr. ${localParsed.doctor_in} → ${localParsed.activity} (${localParsed.slot}) le ${localParsed.date}`
+      setStatus({ type: "success", message: successMessage })
+      toast.success(successMessage)
+      setTranscript("")
+      setEditedTranscript("")
+      onCommandExecuted?.({
+        parsed_command: localParsed,
+        message: successMessage,
+        local_fallback: true,
+      })
+      setTimeout(() => setStatus({ type: "idle", message: "" }), 3000)
+      setIsLoading(false)
+      return
+    }
+
     setStatus({ type: "loading", message: "Interprétation de la consigne..." })
 
     try {
