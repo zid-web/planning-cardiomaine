@@ -168,10 +168,78 @@ export function applyChAstreinteConstraints(
     }
   }
 
-  // CH n’est jamais sur une ligne Garde (semaine + week-end)
+  // CH n'est jamais sur une ligne Garde (semaine + week-end)
   for (const day of DAYS) {
     for (const period of ["Matin", "Midi", "Nuit"] as const) {
       next = removeDoctorFromCell(next, `Garde ${period}`, day, "CH")
+    }
+  }
+
+  return next
+}
+
+/**
+ * Règle d'équité M/O/W : le médecin qui assure l'ATL Nuit Vendredi
+ * **et/ou** l'ATL weekend (Samedi/Dimanche, toutes périodes) est exclu
+ * des Astreintes ATL Nuit **Lundi** et **Mardi** de la même semaine.
+ *
+ * Principe : ce médecin a déjà 4–5 astreintes sur la semaine (Ven + Sam + Dim) ;
+ * lui retirer Lun/Mar rééquilibre la charge au sein du trio.
+ *
+ * S'applique après `applyChAstreinteConstraints` et `applyWeekendWomRules`
+ * pour pouvoir lire les cases Ven/Sam/Dim déjà remplies.
+ *
+ * Ne touche **jamais** une case Lun/Mar ATL Nuit déjà **validée** avec un
+ * médecin listé différent (saisie admin prioritaire).
+ */
+export function applyMOWWeekendExcludesMonTueNights(
+  schedule: ScheduleData,
+): ScheduleData {
+  const MOW = ["M", "O", "W"] as const
+
+  // Détecte les médecins M/O/W présents dans l'ATL Ven Nuit ou ATL Sam/Dim (toutes lignes)
+  const weekendDoctors = new Set<string>()
+
+  // Ven Nuit ATL
+  for (const doc of (schedule["Astreintes ATL Nuit"]?.["VENDREDI"]?.value || []) as string[]) {
+    if ((MOW as readonly string[]).includes(doc)) weekendDoctors.add(doc)
+  }
+
+  // Sam + Dim : toutes lignes ATL (Matin, Midi, Nuit)
+  for (const day of WEEKEND) {
+    for (const row of ATL_ROWS) {
+      for (const doc of (schedule[row]?.[day]?.value || []) as string[]) {
+        if ((MOW as readonly string[]).includes(doc)) weekendDoctors.add(doc)
+      }
+    }
+  }
+
+  if (weekendDoctors.size === 0) return schedule
+
+  let next = schedule
+  for (const day of ["LUNDI", "MARDI"] as const) {
+    const cell = next["Astreintes ATL Nuit"]?.[day]
+    if (!cell) continue
+    const values = cell.value || []
+    const listedDocs = values.filter((d) => Boolean(d) && d.length > 0)
+
+    // Ne pas toucher une case validée avec un médecin différent des candidats à retirer
+    const hasOtherValidated =
+      cell.status === "validated" &&
+      listedDocs.some((d) => !weekendDoctors.has(d))
+    if (hasOtherValidated) continue
+
+    const filtered = values.filter((d) => !weekendDoctors.has(d))
+    if (filtered.length !== values.length) {
+      next = removeDoctorFromCell(next, "Astreintes ATL Nuit", day,
+        // On retire chaque médecin impliqué un par un
+        // (removeDoctorFromCell ne retire qu'un médecin à la fois)
+        [...weekendDoctors][0]!,
+      )
+      // Plusieurs médecins à retirer : boucle
+      for (const doc of [...weekendDoctors].slice(1)) {
+        next = removeDoctorFromCell(next, "Astreintes ATL Nuit", day, doc)
+      }
     }
   }
 
@@ -685,6 +753,9 @@ export function applyStructuralConstraints(
     next = applyWeekendGardeAtlCoupling(next)
   }
 
+  // 3ter) Équité M/O/W : médecin en ATL Ven nuit ou weekend → exclu ATL Nuit Lun/Mar
+  next = applyMOWWeekendExcludesMonTueNights(next)
+
   // 4) NCT calendrier + LFB
   next = applyNctCalendarConstraints(next, weekKey)
   next = applyLfbThursdayRotation(next, weekKey, opts.lfbDoctor)
@@ -717,6 +788,9 @@ export function applyStructuralConstraints(
 
   // 9bis) Re-filtre ATL/Coro après strips
   next = applyAtlCoronarographisteEligibility(next)
+
+  // 9ter) Re-applique équité M/O/W weekend → Lun/Mar nuit (après strips qui peuvent avoir changé Ven/Sam/Dim)
+  next = applyMOWWeekendExcludesMonTueNights(next)
 
   // 10) Re-miroir Coro→ATL après strips (si Coro a perdu un médecin)
   next = applyAtlFollowsCoroConstraints(next)
