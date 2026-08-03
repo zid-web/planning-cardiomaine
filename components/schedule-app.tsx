@@ -43,6 +43,7 @@ import {
   sortedTaskEntries,
   sortedWorkloadEntries,
 } from "@/lib/scheduler-algo"
+import { StatsDialog } from "./stats-dialog"
 import { canAssignDoctor, detectConflict, isDoctorUnavailable } from "@/lib/assignment-validation"
 import {
   getCellDisplayAssignees,
@@ -173,10 +174,6 @@ export function ScheduleApp({
   const [noteDay, setNoteDay] = useState("")
   const [learnMoreOpen, setLearnMoreOpen] = useState(false)
   const [showWorkloadStats, setShowWorkloadStats] = useState(false)
-  /** Mois affiché dans Stats (1–12), aligné sur currentDate à l’ouverture. */
-  const [statsMonth, setStatsMonth] = useState(() => new Date().getMonth() + 1)
-  const [statsYear, setStatsYear] = useState(() => new Date().getFullYear())
-  const [expandedWorkloadDoctor, setExpandedWorkloadDoctor] = useState<string | null>(null)
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
   // Instantané du planning juste avant "Générer" (par semaine) - permet au
   // bouton "Retour" de restaurer l'état d'avant sans valider les
@@ -585,34 +582,7 @@ export function ScheduleApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekKey, vacationsSig, weekLoaded, currentUser, vacationsReady, previousSundayGuardDoctor])
 
-  const monthlyWorkloadStats = useMemo(
-    () => calculateMonthlyWorkloadStats(fullSchedule, statsYear, statsMonth),
-    [fullSchedule, statsYear, statsMonth],
-  )
-  const workloadEntries = useMemo(
-    () => sortedWorkloadEntries(monthlyWorkloadStats),
-    [monthlyWorkloadStats],
-  )
-
-  const shiftStatsMonth = (delta: number) => {
-    setExpandedWorkloadDoctor(null)
-    let m = statsMonth + delta
-    let y = statsYear
-    if (m < 1) {
-      m = 12
-      y -= 1
-    } else if (m > 12) {
-      m = 1
-      y += 1
-    }
-    setStatsMonth(m)
-    setStatsYear(y)
-  }
-
   const openWorkloadStats = () => {
-    setStatsMonth(currentDate.getMonth() + 1)
-    setStatsYear(currentDate.getFullYear())
-    setExpandedWorkloadDoctor(null)
     setShowWorkloadStats(true)
   }
 
@@ -1521,15 +1491,6 @@ export function ScheduleApp({
     return false
   }
 
-  // Build a map of all schedules to pass to the generator
-  const scheduleMap = useMemo(() => {
-    const map = new Map<string, ScheduleData>()
-    Object.entries(fullSchedule).forEach(([key, value]) => {
-      map.set(key, value)
-    })
-    return map
-  }, [fullSchedule])
-
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-slate-50">
       {/* Main Content Area — native overflow so mobile pan-x/pan-y works in Global */}
@@ -1829,16 +1790,11 @@ export function ScheduleApp({
                           variant="outline"
                           size="sm"
                           className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
-                          onClick={() => {
-                            if (showWorkloadStats) setShowWorkloadStats(false)
-                            else openWorkloadStats()
-                          }}
+                          onClick={openWorkloadStats}
                           title="Statistiques de charge mensuelles"
                         >
                           <BarChart3 className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
-                          <span className="hidden lg:inline">
-                            {showWorkloadStats ? "Masquer" : "Stats"}
-                          </span>
+                          <span className="hidden lg:inline">Stats</span>
                         </Button>
                       </div>
                     )}
@@ -2912,132 +2868,11 @@ export function ScheduleApp({
       {/* Learn More Modal */}
       {learnMoreOpen && <LearnMoreModal onClose={() => setLearnMoreOpen(false)} />}
 
-      {showWorkloadStats && (
-        <Dialog open={showWorkloadStats} onOpenChange={setShowWorkloadStats}>
-          <DialogContent className="max-h-[85vh] max-w-2xl overflow-hidden bg-white text-slate-900">
-            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-200 bg-white pb-3">
-              <DialogHeader className="min-w-0 space-y-1 text-left">
-                <DialogTitle className="text-xl font-bold text-slate-900">
-                  Statistiques de charge de travail
-                </DialogTitle>
-                <DialogDescription className="text-xs text-slate-500">
-                  Détail des tâches par praticien — total mensuel
-                  {monthlyWorkloadStats.weeksScanned > 0
-                    ? ` · ${monthlyWorkloadStats.weeksScanned} semaine${monthlyWorkloadStats.weeksScanned > 1 ? "s" : ""} chargée${monthlyWorkloadStats.weeksScanned > 1 ? "s" : ""}`
-                    : " · aucune semaine en mémoire pour ce mois"}
-                </DialogDescription>
-                <div className="mt-2 flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => shiftStatsMonth(-1)}
-                    aria-label="Mois précédent"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-                  <span className="min-w-[9rem] text-center text-sm font-semibold capitalize text-slate-800">
-                    {monthlyWorkloadStats.label}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={() => shiftStatsMonth(1)}
-                    aria-label="Mois suivant"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Hors stats : DAAS, T, V, D, I, FV, Val, R, CH — absences / ½-off non comptées
-                </p>
-              </DialogHeader>
-              <Button variant="outline" size="sm" onClick={() => setShowWorkloadStats(false)}>
-                Fermer
-              </Button>
-            </div>
-            <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 pt-2">
-              {workloadEntries.every((e) => e.detail.total === 0) ? (
-                <p className="rounded-md bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
-                  Aucune tâche comptabilisée pour {monthlyWorkloadStats.label}.
-                </p>
-              ) : (
-                workloadEntries
-                  .filter((e) => e.detail.total > 0)
-                  .map(({ doctor, detail }) => {
-                  const open = expandedWorkloadDoctor === doctor
-                  const tasks = sortedTaskEntries(detail.byTask)
-                  return (
-                    <div
-                      key={doctor}
-                      className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50/80"
-                    >
-                      <button
-                        type="button"
-                        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-100/80"
-                        onClick={() =>
-                          setExpandedWorkloadDoctor((prev) => (prev === doctor ? null : doctor))
-                        }
-                        aria-expanded={open}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={cn(
-                              "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white",
-                              DOCTOR_COLORS[doctor],
-                            )}
-                          >
-                            {doctor}
-                          </div>
-                          <span className="font-semibold text-slate-900">{doctor}</span>
-                          <span className="text-[11px] text-slate-500">
-                            {tasks.length} type{tasks.length > 1 ? "s" : ""} de tâche
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="tabular-nums">
-                            {detail.total}
-                          </Badge>
-                          <ChevronRight
-                            className={cn(
-                              "h-4 w-4 text-slate-400 transition-transform",
-                              open && "rotate-90",
-                            )}
-                          />
-                        </div>
-                      </button>
-                      {open && (
-                        <div className="border-t border-slate-200 bg-white px-3 py-2">
-                          {tasks.length === 0 ? (
-                            <p className="text-xs text-slate-400">Aucune tâche</p>
-                          ) : (
-                            <ul className="space-y-1">
-                              {tasks.map(([rowKey, count]) => (
-                                <li
-                                  key={rowKey}
-                                  className="flex items-center justify-between gap-2 text-xs text-slate-700"
-                                >
-                                  <span className="min-w-0 truncate">{rowKey}</span>
-                                  <Badge variant="outline" className="shrink-0 tabular-nums">
-                                    {count}
-                                  </Badge>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+      <StatsDialog
+        open={showWorkloadStats}
+        onOpenChange={setShowWorkloadStats}
+        fullSchedule={fullSchedule}
+      />
 
       {/* Vacations Modal */}
       <Suspense fallback={null}>

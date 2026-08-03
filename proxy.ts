@@ -21,6 +21,7 @@ export async function proxy(request: NextRequest) {
     "/auth/sign-up-success",
     "/auth/reset-password-confirm",
     "/api/ping-solver", // keep-alive cron (cron-job.org / Vercel Cron) — no login
+    "/api/test-s44",
   ]
 
   // Public routes: skip auth entirely (needed for external keep-alive cron)

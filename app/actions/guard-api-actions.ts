@@ -416,12 +416,6 @@ export async function generateGuardsViaAPI(
         : {}),
       ...(typeof weekOverrides?.pssl_b_active === "boolean" || typeof weekOverrides?.pssl_z_active === "boolean"
         ? {
-            // Conversion au point de sortie uniquement (bug corrigé
-            // 31/07/2026) : le solveur attend désormais `pssl_doctor`
-            // ("B" | "Z"), pas les 2 anciens booléens séparés - on ne
-            // touche pas à l'UI/la logique interne (week-generation-params,
-            // guard-generation-button) qui continuent d'utiliser les 2
-            // booléens, seule la conversion finale change.
             pssl_doctor: weekOverrides?.pssl_b_active
               ? "B"
               : weekOverrides?.pssl_z_active
@@ -430,6 +424,10 @@ export async function generateGuardsViaAPI(
           }
         : {}),
     };
+
+    require('fs').writeFileSync('/tmp/payload_s44.json', JSON.stringify(payload, null, 2));
+
+
 
     // 6. Appel à l'API Render (avec tentative de repli sans patterns si échec)
     let response = await fetch(`${GUARD_API_URL}/generate-week`, {
@@ -442,9 +440,17 @@ export async function generateGuardsViaAPI(
     });
 
     let usingFallback = false;
-    if (!response.ok) {
-      const firstErrorText = await response.text();
-      console.warn(`⚠️ Premier essai du solveur infructueux (${response.status} : ${firstErrorText}). Tentative de repli sans patterns historiques...`);
+    let data: any = null;
+
+    if (response.ok) {
+      data = await response.json();
+    }
+
+    // Le solveur peut renvoyer 200 OK mais avec 0 assignment et un warning "Aucune solution trouvée"
+    const isInfeasible = !response.ok || (data && (!data.assignments || data.assignments.length === 0) && data.warnings?.some((w: string) => /aucune solution trouvée/i.test(w)));
+
+    if (isInfeasible) {
+      console.warn(`⚠️ Premier essai du solveur infructueux. Tentative de repli sans patterns historiques...`);
       
       const payloadFallback = {
         ...payload,
@@ -461,6 +467,9 @@ export async function generateGuardsViaAPI(
       });
 
       usingFallback = true;
+      if (response.ok) {
+        data = await response.json();
+      }
     }
 
     if (!response.ok) {
@@ -472,8 +481,7 @@ export async function generateGuardsViaAPI(
       };
     }
 
-    const data = await response.json();
-    if (usingFallback) {
+    if (usingFallback && data) {
       // Ajoute un warning pour informer l'utilisateur qu'on a allégé les contraintes historiques
       if (!data.warnings) data.warnings = [];
       data.warnings.push("Le solveur a dû désactiver l'équité des vacations cliniques (historique) pour trouver une solution valide avec vos congés.");
