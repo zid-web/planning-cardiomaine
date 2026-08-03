@@ -243,8 +243,8 @@ export function VacationsModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-[150] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+      <div className="flex h-[92dvh] max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-auto sm:max-h-[88dvh] sm:rounded-xl">
         <div className="flex items-center justify-between border-b border-amber-100 bg-gradient-to-r from-amber-50 to-white px-5 py-4">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Congés</h2>
@@ -263,7 +263,7 @@ export function VacationsModal({
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto p-5 pb-16">
+        <div className="flex-1 space-y-4 overflow-y-auto p-5 pb-8">
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
               {error}
@@ -461,7 +461,7 @@ export function VacationsModal({
           </div>
         </div>
 
-        <div className="flex justify-end border-t border-gray-200 bg-gray-50 px-5 py-3">
+        <div className="flex shrink-0 justify-end border-t border-gray-200 bg-gray-50 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={onClose}
