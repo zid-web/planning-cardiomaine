@@ -3,7 +3,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 
-
 export type GuardPickRow = {
   id: string
   doctor_code: string
@@ -37,22 +36,42 @@ export type SubmitGuardPickInput = {
 }
 
 /**
+ * Returns either service_role admin client or standard server user client as fallback
+ */
+async function getDbClient() {
+  try {
+    return createAdminClient()
+  } catch (err) {
+    console.warn("[guard-picks-actions] createAdminClient fallback to createClient:", err)
+    return await createClient()
+  }
+}
+
+/**
  * Fetch all guard picks for a given semester & year (all doctors, admin use)
  */
 export async function getGuardPicksForSemester(
   semester: 1 | 2,
   year: number,
 ): Promise<{ data: GuardPickRow[]; error?: string }> {
-  const adminDb = createAdminClient()
-  const { data, error } = await adminDb
-    .from("guard_picks")
-    .select("*")
-    .eq("semester", semester)
-    .eq("year", year)
-    .order("date", { ascending: true })
+  try {
+    const db = await getDbClient()
+    const { data, error } = await db
+      .from("guard_picks")
+      .select("*")
+      .eq("semester", semester)
+      .eq("year", year)
+      .order("date", { ascending: true })
 
-  if (error) return { data: [], error: error.message }
-  return { data: (data || []) as GuardPickRow[] }
+    if (error) {
+      console.error("[getGuardPicksForSemester] error:", error)
+      return { data: [], error: error.message }
+    }
+    return { data: (data || []) as GuardPickRow[] }
+  } catch (err) {
+    console.error("[getGuardPicksForSemester] exception:", err)
+    return { data: [], error: err instanceof Error ? err.message : "Erreur serveur" }
+  }
 }
 
 /**
@@ -62,21 +81,29 @@ export async function getMyGuardPicks(
   semester: 1 | 2,
   year: number,
 ): Promise<{ data: GuardPickRow[]; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { data: [], error: "Non authentifié" }
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { data: [], error: "Non authentifié" }
 
-  const adminDb = createAdminClient()
-  const { data, error } = await adminDb
-    .from("guard_picks")
-    .select("*")
-    .eq("doctor_id", user.id)
-    .eq("semester", semester)
-    .eq("year", year)
-    .order("date", { ascending: true })
+    const db = await getDbClient()
+    const { data, error } = await db
+      .from("guard_picks")
+      .select("*")
+      .eq("doctor_id", user.id)
+      .eq("semester", semester)
+      .eq("year", year)
+      .order("date", { ascending: true })
 
-  if (error) return { data: [], error: error.message }
-  return { data: (data || []) as GuardPickRow[] }
+    if (error) {
+      console.error("[getMyGuardPicks] error:", error)
+      return { data: [], error: error.message }
+    }
+    return { data: (data || []) as GuardPickRow[] }
+  } catch (err) {
+    console.error("[getMyGuardPicks] exception:", err)
+    return { data: [], error: err instanceof Error ? err.message : "Erreur serveur" }
+  }
 }
 
 /**
@@ -85,36 +112,44 @@ export async function getMyGuardPicks(
 export async function submitGuardPick(
   input: SubmitGuardPickInput,
 ): Promise<{ data?: GuardPickRow; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Non authentifié" }
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return { error: "Non authentifié" }
 
-  const adminDb = createAdminClient()
-  const { data, error } = await adminDb
-    .from("guard_picks")
-    .upsert({
-      doctor_code: input.doctor_code,
-      doctor_id: user.id,
-      semester: input.semester,
-      year: input.year,
-      date: input.date,
-      day_type: input.day_type,
-      guard_type: input.guard_type,
-      is_wom_combo: input.is_wom_combo ?? false,
-      wom_role: input.wom_role ?? null,
-      reason: input.reason ?? null,
-      status: "pending",
-      admin_note: null,
-      validated_by: null,
-      validated_at: null,
-    }, {
-      onConflict: "doctor_code,date,guard_type",
-    })
-    .select()
-    .single()
+    const db = await getDbClient()
+    const { data, error } = await db
+      .from("guard_picks")
+      .upsert({
+        doctor_code: input.doctor_code,
+        doctor_id: user.id,
+        semester: input.semester,
+        year: input.year,
+        date: input.date,
+        day_type: input.day_type,
+        guard_type: input.guard_type,
+        is_wom_combo: input.is_wom_combo ?? false,
+        wom_role: input.wom_role ?? null,
+        reason: input.reason ?? null,
+        status: "pending",
+        admin_note: null,
+        validated_by: null,
+        validated_at: null,
+      }, {
+        onConflict: "doctor_code,date,guard_type",
+      })
+      .select()
+      .single()
 
-  if (error) return { error: error.message }
-  return { data: data as GuardPickRow }
+    if (error) {
+      console.error("[submitGuardPick] error:", error)
+      return { error: error.message }
+    }
+    return { data: data as GuardPickRow }
+  } catch (err) {
+    console.error("[submitGuardPick] exception:", err)
+    return { error: err instanceof Error ? err.message : "Erreur lors de l'enregistrement" }
+  }
 }
 
 /**
@@ -123,18 +158,22 @@ export async function submitGuardPick(
 export async function deleteGuardPick(
   id: string,
 ): Promise<{ error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: "Non authentifié" }
+  try {
+    const db = await getDbClient()
+    const { error } = await db
+      .from("guard_picks")
+      .delete()
+      .eq("id", id)
 
-  const adminDb = createAdminClient()
-  const { error } = await adminDb
-    .from("guard_picks")
-    .delete()
-    .eq("id", id)
-
-  if (error) return { error: error.message }
-  return {}
+    if (error) {
+      console.error("[deleteGuardPick] error:", error)
+      return { error: error.message }
+    }
+    return {}
+  } catch (err) {
+    console.error("[deleteGuardPick] exception:", err)
+    return { error: err instanceof Error ? err.message : "Erreur lors de la suppression" }
+  }
 }
 
 /**
@@ -144,18 +183,26 @@ export async function approveGuardPick(
   id: string,
   adminCode: string,
 ): Promise<{ error?: string }> {
-  const adminDb = createAdminClient()
-  const { error } = await adminDb
-    .from("guard_picks")
-    .update({
-      status: "approved",
-      validated_by: adminCode,
-      validated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
+  try {
+    const db = await getDbClient()
+    const { error } = await db
+      .from("guard_picks")
+      .update({
+        status: "approved",
+        validated_by: adminCode,
+        validated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
 
-  if (error) return { error: error.message }
-  return {}
+    if (error) {
+      console.error("[approveGuardPick] error:", error)
+      return { error: error.message }
+    }
+    return {}
+  } catch (err) {
+    console.error("[approveGuardPick] exception:", err)
+    return { error: err instanceof Error ? err.message : "Erreur lors de l'approbation" }
+  }
 }
 
 /**
@@ -166,19 +213,27 @@ export async function rejectGuardPick(
   adminCode: string,
   adminNote?: string,
 ): Promise<{ error?: string }> {
-  const adminDb = createAdminClient()
-  const { error } = await adminDb
-    .from("guard_picks")
-    .update({
-      status: "rejected",
-      validated_by: adminCode,
-      validated_at: new Date().toISOString(),
-      admin_note: adminNote ?? null,
-    })
-    .eq("id", id)
+  try {
+    const db = await getDbClient()
+    const { error } = await db
+      .from("guard_picks")
+      .update({
+        status: "rejected",
+        validated_by: adminCode,
+        validated_at: new Date().toISOString(),
+        admin_note: adminNote ?? null,
+      })
+      .eq("id", id)
 
-  if (error) return { error: error.message }
-  return {}
+    if (error) {
+      console.error("[rejectGuardPick] error:", error)
+      return { error: error.message }
+    }
+    return {}
+  } catch (err) {
+    console.error("[rejectGuardPick] exception:", err)
+    return { error: err instanceof Error ? err.message : "Erreur lors du rejet" }
+  }
 }
 
 /**
@@ -190,32 +245,36 @@ export async function getVacationDatesForSemester(
   year: number,
   doctorCode: string,
 ): Promise<{ dates: string[]; error?: string }> {
-  const adminDb = createAdminClient()
+  try {
+    const db = await getDbClient()
 
-  // Semester date range
-  const startDate = semester === 1 ? `${year}-01-01` : `${year}-09-01`
-  const endDate = semester === 1 ? `${year}-08-31` : `${year + 1}-01-01`
+    // Semester date range
+    const startDate = semester === 1 ? `${year}-01-01` : `${year}-09-01`
+    const endDate = semester === 1 ? `${year}-08-31` : `${year + 1}-01-01`
 
-  const { data, error } = await adminDb
-    .from("vacations")
-    .select("start_date, end_date")
-    .eq("doctor_id", doctorCode)
-    .or(`start_date.lte.${endDate},end_date.gte.${startDate}`)
-
-  if (error) {
-    // Try alternate lookup via auth user id
-    const { data: data2 } = await adminDb
+    const { data, error } = await db
       .from("vacations")
       .select("start_date, end_date")
-      .gte("end_date", startDate)
-      .lte("start_date", endDate)
+      .eq("doctor_id", doctorCode)
+      .or(`start_date.lte.${endDate},end_date.gte.${startDate}`)
 
-    if (!data2) return { dates: [] }
-    // Filter by matching doctor code or any vacation that overlaps
-    return { dates: expandVacationDates(data2, startDate, endDate) }
+    if (error) {
+      // Try alternate lookup via auth user id
+      const { data: data2 } = await db
+        .from("vacations")
+        .select("start_date, end_date")
+        .gte("end_date", startDate)
+        .lte("start_date", endDate)
+
+      if (!data2) return { dates: [] }
+      return { dates: expandVacationDates(data2, startDate, endDate) }
+    }
+
+    return { dates: expandVacationDates(data || [], startDate, endDate) }
+  } catch (err) {
+    console.error("[getVacationDatesForSemester] exception:", err)
+    return { dates: [] }
   }
-
-  return { dates: expandVacationDates(data || [], startDate, endDate) }
 }
 
 function expandVacationDates(
