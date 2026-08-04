@@ -10,15 +10,12 @@ const MAX_PROCESSED_REQUESTS = 10;
 
 /**
  * Archive les demandes traitées (approuvées/rejetées) les plus anciennes
- * au-delà de MAX_PROCESSED_REQUESTS, pour garder la liste active propre
- * (confirmé utilisateur 01/08/2026). Les demandes en attente ("pending") ne
- * sont jamais archivées. Best-effort : une erreur ici ne doit jamais faire
- * échouer l'approbation/rejet en cours.
+ * au-delà de MAX_PROCESSED_REQUESTS.
  */
 async function archiveOldProcessedRequests() {
   try {
-    const supabase = await createClient();
-    const { data: processed } = await supabase
+    const adminDb = createAdminClient();
+    const { data: processed } = await adminDb
       .from('change_requests')
       .select('*')
       .neq('status', 'pending')
@@ -43,14 +40,14 @@ async function archiveOldProcessedRequests() {
       updated_at: r.updated_at,
     }));
 
-    const { error: insertError } = await supabase.from('change_requests_history').insert(historyRows);
+    const { error: insertError } = await adminDb.from('change_requests_history').insert(historyRows);
     if (insertError) {
       console.error('[change-request-actions] archive insert error:', insertError);
       return;
     }
 
     const idsToDelete = toArchive.map((r) => r.id);
-    await supabase.from('change_requests').delete().in('id', idsToDelete);
+    await adminDb.from('change_requests').delete().in('id', idsToDelete);
   } catch (err) {
     console.error('[change-request-actions] archiveOldProcessedRequests:', err);
   }
@@ -60,8 +57,8 @@ async function archiveOldProcessedRequests() {
  * Récupère l'historique archivé des demandes traitées (lecture pour tous).
  */
 export async function getChangeRequestsHistory(limit = 50) {
-  const supabase = await createClient();
-  const { data } = await supabase
+  const adminDb = createAdminClient();
+  const { data } = await adminDb
     .from('change_requests_history')
     .select('*')
     .order('archived_at', { ascending: false })
@@ -70,23 +67,35 @@ export async function getChangeRequestsHistory(limit = 50) {
 }
 
 /**
+ * Récupère les demandes de la semaine (bypasse RLS pour synchro parfaite émetteur/destinataire).
+ */
+export async function getChangeRequestsForWeek(weekKey: string) {
+  try {
+    const adminDb = createAdminClient();
+    const { data } = await adminDb
+      .from('change_requests')
+      .select('*')
+      .eq('week_key', weekKey)
+      .order('created_at', { ascending: false });
+    return data || [];
+  } catch (err) {
+    console.error('[change-request-actions] getChangeRequestsForWeek error:', err);
+    return [];
+  }
+}
+
+/**
  * Applique une demande de changement approuvée
- * - Vérifie que l'utilisateur est admin
- * - Récupère la demande
- * - Met à jour la table schedules (via saveScheduleToDb → historique + sync blob)
- * - Marque la demande comme approved
  */
 export async function applyChangeRequest(requestId: string) {
   const supabase = await createClient();
-
-  // 1. Vérifier l'authentification et les droits admin
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return { success: false, error: 'Non authentifié' };
   }
 
   const adminDb = createAdminClient();
-  const { data: profile, error: profileError } = await adminDb
+  const { data: profile } = await adminDb
     .from('profiles')
     .select('role, doctor_code')
     .eq('id', user.id)
@@ -103,7 +112,6 @@ export async function applyChangeRequest(requestId: string) {
                   userEmail.includes('lucie') ||
                   userEmail.includes('ouissem');
 
-  // 2. Récupérer la demande
   const { data: request, error: fetchError } = await adminDb
     .from('change_requests')
     .select('*')
@@ -127,7 +135,6 @@ export async function applyChangeRequest(requestId: string) {
     };
   }
 
-  // 3. Appliquer la modification dans schedules
   const { data: currentSchedule, error: scheduleError } = await adminDb
     .from('schedules')
     .select('schedule_data')
@@ -158,7 +165,6 @@ export async function applyChangeRequest(requestId: string) {
     cell.type = 'doctor';
   }
 
-  // 4. Sauvegarder via action centralisée (historique G2 + sync full_schedule G6)
   try {
     const updatedBy =
       profile?.doctor_code || user.email?.split('@')[0]?.toUpperCase() || 'admin';
@@ -169,23 +175,33 @@ export async function applyChangeRequest(requestId: string) {
     return { success: false, error: 'Erreur lors de la mise à jour du planning' };
   }
 
-  // 5. Marquer la demande comme approuvée
-  const { error: updateError } = await adminDb
+  // Supporte à la fois 'validated' et 'approved' selon la contrainte CHECK PostgreSQL
+  let { error: updateError } = await adminDb
     .from('change_requests')
     .update({
-      status: 'approved',
+      status: 'validated',
       updated_at: new Date().toISOString(),
     })
     .eq('id', requestId);
 
   if (updateError) {
-    return { success: false, error: 'Erreur lors de la mise à jour du statut' };
+    const fallbackRes = await adminDb
+      .from('change_requests')
+      .update({
+        status: 'approved',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', requestId);
+    updateError = fallbackRes.error;
   }
 
-  // 6. Archivage best-effort si trop de demandes traitées accumulées
+  if (updateError) {
+    console.error('[change-request-actions] update status error:', updateError);
+    return { success: false, error: `Erreur lors de la mise à jour du statut: ${updateError.message}` };
+  }
+
   await archiveOldProcessedRequests();
 
-  // 7. Revalider le cache
   revalidatePath('/protected/planning');
   revalidatePath('/protected/admin/requests');
 
@@ -201,7 +217,6 @@ export async function applyChangeRequest(requestId: string) {
 export async function rejectChangeRequest(requestId: string, comment?: string) {
   const supabase = await createClient();
 
-  // 1. Vérifier l'authentification et les droits
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return { success: false, error: 'Non authentifié' };
@@ -225,7 +240,6 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
                   userEmail.includes('lucie') ||
                   userEmail.includes('ouissem');
 
-  // 2. Vérifier que la demande existe et est en attente
   const { data: request, error: fetchError } = await adminDb
     .from('change_requests')
     .select('*')
@@ -249,7 +263,6 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
     };
   }
 
-  // 3. Marquer comme refusée
   const { error: updateError } = await adminDb
     .from('change_requests')
     .update({
@@ -260,7 +273,8 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
     .eq('id', requestId);
 
   if (updateError) {
-    return { success: false, error: 'Erreur lors de la mise à jour du statut' };
+    console.error('[change-request-actions] reject status error:', updateError);
+    return { success: false, error: `Erreur lors de la mise à jour du statut: ${updateError.message}` };
   }
 
   revalidatePath('/protected/planning');

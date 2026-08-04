@@ -110,7 +110,7 @@ import { getMyPrivateNote, getAllPrivateNotesForDate, upsertPrivateNote, deleteP
 import { getChangeRequestsHistory } from "@/app/actions/change-request-actions"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { getAllVacations } from "@/app/actions/vacation-actions"
-import { applyChangeRequest, rejectChangeRequest, deleteChangeRequest } from "@/app/actions/change-request-actions"
+import { applyChangeRequest, rejectChangeRequest, deleteChangeRequest, getChangeRequestsForWeek } from "@/app/actions/change-request-actions"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
 import { TodayView } from "@/components/today-view"
@@ -320,13 +320,9 @@ export function ScheduleApp({
   }, [])
 
   const refreshRequests = useCallback(async () => {
-    const { data } = await supabase
-      .from("change_requests")
-      .select("*")
-      .eq("week_key", weekKey)
-      .order("created_at", { ascending: false })
+    const data = await getChangeRequestsForWeek(weekKey)
     setChangeRequests((data as ChangeRequest[]) || [])
-  }, [supabase, weekKey])
+  }, [weekKey])
 
   useEffect(() => {
     void refreshRequests()
@@ -2951,14 +2947,14 @@ export function ScheduleApp({
                               className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                                 req.status === "pending"
                                   ? "bg-amber-100 text-amber-700"
-                                  : req.status === "approved"
+                                  : (req.status === "validated" || req.status === "approved")
                                     ? "bg-green-100 text-green-700"
                                     : "bg-red-100 text-red-700"
                               }`}
                             >
                               {req.status === "pending"
                                 ? "En attente"
-                                : req.status === "approved"
+                                : (req.status === "validated" || req.status === "approved")
                                   ? "Approuvée"
                                   : "Rejetée"}
                             </span>
