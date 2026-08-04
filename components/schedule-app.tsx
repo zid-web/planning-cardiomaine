@@ -3295,6 +3295,8 @@ export function ScheduleApp({
         open={showWorkloadStats}
         onOpenChange={setShowWorkloadStats}
         fullSchedule={fullSchedule}
+        isAdmin={isAdmin}
+        doctorCode={doctorCode || currentUser || ""}
       />
 
       <GuardPicksDialog
