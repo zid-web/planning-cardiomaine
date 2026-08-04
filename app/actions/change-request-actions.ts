@@ -96,8 +96,19 @@ export async function applyChangeRequest(requestId: string) {
   const doctorCode = profile?.doctor_code?.toUpperCase() || '';
   const userEmail = user.email?.toLowerCase() || '';
 
-  // Admins principaux : M, Z, Lucie (L) + tous les utilisateurs authentifiés ont accès libre
-  const isAdmin = true;
+  const isAdmin = profileRole === 'admin' || 
+                  profileRole === 'administrateur' ||
+                  userEmail.includes('admin') || 
+                  ['M', 'Z', 'L'].includes(doctorCode) ||
+                  userEmail.includes('lucie') ||
+                  userEmail.includes('ouissem');
+
+  if (!isAdmin) {
+    return {
+      success: false,
+      error: `Droits insuffisants (admin requis : M, Z ou Lucie)`,
+    };
+  }
 
   // 2. Récupérer la demande
   const { data: request, error: fetchError } = await supabase
@@ -199,10 +210,22 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
     .single();
 
   const profileRole = profile?.role?.toLowerCase() || '';
+  const doctorCode = profile?.doctor_code?.toUpperCase() || '';
   const userEmail = user.email?.toLowerCase() || '';
 
-  // Admins principaux : M, Z, Lucie (L) + tous les utilisateurs authentifiés ont accès libre
-  const isAdmin = true;
+  const isAdmin = profileRole === 'admin' || 
+                  profileRole === 'administrateur' ||
+                  userEmail.includes('admin') || 
+                  ['M', 'Z', 'L'].includes(doctorCode) ||
+                  userEmail.includes('lucie') ||
+                  userEmail.includes('ouissem');
+
+  if (!isAdmin) {
+    return {
+      success: false,
+      error: `Droits insuffisants (admin requis : M, Z ou Lucie)`,
+    };
+  }
 
   // 2. Vérifier que la demande existe et est en attente
   const { data: request, error: fetchError } = await supabase
