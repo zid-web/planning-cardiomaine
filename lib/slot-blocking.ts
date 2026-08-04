@@ -379,6 +379,18 @@ export function canAssignDoctorToSlot(
     }
   }
 
+  // Pas de Coro, Astreintes ATL ou Rythmo le lendemain d'une garde de nuit
+  const prevDay = previousDayName(day)
+  if (prevDay && (hasAnyGarde(schedule, prevDay, doctorId) || doctorOnRow(schedule, "Astreintes ATL Nuit", prevDay, doctorId))) {
+    const isCoroOrAtlOrRythmo = rowKey.includes("Coro") || rowKey.includes("Astreintes ATL") || rowKey.includes("Rythmo")
+    if (isCoroOrAtlOrRythmo) {
+      return {
+        allowed: false,
+        reason: `${doctorId} a une garde/astreinte de nuit la veille (${prevDay}) — Coro, ATL et Rythmo interdits le lendemain.`,
+      }
+    }
+  }
+
   // CH : astreintes ATL uniquement — jamais de garde
   if (doctorId === "CH") {
     if (isGardeRow(rowKey)) {
