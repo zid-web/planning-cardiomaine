@@ -28,11 +28,16 @@ import {
   Mail,
   MessageSquare,
   Mic,
+  Moon,
   Palmtree,
+  Plus,
+  RefreshCw,
+  Search,
   Share,
   Smartphone,
   Sparkles,
   Sun,
+  Trash2,
   User,
   UserCog,
   Users,
@@ -105,7 +110,7 @@ import { getMyPrivateNote, getAllPrivateNotesForDate, upsertPrivateNote, deleteP
 import { getChangeRequestsHistory } from "@/app/actions/change-request-actions"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { getAllVacations } from "@/app/actions/vacation-actions"
-import { applyChangeRequest, rejectChangeRequest } from "@/app/actions/change-request-actions"
+import { applyChangeRequest, rejectChangeRequest, deleteChangeRequest } from "@/app/actions/change-request-actions"
 import { VacationsButton } from "@/components/vacations-button"
 import { VacationsBadge } from "@/components/vacations-badge"
 import { TodayView } from "@/components/today-view"
@@ -1199,6 +1204,16 @@ export function ScheduleApp({
       return
     }
     toast.success(result.message)
+    await refreshRequests()
+  }
+
+  const removeRequest = async (req: ChangeRequest) => {
+    const result = await deleteChangeRequest(req.id)
+    if (!result.success) {
+      toast.error(result.error || "Erreur lors de la suppression")
+      return
+    }
+    toast.success("Message supprimé avec succès")
     await refreshRequests()
   }
 
@@ -2931,23 +2946,33 @@ export function ScheduleApp({
                               <div className="mt-1 text-xs italic text-slate-400">« {req.reason} »</div>
                             )}
                           </div>
-                          <span
-                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                              req.status === "pending"
-                                ? "bg-amber-100 text-amber-700"
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                req.status === "pending"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : req.status === "approved"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-red-100 text-red-700"
+                              }`}
+                            >
+                              {req.status === "pending"
+                                ? "En attente"
                                 : req.status === "approved"
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-red-100 text-red-700"
-                            }`}
-                          >
-                            {req.status === "pending"
-                              ? "En attente"
-                              : req.status === "approved"
-                                ? "Approuvée"
-                                : "Rejetée"}
-                          </span>
+                                  ? "Approuvée"
+                                  : "Rejetée"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void removeRequest(req)}
+                              className="text-slate-400 hover:text-red-600 p-1 rounded transition"
+                              title="Supprimer le message"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
                         </div>
-                        {isAdmin && req.status === "pending" && (
+                        {req.status === "pending" && (isAdmin || req.requested_doctor === doctorCode || req.current_doctor === doctorCode) && (
                           <div className="mt-2 flex gap-2">
                             <button
                               onClick={() => void approveRequest(req)}

@@ -103,33 +103,38 @@ export async function applyChangeRequest(requestId: string) {
                   userEmail.includes('lucie') ||
                   userEmail.includes('ouissem');
 
-  if (!isAdmin) {
-    return {
-      success: false,
-      error: `Droits insuffisants (admin requis : M, Z ou Lucie)`,
-    };
-  }
-
   // 2. Récupérer la demande
-  const { data: request, error: fetchError } = await supabase
+  const { data: request, error: fetchError } = await adminDb
     .from('change_requests')
     .select('*')
     .eq('id', requestId)
     .eq('status', 'pending')
-    .single();
+    .maybeSingle();
 
   if (fetchError || !request) {
     return { success: false, error: 'Demande introuvable ou déjà traitée' };
   }
 
+  const isAllowed = isAdmin || 
+                    request.requester_id === user.id ||
+                    (doctorCode && request.requested_doctor?.toUpperCase() === doctorCode) ||
+                    (doctorCode && request.current_doctor?.toUpperCase() === doctorCode);
+
+  if (!isAllowed) {
+    return {
+      success: false,
+      error: `Droits insuffisants pour approuver cette demande`,
+    };
+  }
+
   // 3. Appliquer la modification dans schedules
-  const { data: currentSchedule, error: scheduleError } = await supabase
+  const { data: currentSchedule, error: scheduleError } = await adminDb
     .from('schedules')
     .select('schedule_data')
     .eq('week_key', request.week_key)
-    .single();
+    .maybeSingle();
 
-  if (scheduleError && scheduleError.code !== 'PGRST116') {
+  if (scheduleError) {
     return { success: false, error: 'Erreur lors de la récupération du planning' };
   }
 
@@ -156,7 +161,7 @@ export async function applyChangeRequest(requestId: string) {
   // 4. Sauvegarder via action centralisée (historique G2 + sync full_schedule G6)
   try {
     const updatedBy =
-      profile.doctor_code || user.email?.split('@')[0]?.toUpperCase() || 'admin';
+      profile?.doctor_code || user.email?.split('@')[0]?.toUpperCase() || 'admin';
     await saveScheduleToDb(request.week_key, scheduleData, updatedBy, {
       source: 'change_request',
     });
@@ -165,7 +170,7 @@ export async function applyChangeRequest(requestId: string) {
   }
 
   // 5. Marquer la demande comme approuvée
-  const { error: updateError } = await supabase
+  const { error: updateError } = await adminDb
     .from('change_requests')
     .update({
       status: 'approved',
@@ -196,16 +201,16 @@ export async function applyChangeRequest(requestId: string) {
 export async function rejectChangeRequest(requestId: string, comment?: string) {
   const supabase = await createClient();
 
-  // 1. Vérifier l'authentification et les droits admin
+  // 1. Vérifier l'authentification et les droits
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return { success: false, error: 'Non authentifié' };
   }
 
   const adminDb = createAdminClient();
-  const { data: profile, error: profileError } = await adminDb
+  const { data: profile } = await adminDb
     .from('profiles')
-    .select('role')
+    .select('role, doctor_code')
     .eq('id', user.id)
     .single();
 
@@ -220,27 +225,32 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
                   userEmail.includes('lucie') ||
                   userEmail.includes('ouissem');
 
-  if (!isAdmin) {
-    return {
-      success: false,
-      error: `Droits insuffisants (admin requis : M, Z ou Lucie)`,
-    };
-  }
-
   // 2. Vérifier que la demande existe et est en attente
-  const { data: request, error: fetchError } = await supabase
+  const { data: request, error: fetchError } = await adminDb
     .from('change_requests')
-    .select('id')
+    .select('*')
     .eq('id', requestId)
     .eq('status', 'pending')
-    .single();
+    .maybeSingle();
 
   if (fetchError || !request) {
     return { success: false, error: 'Demande introuvable ou déjà traitée' };
   }
 
+  const isAllowed = isAdmin || 
+                    request.requester_id === user.id ||
+                    (doctorCode && request.requested_doctor?.toUpperCase() === doctorCode) ||
+                    (doctorCode && request.current_doctor?.toUpperCase() === doctorCode);
+
+  if (!isAllowed) {
+    return {
+      success: false,
+      error: `Droits insuffisants pour rejeter cette demande`,
+    };
+  }
+
   // 3. Marquer comme refusée
-  const { error: updateError } = await supabase
+  const { error: updateError } = await adminDb
     .from('change_requests')
     .update({
       status: 'rejected',
@@ -250,12 +260,73 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
     .eq('id', requestId);
 
   if (updateError) {
-    return { success: false, error: 'Erreur lors de la mise à jour' };
+    return { success: false, error: 'Erreur lors de la mise à jour du statut' };
   }
 
-  await archiveOldProcessedRequests();
-
+  revalidatePath('/protected/planning');
   revalidatePath('/protected/admin/requests');
 
-  return { success: true, message: 'Demande refusée' };
+  return { success: true, message: 'Demande rejetée' };
+}
+
+/**
+ * Supprime une demande / message de la boîte de messagerie
+ */
+export async function deleteChangeRequest(requestId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: 'Non authentifié' };
+  }
+
+  const adminDb = createAdminClient();
+  const { data: profile } = await adminDb
+    .from('profiles')
+    .select('role, doctor_code')
+    .eq('id', user.id)
+    .single();
+
+  const profileRole = profile?.role?.toLowerCase() || '';
+  const doctorCode = profile?.doctor_code?.toUpperCase() || '';
+  const userEmail = user.email?.toLowerCase() || '';
+
+  const isAdmin = profileRole === 'admin' || 
+                  profileRole === 'administrateur' ||
+                  userEmail.includes('admin') || 
+                  ['M', 'Z', 'L'].includes(doctorCode) ||
+                  userEmail.includes('lucie') ||
+                  userEmail.includes('ouissem');
+
+  const { data: request } = await adminDb
+    .from('change_requests')
+    .select('*')
+    .eq('id', requestId)
+    .maybeSingle();
+
+  if (!request) {
+    return { success: false, error: 'Demande introuvable' };
+  }
+
+  const isAllowed = isAdmin || 
+                    request.requester_id === user.id ||
+                    (doctorCode && request.requested_doctor?.toUpperCase() === doctorCode) ||
+                    (doctorCode && request.current_doctor?.toUpperCase() === doctorCode);
+
+  if (!isAllowed) {
+    return { success: false, error: 'Vous n’avez pas les droits pour supprimer cette demande' };
+  }
+
+  const { error } = await adminDb
+    .from('change_requests')
+    .delete()
+    .eq('id', requestId);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  revalidatePath('/protected/planning');
+  revalidatePath('/protected/admin/requests');
+
+  return { success: true, message: 'Message supprimé avec succès' };
 }
