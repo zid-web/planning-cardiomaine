@@ -739,7 +739,16 @@ export function ScheduleApp({
 
   const handleCellClick = (rowKey: string, day: string) => {
     if (isCellBlocked(rowKey, day)) return
-    // Admin et médecin ouvrent la même modale (édition vs lecture + demande)
+
+    if (!isAdmin) {
+      const cellValues = schedule?.[rowKey]?.[day]?.value || []
+      const isTenant = Boolean(doctorCode && cellValues.includes(doctorCode))
+      if (!isTenant) {
+        toast.error("Seul le médecin occupant la case (locataire) peut en demander le changement.")
+        return
+      }
+    }
+
     setRemplacantInput("")
     setSelectedCell({ row: rowKey, day })
   }
@@ -1142,6 +1151,16 @@ export function ScheduleApp({
       toast.error("Veuillez indiquer le médecin souhaité")
       return
     }
+
+    if (!isAdmin && requestModal.row && requestModal.day && schedule) {
+      const cellValues = schedule[requestModal.row]?.[requestModal.day]?.value || []
+      const isTenant = Boolean(doctorCode && cellValues.includes(doctorCode))
+      if (!isTenant) {
+        toast.error("Vous devez être l'occupant actuel de cette case pour demander un changement.")
+        return
+      }
+    }
+
     setIsSubmitting(true)
     try {
       const res = await fetch("/api/change-request", {
@@ -2630,6 +2649,20 @@ export function ScheduleApp({
                 </select>
               </div>
             )}
+            {!isAdmin && requestModal.row && requestModal.day && schedule && (
+              (() => {
+                const cellVals = schedule[requestModal.row]?.[requestModal.day]?.value || []
+                const isTenant = Boolean(doctorCode && cellVals.includes(doctorCode))
+                if (!isTenant) {
+                  return (
+                    <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700">
+                      ⚠️ Vous n’êtes pas assigné à cette case. Seul l’occupant (Dr. {doctorCode}) a le droit d’en demander le changement.
+                    </div>
+                  )
+                }
+                return null
+              })()
+            )}
             <div className="space-y-3">
               <input
                 type="text"
@@ -2649,7 +2682,18 @@ export function ScheduleApp({
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() => void submitRequest()}
-                disabled={isSubmitting || !requestModal.row || !requestModal.day}
+                disabled={
+                  isSubmitting ||
+                  !requestModal.row ||
+                  !requestModal.day ||
+                  (!isAdmin &&
+                    Boolean(
+                      schedule &&
+                        requestModal.row &&
+                        requestModal.day &&
+                        !(schedule[requestModal.row]?.[requestModal.day]?.value || []).includes(doctorCode),
+                    ))
+                }
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
               >
                 {isSubmitting ? "Envoi..." : "Envoyer"}
