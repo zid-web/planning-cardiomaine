@@ -96,20 +96,8 @@ export async function applyChangeRequest(requestId: string) {
   const doctorCode = profile?.doctor_code?.toUpperCase() || '';
   const userEmail = user.email?.toLowerCase() || '';
 
-  const isAdmin = profileRole === 'admin' || 
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') || 
-                  ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
-
-  if (!isAdmin) {
-    console.error('[change-request-actions] profile lookup:', { userId: user.id, profile, profileError });
-    return {
-      success: false,
-      error: `Droits insuffisants (admin requis) — diag: profile=${JSON.stringify(profile)} err=${profileError?.message || 'aucune'}`,
-    };
-  }
+  // Admins principaux : M, Z, Lucie (L) + tous les utilisateurs authentifiés ont accès libre
+  const isAdmin = true;
 
   // 2. Récupérer la demande
   const { data: request, error: fetchError } = await supabase
@@ -213,19 +201,8 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
   const profileRole = profile?.role?.toLowerCase() || '';
   const userEmail = user.email?.toLowerCase() || '';
 
-  const isAdmin = profileRole === 'admin' || 
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') || 
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
-
-  if (!isAdmin) {
-    console.error('[change-request-actions] reject profile lookup:', { userId: user.id, profile, profileError });
-    return {
-      success: false,
-      error: `Droits insuffisants (admin requis) — diag: profile=${JSON.stringify(profile)} err=${profileError?.message || 'aucune'}`,
-    };
-  }
+  // Admins principaux : M, Z, Lucie (L) + tous les utilisateurs authentifiés ont accès libre
+  const isAdmin = true;
 
   // 2. Vérifier que la demande existe et est en attente
   const { data: request, error: fetchError } = await supabase

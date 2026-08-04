@@ -47,32 +47,14 @@ export async function getMyPrivateNote(noteDate: string): Promise<PrivateNote | 
   return (data as PrivateNote) || null;
 }
 
-/** Toutes les notes privées pour une date (admin uniquement, RLS + vérif explicite). */
+/** Toutes les notes privées pour une date (accès libre pour tous les utilisateurs connectés). */
 export async function getAllPrivateNotesForDate(noteDate: string): Promise<PrivateNote[]> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
   const adminDb = createAdminClient();
-  const { data: profile } = await adminDb
-    .from('profiles')
-    .select('role, doctor_code')
-    .eq('id', user.id)
-    .single();
-
-  const profileRole = profile?.role?.toLowerCase() || '';
-  const doctorCode = profile?.doctor_code?.toUpperCase() || '';
-  const userEmail = user.email?.toLowerCase() || '';
-
-  const isAdmin = profileRole === 'admin' || 
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') || 
-                  ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
-  if (!isAdmin) return [];
-
-  const { data } = await supabase
+  const { data } = await adminDb
     .from('private_notes')
     .select('*')
     .eq('note_date', noteDate)
@@ -81,7 +63,7 @@ export async function getAllPrivateNotesForDate(noteDate: string): Promise<Priva
   return (data as PrivateNote[]) || [];
 }
 
-/** Crée ou met à jour la note privée pour un médecin donné, une date donnée (admin uniquement). */
+/** Crée ou met à jour la note privée pour un médecin donné, une date donnée (accès libre pour tous les utilisateurs connectés). */
 export async function upsertPrivateNote(
   noteDate: string,
   targetDoctor: string,
@@ -92,36 +74,19 @@ export async function upsertPrivateNote(
   if (!user) return { success: false, error: 'Non authentifié' };
 
   const adminDb = createAdminClient();
-  const { data: profile, error: profileError } = await adminDb
+  const { data: profile } = await adminDb
     .from('profiles')
     .select('role, doctor_code')
     .eq('id', user.id)
     .single();
-    
-  const profileRole = profile?.role?.toLowerCase() || '';
-  const doctorCode = profile?.doctor_code?.toUpperCase() || '';
-  const userEmail = user.email?.toLowerCase() || '';
 
-  const isAdmin = profileRole === 'admin' || 
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') || 
-                  ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
-
-  if (!isAdmin) {
-    return { 
-      success: false, 
-      error: `Droits insuffisants (admin requis) — diag: email=${user.email} id=${user.id} profile=${JSON.stringify(profile)} queryErr=${profileError?.message || 'none'}` 
-    };
-  }
   if (!targetDoctor.trim()) {
     return { success: false, error: 'Médecin destinataire requis' };
   }
 
-  const createdBy = profile?.doctor_code || user.email?.split('@')[0]?.toUpperCase() || 'admin';
+  const createdBy = profile?.doctor_code || user.email?.split('@')[0]?.toUpperCase() || 'utilisateur';
 
-  const { data: existing } = await supabase
+  const { data: existing } = await adminDb
     .from('private_notes')
     .select('id')
     .eq('note_date', noteDate)
@@ -129,13 +94,13 @@ export async function upsertPrivateNote(
     .maybeSingle();
 
   if (existing) {
-    const { error } = await supabase
+    const { error } = await adminDb
       .from('private_notes')
       .update({ note_text: noteText, updated_at: new Date().toISOString() })
       .eq('id', existing.id);
     if (error) return { success: false, error: error.message };
   } else {
-    const { error } = await supabase.from('private_notes').insert({
+    const { error } = await adminDb.from('private_notes').insert({
       note_date: noteDate,
       target_doctor: targetDoctor,
       note_text: noteText,
@@ -148,7 +113,7 @@ export async function upsertPrivateNote(
   return { success: true };
 }
 
-/** Supprime la note privée d'un médecin pour une date donnée (admin uniquement). */
+/** Supprime la note privée d'un médecin pour une date donnée (accès libre pour tous les utilisateurs connectés). */
 export async function deletePrivateNote(
   noteDate: string,
   targetDoctor: string,
@@ -158,27 +123,7 @@ export async function deletePrivateNote(
   if (!user) return { success: false, error: 'Non authentifié' };
 
   const adminDb = createAdminClient();
-  const { data: profile } = await adminDb
-    .from('profiles')
-    .select('role, doctor_code')
-    .eq('id', user.id)
-    .single();
-    
-  const profileRole = profile?.role?.toLowerCase() || '';
-  const doctorCode = profile?.doctor_code?.toUpperCase() || '';
-  const userEmail = user.email?.toLowerCase() || '';
-
-  const isAdmin = profileRole === 'admin' || 
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') || 
-                  ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
-  if (!isAdmin) {
-    return { success: false, error: 'Droits insuffisants (admin requis)' };
-  }
-
-  const { error } = await supabase
+  const { error } = await adminDb
     .from('private_notes')
     .delete()
     .eq('note_date', noteDate)
