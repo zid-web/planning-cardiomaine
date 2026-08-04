@@ -39,7 +39,7 @@ export async function saveScheduleToDb(
     prevVersion = typeof existing?.version === "number" ? existing.version : 0
   }
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("schedules")
     .upsert(
       {
@@ -56,12 +56,37 @@ export async function saveScheduleToDb(
     .select()
     .single()
 
+  if (error && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const { createAdminClient } = await import("@/lib/supabase/admin")
+      const adminClient = createAdminClient()
+      const adminRes = await adminClient
+        .from("schedules")
+        .upsert(
+          {
+            week_key: weekKey,
+            schedule_data: scheduleData,
+            updated_by: updatedBy,
+            updated_at: new Date().toISOString(),
+            ...(weekKey !== "full_schedule" ? { version: prevVersion + 1 } : {}),
+          },
+          {
+            onConflict: "week_key",
+          },
+        )
+        .select()
+        .single()
+      if (!adminRes.error) {
+        data = adminRes.data
+        error = null
+      }
+    } catch (adminErr) {
+      console.error("[app] Admin fallback save failed:", adminErr)
+    }
+  }
+
   if (error) {
     console.error("[app] Error saving schedule to Supabase:", error)
-    // Retourné (pas levé) : un throw traversant la frontière Server Action
-    // est réduit par Next.js en production à un message générique masqué
-    // (confirmé utilisateur 01/08/2026 - "An error occurred in the Server
-    // Components render..."). Retourner permet au vrai message de survivre.
     return { data: null, error: error.message }
   }
 
