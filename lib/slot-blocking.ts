@@ -379,14 +379,38 @@ export function canAssignDoctorToSlot(
     }
   }
 
-  // Pas de Coro, Astreintes ATL ou Rythmo le lendemain d'une GARDE DE NUIT (ne concerne pas l'Astreinte Nuit)
+  // Pas de Coro, Astreintes ATL ou Rythmo le lendemain d'une GARDE DE NUIT
+  // (Pour M, O, W sur Coro/ATL, cette règle ne s'applique que lorsque les 3 sont présents ; elle tombe automatiquement si 1 ou 2 d'entre eux sont absents/en congés)
   const prevDay = previousDayName(day)
   if (prevDay && doctorOnRow(schedule, "Garde Nuit", prevDay, doctorId)) {
-    const isCoroOrAtlOrRythmo = rowKey.includes("Coro") || rowKey.includes("Astreintes ATL") || rowKey.includes("Rythmo")
-    if (isCoroOrAtlOrRythmo) {
+    const isRythmo = rowKey.includes("Rythmo")
+    const isCoroOrAtl = rowKey.includes("Coro") || rowKey.includes("Astreintes ATL")
+
+    if (isRythmo) {
       return {
         allowed: false,
-        reason: `${doctorId} a fait une garde de nuit la veille (${prevDay}) — Coro, ATL et Rythmo interdits le lendemain.`,
+        reason: `${doctorId} a fait une garde de nuit la veille (${prevDay}) — Rythmo interdit le lendemain.`,
+      }
+    }
+
+    if (isCoroOrAtl) {
+      if (["M", "O", "W"].includes(doctorId)) {
+        const isVac = (doc: string, d: string) => {
+          const vals = schedule["Congés"]?.[d]?.value || []
+          return vals.includes(doc)
+        }
+        const all3Present = ["M", "O", "W"].every((doc) => !isVac(doc, prevDay) && !isVac(doc, day))
+        if (all3Present) {
+          return {
+            allowed: false,
+            reason: `${doctorId} a fait une garde de nuit la veille (${prevDay}) et les 3 coronarographistes (M, O, W) sont présents — Coro/ATL interdit le lendemain.`,
+          }
+        }
+      } else {
+        return {
+          allowed: false,
+          reason: `${doctorId} a fait une garde de nuit la veille (${prevDay}) — Coro/ATL interdit le lendemain.`,
+        }
       }
     }
   }
