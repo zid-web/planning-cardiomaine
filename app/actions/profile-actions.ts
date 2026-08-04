@@ -71,3 +71,55 @@ export async function getUserProfile() {
     return { error: errorMessage, profile: null }
   }
 }
+
+export async function updateProfile(firstName: string, lastName: string) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { error: 'Non authentifié' }
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      data: {
+        first_name: firstName,
+        last_name: lastName,
+      }
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    revalidatePath('/profile')
+    return { success: true }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Une erreur est survenue' }
+  }
+}
+
+export async function changePassword(password: string) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return { error: 'Non authentifié' }
+    }
+
+    if (!password || password.length < 8) {
+      return { error: 'Le mot de passe doit contenir au moins 8 caractères' }
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: password,
+    })
+
+    if (error) {
+      return { error: error.message }
+    }
+
+    return { success: true }
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Une erreur est survenue' }
+  }
+}
