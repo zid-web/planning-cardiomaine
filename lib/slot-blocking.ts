@@ -363,6 +363,14 @@ export function canAssignDoctorToSlot(
     return { allowed: true }
   }
 
+  // K est exclu d'office le Lundi et le Vendredi (règle fixe indisponibilité permanente)
+  if (doctorId === "K" && (day === "LUNDI" || day === "VENDREDI")) {
+    return {
+      allowed: false,
+      reason: "K n'est jamais présent le Lundi et le Vendredi (règle fixe).",
+    }
+  }
+
   // Stress : jamais Mer/Ven après-midi
   if (isStressSlotClosed(rowKey, day)) {
     return {
