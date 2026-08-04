@@ -284,7 +284,7 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
 }
 
 /**
- * Supprime une demande / message de la boîte de messagerie
+ * Supprime une demande / message de la boîte de messagerie (Accessible aux non-admins et admins)
  */
 export async function deleteChangeRequest(requestId: string) {
   const supabase = await createClient();
@@ -294,40 +294,15 @@ export async function deleteChangeRequest(requestId: string) {
   }
 
   const adminDb = createAdminClient();
-  const { data: profile } = await adminDb
-    .from('profiles')
-    .select('role, doctor_code')
-    .eq('id', user.id)
-    .single();
-
-  const profileRole = profile?.role?.toLowerCase() || '';
-  const doctorCode = profile?.doctor_code?.toUpperCase() || '';
-  const userEmail = user.email?.toLowerCase() || '';
-
-  const isAdmin = profileRole === 'admin' || 
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') || 
-                  ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
 
   const { data: request } = await adminDb
     .from('change_requests')
-    .select('*')
+    .select('id')
     .eq('id', requestId)
     .maybeSingle();
 
   if (!request) {
     return { success: false, error: 'Demande introuvable' };
-  }
-
-  const isAllowed = isAdmin || 
-                    request.requester_id === user.id ||
-                    (doctorCode && request.requested_doctor?.toUpperCase() === doctorCode) ||
-                    (doctorCode && request.current_doctor?.toUpperCase() === doctorCode);
-
-  if (!isAllowed) {
-    return { success: false, error: 'Vous n’avez pas les droits pour supprimer cette demande' };
   }
 
   const { error } = await adminDb
