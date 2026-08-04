@@ -8,6 +8,7 @@ import {
   BarChart3,
   Bell,
   Calendar,
+  CalendarCheck2,
   CalendarDays,
   CalendarIcon,
   Check,
@@ -38,6 +39,7 @@ import {
   Sparkles,
   Sun,
   Trash2,
+  TrendingUp,
   User,
   UserCog,
   Users,
@@ -63,6 +65,8 @@ import {
   sortedWorkloadEntries,
 } from "@/lib/scheduler-algo"
 import { StatsDialog } from "./stats-dialog"
+import { GuardPicksDialog } from "./guard-picks-dialog"
+import { SixMonthProjectionDialog } from "./six-month-projection-dialog"
 import { canAssignDoctor, detectConflict, isDoctorUnavailable } from "@/lib/assignment-validation"
 import {
   getCellDisplayAssignees,
@@ -194,6 +198,8 @@ export function ScheduleApp({
   const [noteDay, setNoteDay] = useState("")
   const [learnMoreOpen, setLearnMoreOpen] = useState(false)
   const [showWorkloadStats, setShowWorkloadStats] = useState(false)
+  const [showGuardPicks, setShowGuardPicks] = useState(false)
+  const [showSixMonthProjection, setShowSixMonthProjection] = useState(false)
   const [vacations, setVacations] = useState<DoctorVacation[]>([])
   // Instantané du planning juste avant "Générer" (par semaine) - permet au
   // bouton "Retour" de restaurer l'état d'avant sans valider les
@@ -1936,8 +1942,20 @@ export function ScheduleApp({
                           <BarChart3 className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden lg:inline">Stats</span>
                         </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 border-indigo-300 bg-indigo-50 px-2 text-[11px] font-semibold !text-indigo-800 hover:bg-indigo-100 hover:!text-indigo-900"
+                          onClick={() => setShowSixMonthProjection(true)}
+                          title="Projection planning 6 mois via solveur"
+                        >
+                          <TrendingUp className="mr-1 h-3.5 w-3.5 shrink-0 !text-indigo-700" strokeWidth={2.25} />
+                          <span className="hidden lg:inline">Projection</span>
+                        </Button>
                       </div>
                     )}
+
                   </>
                 )}
 
@@ -2019,6 +2037,32 @@ export function ScheduleApp({
                         <BarChart3 className="size-4 text-blue-600" />
                         <span>Statistiques de charge</span>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowGuardPicks(true)
+                          setPraticienPopoverOpen(false)
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800"
+                      >
+                        <CalendarCheck2 className="size-4 text-emerald-600" />
+                        <span>Choix de Gardes WE & Fériés</span>
+                      </button>
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowSixMonthProjection(true)
+                            setPraticienPopoverOpen(false)
+                          }}
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                        >
+                          <TrendingUp className="size-4 text-indigo-600" />
+                          <span>Projection 6 mois (Solveur)</span>
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -3253,7 +3297,20 @@ export function ScheduleApp({
         fullSchedule={fullSchedule}
       />
 
+      <GuardPicksDialog
+        open={showGuardPicks}
+        onOpenChange={setShowGuardPicks}
+        isAdmin={isAdmin}
+        doctorCode={doctorCode || currentUser || ""}
+      />
 
+      {isAdmin && (
+        <SixMonthProjectionDialog
+          open={showSixMonthProjection}
+          onOpenChange={setShowSixMonthProjection}
+          currentUser={currentUser || "admin"}
+        />
+      )}
 
       {/* Vacations Modal */}
       <Suspense fallback={null}>
