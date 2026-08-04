@@ -1497,6 +1497,11 @@ export function ScheduleApp({
     // Stress : jamais mercredi / vendredi après-midi
     if (isStressSlotClosed(row, day)) return true
 
+    // Rythmo : non disponible Lundi matin et Jeudi matin
+    if (row.includes("Rythmo") && row.includes("Matin") && (day === "LUNDI" || day === "JEUDI")) {
+      return true
+    }
+
     // Rééducation: Block Tuesday and Thursday
     if (row.includes("RÉEDUCATION") && (day === "MARDI" || day === "JEUDI")) return true
 

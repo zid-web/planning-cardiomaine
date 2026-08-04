@@ -371,6 +371,14 @@ export function canAssignDoctorToSlot(
     }
   }
 
+  // Rythmo : non disponible Lundi matin et Jeudi matin
+  if (rowKey.includes("Rythmo") && rowKey.includes("Matin") && (day === "LUNDI" || day === "JEUDI")) {
+    return {
+      allowed: false,
+      reason: "Rythmo non disponible le lundi matin et le jeudi matin.",
+    }
+  }
+
   // CH : astreintes ATL uniquement — jamais de garde
   if (doctorId === "CH") {
     if (isGardeRow(rowKey)) {
@@ -523,6 +531,26 @@ export function canAssignDoctorToSlot(
 
   if (rowKey === HALF_DAY_OFF_MATIN_ROW || rowKey === HALF_DAY_OFF_APM_ROW) {
     return { allowed: true }
+  }
+
+  if (
+    rowKey.includes("Astreintes ATL Midi") &&
+    ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"].includes(day) &&
+    dateStr
+  ) {
+    const d = new Date(dateStr)
+    if (!Number.isNaN(d.getTime())) {
+      const jan4 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4))
+      const dayJan4 = jan4.getUTCDay() || 7
+      const mon1 = new Date(jan4.getTime() - (dayJan4 - 1) * 86400000)
+      const weekNum = Math.floor((d.getTime() - mon1.getTime()) / (7 * 86400000)) + 1
+      if (weekNum >= 31 && weekNum <= 34) {
+        return {
+          allowed: false,
+          reason: "Astreinte ATL Midi fermée de S31 à S34 inclus.",
+        }
+      }
+    }
   }
 
   if (rowKey === LFB_ROW || rowKey === CDL_ROW) {
