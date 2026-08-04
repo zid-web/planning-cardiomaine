@@ -40,6 +40,7 @@ export const DOCTORS = [
   "R",
   "T",
   "I",
+  "Y",
 ]
 
 export const STAFF_INITIALS = [
@@ -66,6 +67,7 @@ export const STAFF_INITIALS = [
   "R",
   "T",
   "I",
+  "Y",
 ]
 
 // Doctor classification - metadata for different doctor types
@@ -271,6 +273,15 @@ export const DOCTOR_METADATA: Record<
     can_have_vacations: false,
     status: 'externe_garde',
   },
+  Y: {
+    name: 'Médecin Test Y',
+    is_externe: false,
+    can_be_assigned_to_guards: true,
+    can_be_assigned_to_astreinte: true,
+    can_be_assigned_to_nct: true,
+    can_have_vacations: true,
+    status: 'internal',
+  },
 }
 
 export const SPECIALTIES = {
@@ -306,6 +317,7 @@ export const DOCTOR_COLORS: { [key: string]: string } = {
   R: "bg-red-700",
   T: "bg-emerald-700",
   I: "bg-sky-700",
+  Y: "bg-teal-600",
 }
 
 // Ancien gris neutre Congés — les badges Congés utilisent désormais DOCTOR_COLORS
