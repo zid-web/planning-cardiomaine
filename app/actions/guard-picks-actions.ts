@@ -1,14 +1,8 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { createClient as createAdminClient } from "@supabase/supabase-js"
+import { createAdminClient } from "@/lib/supabase/admin"
 
-// Admin client (service role) to bypass RLS
-function getAdminDb() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!
-  return createAdminClient(url, key)
-}
 
 export type GuardPickRow = {
   id: string
@@ -49,7 +43,7 @@ export async function getGuardPicksForSemester(
   semester: 1 | 2,
   year: number,
 ): Promise<{ data: GuardPickRow[]; error?: string }> {
-  const adminDb = getAdminDb()
+  const adminDb = createAdminClient()
   const { data, error } = await adminDb
     .from("guard_picks")
     .select("*")
@@ -72,7 +66,7 @@ export async function getMyGuardPicks(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { data: [], error: "Non authentifié" }
 
-  const adminDb = getAdminDb()
+  const adminDb = createAdminClient()
   const { data, error } = await adminDb
     .from("guard_picks")
     .select("*")
@@ -95,7 +89,7 @@ export async function submitGuardPick(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Non authentifié" }
 
-  const adminDb = getAdminDb()
+  const adminDb = createAdminClient()
   const { data, error } = await adminDb
     .from("guard_picks")
     .upsert({
@@ -133,7 +127,7 @@ export async function deleteGuardPick(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: "Non authentifié" }
 
-  const adminDb = getAdminDb()
+  const adminDb = createAdminClient()
   const { error } = await adminDb
     .from("guard_picks")
     .delete()
@@ -150,7 +144,7 @@ export async function approveGuardPick(
   id: string,
   adminCode: string,
 ): Promise<{ error?: string }> {
-  const adminDb = getAdminDb()
+  const adminDb = createAdminClient()
   const { error } = await adminDb
     .from("guard_picks")
     .update({
@@ -172,7 +166,7 @@ export async function rejectGuardPick(
   adminCode: string,
   adminNote?: string,
 ): Promise<{ error?: string }> {
-  const adminDb = getAdminDb()
+  const adminDb = createAdminClient()
   const { error } = await adminDb
     .from("guard_picks")
     .update({
@@ -196,7 +190,7 @@ export async function getVacationDatesForSemester(
   year: number,
   doctorCode: string,
 ): Promise<{ dates: string[]; error?: string }> {
-  const adminDb = getAdminDb()
+  const adminDb = createAdminClient()
 
   // Semester date range
   const startDate = semester === 1 ? `${year}-01-01` : `${year}-09-01`
