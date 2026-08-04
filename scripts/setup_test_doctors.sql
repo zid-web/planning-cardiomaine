@@ -1,16 +1,11 @@
--- Script d'initialisation et de réparation automatique des profils médecins pour test
+-- Script d'initialisation et de réparation automatique des profils médecins pour test (Initial 'Y')
 
--- 1. Attribuer le code médecin 'P' à l'utilisateur de test (id: 73e9a3b6-8b6d-4c38-b1eb-206a9df14317 / email: test-medecin@test.com)
+-- 1. Attribuer l'initiale de test 'Y' à l'utilisateur de test (id: 73e9a3b6-8b6d-4c38-b1eb-206a9df14317 / email: test-medecin@test.com)
 UPDATE public.profiles
-SET doctor_code = 'P'
+SET doctor_code = 'Y', role = 'user'
 WHERE id = '73e9a3b6-8b6d-4c38-b1eb-206a9df14317' OR email = 'test-medecin@test.com';
 
 -- 2. Configurer les rôles
--- Médecin P (test)
-UPDATE public.profiles
-SET role = 'user', doctor_code = 'P'
-WHERE email = 'test-medecin@test.com' OR id = '73e9a3b6-8b6d-4c38-b1eb-206a9df14317';
-
 -- Médecin M (admin)
 UPDATE public.profiles
 SET role = 'admin'
