@@ -11,7 +11,13 @@ UPDATE public.profiles
 SET role = 'admin'
 WHERE doctor_code = 'M' OR email LIKE '%admin%';
 
--- 3. Activer et ré-appliquer les politiques RLS permissives sur toutes les tables principales
+-- 3. Octroyer les droits sur les tables Supabase
+GRANT ALL ON TABLE public.schedules TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.change_requests TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.schedule_history TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.private_notes TO anon, authenticated, service_role;
+
+-- 4. Activer et ré-appliquer les politiques RLS permissives sur toutes les tables principales
 ALTER TABLE public.schedules ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "schedules_allow_all" ON public.schedules;
 CREATE POLICY "schedules_allow_all" ON public.schedules FOR ALL TO public USING (true) WITH CHECK (true);
@@ -23,3 +29,7 @@ CREATE POLICY "change_requests_allow_all" ON public.change_requests FOR ALL TO p
 ALTER TABLE public.schedule_history ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "schedule_history_allow_all" ON public.schedule_history;
 CREATE POLICY "schedule_history_allow_all" ON public.schedule_history FOR ALL TO public USING (true) WITH CHECK (true);
+
+ALTER TABLE public.private_notes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "private_notes_allow_all" ON public.private_notes;
+CREATE POLICY "private_notes_allow_all" ON public.private_notes FOR ALL TO public USING (true) WITH CHECK (true);

@@ -37,7 +37,7 @@ export async function getMyPrivateNote(noteDate: string): Promise<PrivateNote | 
     .single();
   if (!profile?.doctor_code) return null;
 
-  const { data } = await supabase
+  const { data } = await adminDb
     .from('private_notes')
     .select('*')
     .eq('note_date', noteDate)
