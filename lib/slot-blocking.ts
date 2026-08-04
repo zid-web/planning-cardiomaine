@@ -570,7 +570,7 @@ export function canAssignDoctorToSlot(
   }
 
   if (
-    rowKey.includes("Astreintes ATL Midi") &&
+    (rowKey.includes("Astreintes ATL Midi") || (rowKey.includes("Coro") && (rowKey.includes("Apm") || rowKey.includes("Midi")))) &&
     ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"].includes(day) &&
     dateStr
   ) {
@@ -583,7 +583,7 @@ export function canAssignDoctorToSlot(
       if (weekNum >= 31 && weekNum <= 34) {
         return {
           allowed: false,
-          reason: "Astreinte ATL Midi fermée de S31 à S34 inclus.",
+          reason: "Astreinte ATL Midi et Coro AM fermées de S31 à S34 inclus.",
         }
       }
     }

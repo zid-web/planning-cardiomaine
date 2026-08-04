@@ -1528,9 +1528,9 @@ export function ScheduleApp({
     // NCT: Block Mon, Tue, Wed, Fri
     if (row.includes("NCT") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) return true
 
-    // Astreintes ATL Midi : fermées (non attribuables) de Lundi à Vendredi de S31 à S34 inclus — levée auto dès S35
+    // Astreintes ATL Midi & Coro AM : fermées (non attribuables) de Lundi à Vendredi de S31 à S34 inclus — levée auto dès S35
     if (
-      row.includes("Astreintes ATL Midi") &&
+      (row.includes("Astreintes ATL Midi") || (row.includes("Coro") && (row.includes("Apm") || row.includes("Midi")))) &&
       currentWeekInfo.week >= 31 &&
       currentWeekInfo.week <= 34 &&
       ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"].includes(day)
