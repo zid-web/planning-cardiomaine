@@ -88,8 +88,17 @@ export default function PlanningPage() {
   }, [])
 
   const handleLogout = async () => {
-    await signOut()
-    router.push("/auth/login")
+    try {
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.error("[planning] Client signOut error:", err)
+    }
+    try {
+      await signOut()
+    } catch (err) {
+      console.error("[planning] Server signOut error:", err)
+    }
+    window.location.href = "/auth/login"
   }
 
   const handleChangePassword = () => {

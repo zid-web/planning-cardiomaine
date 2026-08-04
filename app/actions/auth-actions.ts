@@ -69,11 +69,12 @@ export async function signOut() {
   const { error } = await supabase.auth.signOut()
 
   if (error) {
+    console.error('[auth] Server signOut error:', error)
     return { error: error.message }
   }
 
   revalidatePath('/', 'layout')
-  redirect('/')
+  return { success: true }
 }
 
 export async function getCurrentUser() {

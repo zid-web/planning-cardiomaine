@@ -1958,8 +1958,11 @@ export function ScheduleApp({
 
                       <button
                         type="button"
-                        onClick={onLogout}
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void onLogout()
+                        }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer"
                       >
                         <LogOut className="size-4 text-red-500" />
                         <span>Se déconnecter</span>
