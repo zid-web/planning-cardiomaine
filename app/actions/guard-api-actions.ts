@@ -109,6 +109,7 @@ async function getDoctorsFromSupabase(): Promise<Doctor[]> {
     points_cs: groupe1Points[doc.id]?.cs || 0,
     points_ett: groupe1Points[doc.id]?.ett || 0,
     points_stress: groupe1Points[doc.id]?.stress || 0,
+    points_ee: groupe1Points[doc.id]?.ee || 0,
   }));
 }
 

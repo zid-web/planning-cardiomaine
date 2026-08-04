@@ -41,7 +41,16 @@ export const ETT_ROWS = new Set([
 ])
 /** Stress Matin + Apm. */
 export const STRESS_ROWS = new Set(["Matin - Stress", "Apm - Stress"])
-/** Médecins du groupe 1 (équité Cs/ETT/Stress côté solveur). */
+/** EE (Épreuve d'effort) Matin + Apm. */
+export const EE_ROWS = new Set([
+  "Matin - EE1",
+  "Matin - EE2",
+  "Apm - EE1",
+  "Apm - EE2",
+  "Matin - EE",
+  "Apm - EE",
+])
+/** Médecins du groupe 1 (équité Cs/ETT/Stress/EE côté solveur). */
 export const GROUPE1_ECHO_DOCTORS = new Set(["B", "Z", "H", "G", "S"])
 export const WEEKEND_DAYS = new Set(["SAMEDI", "DIMANCHE"])
 
@@ -49,6 +58,7 @@ export type Groupe1EquityCounts = {
   cs: number
   ett: number
   stress: number
+  ee: number
 }
 
 function emptyCounts(): EquityCounts {
@@ -298,7 +308,7 @@ export async function getCoroMOWEquity(
   }
 }
 
-/** Compteurs Cs / ETT / Stress pour une semaine (vacations cliniques). */
+/** Compteurs Cs / ETT / Stress / EE pour une semaine (vacations cliniques). */
 export function computeWeeklyGroupe1Clinical(
   scheduleData: ScheduleData,
 ): Record<string, Groupe1EquityCounts> {
@@ -306,7 +316,7 @@ export function computeWeeklyGroupe1Clinical(
   const bump = (doc: string, key: keyof Groupe1EquityCounts) => {
     if (!doc || doc === "CH" || doc === "I") return
     if (!isListedDoctor(doc)) return
-    if (!out[doc]) out[doc] = { cs: 0, ett: 0, stress: 0 }
+    if (!out[doc]) out[doc] = { cs: 0, ett: 0, stress: 0, ee: 0 }
     out[doc][key]++
   }
   for (const [rowKey, dayData] of Object.entries(scheduleData || {})) {
@@ -316,7 +326,9 @@ export function computeWeeklyGroupe1Clinical(
         ? "ett"
         : STRESS_ROWS.has(rowKey)
           ? "stress"
-          : null
+          : EE_ROWS.has(rowKey)
+            ? "ee"
+            : null
     if (!kind) continue
     for (const cell of Object.values(dayData || {})) {
       const doctors = Array.isArray((cell as { value?: unknown })?.value)
@@ -410,9 +422,8 @@ export async function getCoroEquity(
 }
 
 /**
- * Équité Groupe 1 (Cs / ETT / Stress) — fenêtre glissante 6 mois.
- * Scan JSON (pas de colonnes DB). Tous les médecins listés sont comptés ;
- * le solveur n’utilise que B/Z/H/G/S.
+ * Équité Groupe 1 (Cs / ETT / Stress / EE) — fenêtre glissante 6 mois.
+ * Scan JSON (pas de colonnes DB). Tous les médecins listés sont comptés.
  */
 export async function getGroupe1Equity(
   now: Date = new Date(),
@@ -421,12 +432,13 @@ export async function getGroupe1Equity(
     now,
     computeWeeklyGroupe1Clinical,
     (total, doc, weekVal) => {
-      if (!total[doc]) total[doc] = { cs: 0, ett: 0, stress: 0 }
+      if (!total[doc]) total[doc] = { cs: 0, ett: 0, stress: 0, ee: 0 }
       total[doc].cs += weekVal.cs
       total[doc].ett += weekVal.ett
       total[doc].stress += weekVal.stress
+      total[doc].ee += (weekVal.ee || 0)
     },
-    "Groupe1 Cs/ETT/Stress",
+    "Groupe1 Cs/ETT/Stress/EE",
   )
 }
 

@@ -342,6 +342,7 @@ export function buildMedecinsPayload(doctorIds: string[] = DOCTORS): GuardMedeci
     points_cs: 0,
     points_ett: 0,
     points_stress: 0,
+    points_ee: 0,
   }));
 }
 
