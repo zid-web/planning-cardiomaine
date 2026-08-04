@@ -89,7 +89,26 @@ export default function PlanningPage() {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut()
+      await mutate(() => true, undefined, { revalidate: false })
+    } catch (err) {
+      console.error("[planning] SWR mutate clear error:", err)
+    }
+
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.clear()
+        sessionStorage.clear()
+        if ("caches" in window) {
+          const cacheKeys = await caches.keys()
+          await Promise.all(cacheKeys.map((key) => caches.delete(key)))
+        }
+      }
+    } catch (err) {
+      console.error("[planning] Storage clear error:", err)
+    }
+
+    try {
+      await supabase.auth.signOut({ scope: "global" })
     } catch (err) {
       console.error("[planning] Client signOut error:", err)
     }
@@ -98,7 +117,9 @@ export default function PlanningPage() {
     } catch (err) {
       console.error("[planning] Server signOut error:", err)
     }
-    window.location.href = "/auth/login"
+    if (typeof window !== "undefined") {
+      window.location.href = "/auth/login"
+    }
   }
 
   const handleChangePassword = () => {

@@ -1,16 +1,40 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { signOut } from '@/app/actions/auth-actions'
 import { Button } from '@/components/ui/button'
 
 export function LogoutButton() {
-  const router = useRouter()
-
   const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/auth/login')
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.clear()
+        sessionStorage.clear()
+        if ('caches' in window) {
+          const keys = await caches.keys()
+          await Promise.all(keys.map((k) => caches.delete(k)))
+        }
+      }
+    } catch (e) {
+      console.error('[auth] clear storage error:', e)
+    }
+
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut({ scope: 'global' })
+    } catch (e) {
+      console.error('[auth] supabase signOut error:', e)
+    }
+
+    try {
+      await signOut()
+    } catch (e) {
+      console.error('[auth] server signOut error:', e)
+    }
+
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login'
+    }
   }
 
   return (
