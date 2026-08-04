@@ -377,8 +377,42 @@ export function ScheduleApp({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "change_requests" },
-        () => {
+        (payload: any) => {
           void refreshRequests()
+
+          // Notification instantanée pour l'émetteur lors d'une réponse (UPDATE)
+          if (payload.eventType === "UPDATE") {
+            const oldRow = payload.old
+            const newRow = payload.new
+            const isMyRequest = newRow && newRow.requester_id === currentUserId
+            const statusChanged = oldRow && newRow ? oldRow.status !== newRow.status : true
+
+            if (isMyRequest && statusChanged && newRow.status !== "pending") {
+              const statusLabel =
+                newRow.status === "validated" || newRow.status === "approved"
+                  ? "APPROUVÉE ✅"
+                  : "REFUSÉE ❌"
+              
+              toast.success(
+                `Réponse reçue ! Votre demande de remplacement pour ${newRow.row_key} le ${newRow.day_name} a été ${statusLabel}.`,
+                {
+                  duration: 8000,
+                }
+              )
+            }
+          }
+
+          // Notification instantanée pour le destinataire lors d'une nouvelle demande (INSERT)
+          if (payload.eventType === "INSERT") {
+            const newRow = payload.new
+            const isRecipient = newRow && doctorCode && newRow.requested_doctor?.toUpperCase() === doctorCode.toUpperCase()
+            if (isRecipient) {
+              toast.message("Demande de remplacement reçue 📩", {
+                description: `Le Dr. ${newRow.current_doctor || "Admin"} sollicite votre remplacement pour ${newRow.row_key} le ${newRow.day_name}.`,
+                duration: 8000,
+              })
+            }
+          }
         },
       )
       .subscribe()
@@ -386,7 +420,7 @@ export function ScheduleApp({
     return () => {
       void supabase.removeChannel(requestsChannel)
     }
-  }, [supabase, refreshRequests])
+  }, [supabase, currentUserId, doctorCode, refreshRequests])
 
   // Présence temps réel : liste des utilisateurs actuellement connectés
   // (Supabase Realtime Presence), affichée dans le header - admin uniquement
