@@ -1148,7 +1148,7 @@ export function ScheduleApp({
 
   const submitRequest = async () => {
     if (!requestedDoctor.trim()) {
-      toast.error("Veuillez indiquer le médecin souhaité")
+      toast.error("Veuillez indiquer les initiales du médecin remplaçant")
       return
     }
 
@@ -2664,13 +2664,17 @@ export function ScheduleApp({
               })()
             )}
             <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="Médecin souhaité (ex: P)"
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                value={requestedDoctor}
-                onChange={(e) => setRequestedDoctor(e.target.value)}
-              />
+              <div className="space-y-1">
+                <Label htmlFor="req-doctor-input" className="text-xs font-semibold text-slate-700">Initiales du médecin remplaçant</Label>
+                <input
+                  id="req-doctor-input"
+                  type="text"
+                  placeholder="Initiales du remplaçant (ex: P)"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  value={requestedDoctor}
+                  onChange={(e) => setRequestedDoctor(e.target.value)}
+                />
+              </div>
               <textarea
                 placeholder="Raison de la demande (optionnel)"
                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
