@@ -541,72 +541,72 @@ export function GuardPicksDialog({ open, onOpenChange, isAdmin, doctorCode }: Pr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-6xl overflow-hidden bg-slate-50 text-slate-900 p-0 flex flex-col">
+      <DialogContent className="w-[96vw] max-w-6xl h-[92vh] max-h-[92vh] overflow-hidden bg-slate-50 text-slate-900 p-0 flex flex-col rounded-2xl border border-slate-200 shadow-2xl">
         {/* Header */}
-        <div className="flex-none p-5 border-b border-slate-200 bg-white">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="space-y-1">
-              <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
-                <CalendarCheck2 className="w-5 h-5 text-blue-600" />
+        <div className="flex-none p-3 sm:p-4 border-b border-slate-200 bg-white sticky top-0 z-10">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="space-y-0.5">
+              <DialogTitle className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                <CalendarCheck2 className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 shrink-0" />
                 Choix de Gardes — WE & Fériés
               </DialogTitle>
-              <DialogDescription className="text-sm text-slate-500">
+              <DialogDescription className="text-xs text-slate-500 hidden sm:block">
                 Positionnez vos préférences de gardes de weekend et jours fériés. L'admin valide et intègre directement les choix au planning général.
               </DialogDescription>
             </div>
 
             {/* Stats & Global Bulk Validation Button */}
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {isAdmin && totalPendingAll > 0 && (
                 <Button
                   onClick={() => handleApproveBulk(allPicks.filter(p => p.status === "pending").map(p => p.id), "tout le semestre")}
-                  className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold gap-1.5 text-xs shadow-sm"
+                  className="h-7 sm:h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold gap-1 text-[11px] sm:text-xs shadow-xs"
                 >
-                  <CheckCheck className="h-4 w-4" />
-                  Tout valider ce semestre ({totalPendingAll})
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Tout valider ({totalPendingAll})
                 </Button>
               )}
 
-              <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-1.5">
-                <Clock3 className="h-3.5 w-3.5 text-amber-600" />
-                <span className="text-xs font-bold text-amber-800">{totalPendingAll} en attente</span>
+              <div className="flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-1 text-[11px]">
+                <Clock3 className="h-3 w-3 text-amber-600" />
+                <span className="font-bold text-amber-800">{totalPendingAll} en attente</span>
               </div>
-              <div className="flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                <span className="text-xs font-bold text-emerald-800">{totalApprovedAll} approuvés</span>
+              <div className="flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1 text-[11px]">
+                <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                <span className="font-bold text-emerald-800">{totalApprovedAll} approuvés</span>
               </div>
             </div>
           </div>
 
           {/* Semester selector */}
-          <div className="mt-4 flex items-center gap-3 flex-wrap justify-between">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+          <div className="mt-2 sm:mt-3 flex items-center gap-2 flex-wrap justify-between">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg">
                 {([1, 2] as Semester[]).map(s => (
                   <button
                     key={s}
                     onClick={() => setSemester(s)}
                     className={cn(
-                      "rounded-md px-3 py-1.5 text-xs font-bold transition-all",
+                      "rounded-md px-2.5 py-1 text-[11px] font-bold transition-all",
                       semester === s
-                        ? "bg-blue-600 text-white shadow-sm"
+                        ? "bg-blue-600 text-white shadow-xs"
                         : "text-slate-600 hover:text-slate-900",
                     )}
                   >
-                    {s === 1 ? "🌸 Semestre 1 (Jan–Août)" : "🍂 Semestre 2 (Sept–Déc+)"}
+                    {s === 1 ? "🌸 S1 (Jan–Août)" : "🍂 S2 (Sept–Déc+)"}
                   </button>
                 ))}
               </div>
 
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+              <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg">
                 {[CURRENT_YEAR, CURRENT_YEAR + 1].map(y => (
                   <button
                     key={y}
                     onClick={() => setYear(y)}
                     className={cn(
-                      "rounded-md px-3 py-1.5 text-xs font-bold transition-all",
+                      "rounded-md px-2.5 py-1 text-[11px] font-bold transition-all",
                       year === y
-                        ? "bg-indigo-600 text-white shadow-sm"
+                        ? "bg-indigo-600 text-white shadow-xs"
                         : "text-slate-600 hover:text-slate-900",
                     )}
                   >
@@ -617,43 +617,43 @@ export function GuardPicksDialog({ open, onOpenChange, isAdmin, doctorCode }: Pr
             </div>
 
             {isAdmin && (
-              <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-[11px] px-2.5 py-1 font-bold">
-                <Shield className="h-3.5 w-3.5 mr-1 text-rose-600" /> Mode Validation Admin actif
+              <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-[10px] sm:text-[11px] px-2 py-0.5 font-bold">
+                <Shield className="h-3 w-3 mr-1 text-rose-600" /> Admin
               </Badge>
             )}
           </div>
         </div>
 
         {/* Legend */}
-        <div className="flex-none px-5 py-2 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+        <div className="flex-none px-3 sm:px-4 py-1.5 bg-slate-100/70 border-b border-slate-200 flex flex-wrap items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] text-slate-600">
           <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded border-2 border-purple-300 bg-purple-50" />
+            <div className="h-2.5 w-2.5 rounded border border-purple-400 bg-purple-100" />
             <span>Combo M/O/W</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded border-2 border-rose-300 bg-rose-50" />
-            <span>Jour férié</span>
+            <div className="h-2.5 w-2.5 rounded border border-rose-400 bg-rose-100" />
+            <span>Férié</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded border-2 border-blue-300 bg-blue-50" />
+            <div className="h-2.5 w-2.5 rounded border border-blue-400 bg-blue-100" />
             <span>Samedi</span>
           </div>
           <div className="flex items-center gap-1">
-            <div className="h-3 w-3 rounded border-2 border-slate-300 bg-white" />
+            <div className="h-2.5 w-2.5 rounded border border-slate-300 bg-white" />
             <span>Dimanche</span>
           </div>
           <div className="flex items-center gap-1">
-            <Sun className="h-3.5 w-3.5 text-amber-500" />
-            <span>Garde Matin</span>
+            <Sun className="h-3 w-3 text-amber-500" />
+            <span>Matin</span>
           </div>
           <div className="flex items-center gap-1">
-            <Moon className="h-3.5 w-3.5 text-indigo-400" />
-            <span>Garde Nuit</span>
+            <Moon className="h-3 w-3 text-indigo-400" />
+            <span>Nuit</span>
           </div>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Body (Scrollable container with min-h-0 for proper CSS flexbox scroll) */}
+        <div className="flex-1 overflow-y-auto min-h-0 p-3 sm:p-4 space-y-3 sm:space-y-4">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600" />

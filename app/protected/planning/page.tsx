@@ -11,7 +11,6 @@ import { createClient } from "@/lib/supabase/client"
 import { ScheduleApp } from "@/components/schedule-app"
 import { loadFullScheduleFromDb } from "@/app/actions/schedule-actions"
 import { signOut } from "@/app/actions/auth-actions"
-import { FeedbackButton } from "@/components/FeedbackButton"
 import type { FullSchedule } from "@/lib/types"
 
 async function fetchFullSchedule(): Promise<FullSchedule> {
@@ -152,7 +151,6 @@ export default function PlanningPage() {
         onLogout={handleLogout}
         onChangePassword={handleChangePassword}
       />
-      <FeedbackButton />
     </>
   )
 }
