@@ -177,8 +177,10 @@ export async function deletePrivateNote(
                   userEmail.includes('lucie') ||
                   userEmail.includes('ouissem');
 
-  if (!isAdmin) {
-    return { success: false, error: 'Droits insuffisants (admin requis : M, Z ou Lucie)' };
+  const isTargetDoctor = Boolean(doctorCode && targetDoctor.toUpperCase() === doctorCode);
+
+  if (!isAdmin && !isTargetDoctor) {
+    return { success: false, error: 'Droits insuffisants pour supprimer cette note' };
   }
 
   const { error } = await adminDb

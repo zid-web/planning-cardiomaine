@@ -1425,6 +1425,20 @@ export function ScheduleApp({
     setPrivateNoteModal({ open: false, targetDoctor: "", text: "" })
   }
 
+  const removePrivateNoteItem = async (dateStr: string, doctor: string) => {
+    const result = await deletePrivateNote(dateStr, doctor)
+    if (!result.success) {
+      toast.error(result.error || "Erreur lors de la suppression")
+      return
+    }
+    toast.success("Note privée supprimée")
+    if (doctor === doctorCode) {
+      setMyPrivateNote("")
+    }
+    const notes = await getAllPrivateNotesForDate(dateStr)
+    setPrivateNotesList(notes || [])
+  }
+
   const saveNote = () => {
     const trimmed = currentNote.trim()
     const prevCell = schedule["Notes du jour"]?.[noteDay] || {
@@ -2839,15 +2853,25 @@ export function ScheduleApp({
                         <div key={n.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs relative">
                           <div className="flex justify-between items-center mb-1">
                             <span className="font-extrabold text-slate-900">Pour Dr. {n.target_doctor}</span>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                setPrivateNoteModal({ open: true, targetDoctor: n.target_doctor, text: n.note_text })
-                              }}
-                              className="text-[10px] font-bold text-amber-700 hover:text-amber-800"
-                            >
-                              Modifier
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setPrivateNoteModal({ open: true, targetDoctor: n.target_doctor, text: n.note_text })
+                                }}
+                                className="text-[10px] font-bold text-amber-700 hover:text-amber-800"
+                              >
+                                Modifier
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void removePrivateNoteItem(dateStrForWeekDay(weekKey, DAYS[currentDayIndex]), n.target_doctor)}
+                                className="text-slate-400 hover:text-red-600 p-1 rounded transition"
+                                title="Supprimer la note privée"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
                           </div>
                           <p className="text-slate-600 whitespace-pre-wrap leading-relaxed">{n.note_text}</p>
                         </div>
@@ -2858,11 +2882,21 @@ export function ScheduleApp({
               ) : (
                 <div className="space-y-4">
                   {myPrivateNote ? (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-slate-800 text-sm shadow-2xs">
-                      <p className="font-extrabold text-[#1B3A5C] mb-1.5 flex items-center gap-1.5">
-                        <Mail className="size-4 text-amber-600 animate-pulse" />
-                        Message de l'administrateur :
-                      </p>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-slate-800 text-sm shadow-2xs relative">
+                      <div className="flex justify-between items-start mb-1.5">
+                        <p className="font-extrabold text-[#1B3A5C] flex items-center gap-1.5">
+                          <Mail className="size-4 text-amber-600 animate-pulse" />
+                          Message de l'administrateur :
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void removePrivateNoteItem(dateStrForWeekDay(weekKey, DAYS[currentDayIndex]), doctorCode)}
+                          className="text-slate-400 hover:text-red-600 p-1 rounded transition"
+                          title="Supprimer le message"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
                       <div className="whitespace-pre-wrap leading-relaxed font-medium">{myPrivateNote}</div>
                     </div>
                   ) : (
