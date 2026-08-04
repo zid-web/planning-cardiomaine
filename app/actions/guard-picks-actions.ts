@@ -2,6 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { saveScheduleToDb } from "@/app/actions/schedule-actions"
+import { getWeekNumber } from "@/lib/schedule-utils"
+import type { ScheduleData } from "@/lib/types"
 
 export type GuardPickRow = {
   id: string
@@ -44,6 +47,87 @@ async function getDbClient() {
   } catch (err) {
     console.warn("[guard-picks-actions] createAdminClient fallback to createClient:", err)
     return await createClient()
+  }
+}
+
+const DAYS_FR = ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"]
+
+/**
+ * Injects an approved guard pick into the main schedule table (schedules)
+ */
+async function injectGuardPickIntoSchedule(
+  pick: GuardPickRow,
+  adminCode: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = await getDbClient()
+    const d = new Date(pick.date + "T12:00:00")
+    const { year, week } = getWeekNumber(d)
+    const weekKey = `${year}-W${String(week).padStart(2, "0")}`
+    const dayName = DAYS_FR[d.getDay()]
+    const rowKey = pick.guard_type // e.g. "Garde Matin" or "Garde Nuit"
+
+    const { data: currentRecord } = await db
+      .from("schedules")
+      .select("schedule_data")
+      .eq("week_key", weekKey)
+      .maybeSingle()
+
+    const scheduleData = (currentRecord?.schedule_data || {}) as ScheduleData
+
+    if (!scheduleData[rowKey]) {
+      scheduleData[rowKey] = {}
+    }
+    if (!scheduleData[rowKey][dayName]) {
+      scheduleData[rowKey][dayName] = { value: [], type: "doctor", status: "validated" }
+    }
+
+    const cell = scheduleData[rowKey][dayName]
+    if (!cell.value.includes(pick.doctor_code)) {
+      cell.value.push(pick.doctor_code)
+      cell.type = "doctor"
+      cell.status = "validated"
+    }
+
+    await saveScheduleToDb(weekKey, scheduleData, adminCode, { source: "ui" })
+    return { success: true }
+  } catch (err) {
+    console.error("[injectGuardPickIntoSchedule] Error injecting guard pick into schedule:", err)
+    return { success: false, error: err instanceof Error ? err.message : "Erreur d'injection" }
+  }
+}
+
+/**
+ * Removes a rejected guard pick from the main schedule table if present
+ */
+async function removeGuardPickFromSchedule(
+  pick: GuardPickRow,
+  adminCode: string,
+): Promise<void> {
+  try {
+    const db = await getDbClient()
+    const d = new Date(pick.date + "T12:00:00")
+    const { year, week } = getWeekNumber(d)
+    const weekKey = `${year}-W${String(week).padStart(2, "0")}`
+    const dayName = DAYS_FR[d.getDay()]
+    const rowKey = pick.guard_type
+
+    const { data: currentRecord } = await db
+      .from("schedules")
+      .select("schedule_data")
+      .eq("week_key", weekKey)
+      .maybeSingle()
+
+    if (!currentRecord?.schedule_data) return
+
+    const scheduleData = currentRecord.schedule_data as ScheduleData
+    const cell = scheduleData[rowKey]?.[dayName]
+    if (cell && cell.value.includes(pick.doctor_code)) {
+      cell.value = cell.value.filter(doc => doc !== pick.doctor_code)
+      await saveScheduleToDb(weekKey, scheduleData, adminCode, { source: "ui" })
+    }
+  } catch (err) {
+    console.error("[removeGuardPickFromSchedule] Error:", err)
   }
 }
 
@@ -90,7 +174,7 @@ export async function getMyGuardPicks(
     const { data, error } = await db
       .from("guard_picks")
       .select("*")
-      .eq("doctor_id", user.id)
+      .or(`doctor_id.eq.${user.id}`)
       .eq("semester", semester)
       .eq("year", year)
       .order("date", { ascending: true })
@@ -177,7 +261,7 @@ export async function deleteGuardPick(
 }
 
 /**
- * Admin: approve a guard pick
+ * Admin: approve a single guard pick and inject it into general planning
  */
 export async function approveGuardPick(
   id: string,
@@ -185,7 +269,22 @@ export async function approveGuardPick(
 ): Promise<{ error?: string }> {
   try {
     const db = await getDbClient()
-    const { error } = await db
+
+    // 1. Fetch pick details
+    const { data: pick, error: fetchErr } = await db
+      .from("guard_picks")
+      .select("*")
+      .eq("id", id)
+      .single()
+
+    if (fetchErr || !pick) {
+      return { error: "Demande introuvable" }
+    }
+
+    const pickRow = pick as GuardPickRow
+
+    // 2. Update status in guard_picks
+    const { error: updateErr } = await db
       .from("guard_picks")
       .update({
         status: "approved",
@@ -194,14 +293,65 @@ export async function approveGuardPick(
       })
       .eq("id", id)
 
-    if (error) {
-      console.error("[approveGuardPick] error:", error)
-      return { error: error.message }
+    if (updateErr) {
+      console.error("[approveGuardPick] update error:", updateErr)
+      return { error: updateErr.message }
     }
+
+    // 3. Inject directly into general planning schedule
+    await injectGuardPickIntoSchedule(pickRow, adminCode)
+
     return {}
   } catch (err) {
     console.error("[approveGuardPick] exception:", err)
     return { error: err instanceof Error ? err.message : "Erreur lors de l'approbation" }
+  }
+}
+
+/**
+ * Admin: approve a bulk set of guard picks (e.g. for a month or semester)
+ */
+export async function approveBulkGuardPicks(
+  ids: string[],
+  adminCode: string,
+): Promise<{ count: number; error?: string }> {
+  try {
+    if (!ids || ids.length === 0) return { count: 0 }
+
+    const db = await getDbClient()
+
+    // Fetch picks to be approved
+    const { data: picks, error: fetchErr } = await db
+      .from("guard_picks")
+      .select("*")
+      .in("id", ids)
+
+    if (fetchErr || !picks) {
+      return { count: 0, error: fetchErr?.message || "Erreur lors de la récupération" }
+    }
+
+    let count = 0
+    for (const rawPick of picks) {
+      const pick = rawPick as GuardPickRow
+      const { error: updateErr } = await db
+        .from("guard_picks")
+        .update({
+          status: "approved",
+          validated_by: adminCode,
+          validated_at: new Date().toISOString(),
+        })
+        .eq("id", pick.id)
+
+      if (!updateErr) {
+        await injectGuardPickIntoSchedule(pick, adminCode)
+        count++
+      }
+    }
+
+    return { count }
+  } catch (err) {
+    console.error("[approveBulkGuardPicks] exception:", err)
+    return { count: 0, error: err instanceof Error ? err.message : "Erreur lors de la validation groupée" }
   }
 }
 
@@ -215,6 +365,13 @@ export async function rejectGuardPick(
 ): Promise<{ error?: string }> {
   try {
     const db = await getDbClient()
+
+    const { data: pick } = await db
+      .from("guard_picks")
+      .select("*")
+      .eq("id", id)
+      .single()
+
     const { error } = await db
       .from("guard_picks")
       .update({
@@ -229,6 +386,11 @@ export async function rejectGuardPick(
       console.error("[rejectGuardPick] error:", error)
       return { error: error.message }
     }
+
+    if (pick) {
+      await removeGuardPickFromSchedule(pick as GuardPickRow, adminCode)
+    }
+
     return {}
   } catch (err) {
     console.error("[rejectGuardPick] exception:", err)
