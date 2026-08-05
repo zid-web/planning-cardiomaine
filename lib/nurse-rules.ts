@@ -115,12 +115,12 @@ export function valFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean):
       // Vendredi am : absence fixe - rien à ajouter.
     ]
   }
-  // Semaine impaire
+// Semaine impaire
   const slots: ValFixedSlot[] = [
     // Lundi : absence fixe - rien à ajouter.
-    { row: "Matin - Stress", day: "MARDI", slot: "matin" },
+    { row: "Matin - Stress", day: "MARDI", slot: "matin" }, // Tour de Val le mardi impair
     // Mardi am : libre/flexible (alternance manuelle avec Véro) - non forcé.
-    { row: "Matin - Stress", day: "MERCREDI", slot: "matin" },
+    { row: "Matin - EE1", day: "MERCREDI", slot: "matin" }, // Val est sur EE1 le mercredi (Véro est sur Stress)
     { row: "Apm - ETT salle 2", day: "MERCREDI", slot: "am" },
     { row: "Matin - EE1", day: "JEUDI", slot: "matin" }, // D toujours Stress le matin -> Val toujours EE
     { row: "Matin - ETT salle 2", day: "VENDREDI", slot: "matin" },
@@ -155,17 +155,13 @@ export function lauraFixedSlotsForWeek(weekKey: string): ValFixedSlot[] {
 }
 
 /**
- * Planning fixe de Véro (confirmé utilisateur 31/07/2026) :
+ * Planning fixe de Véro :
  *
- * Semaine paire : Lun absence fixe ; Mar Stress matin (am libre, alternance
- * manuelle avec Val) ; Mer Stress matin + absence fixe am ; Jeu suit
- * EXACTEMENT le roulement de D (Stress matin toujours ; am Stress si 1er
- * jeudi du mois, sinon EE1+EE2) ; Ven Stress matin + EE am.
+ * Semaine paire : Lun absence fixe ; Mar Stress matin (Val à ETT Tessé/EE) ;
+ * Mer Stress matin (Val à EE1) ; Jeu miroir D (Stress matin + D) ; Ven Stress matin.
  *
- * Semaine impaire : Lun Stress matin+am ; Mar Stress matin (am libre) ;
- * Mer Stress matin + absence fixe am ; Jeu même roulement que D ;
- * Ven absence fixe (repli possible : Laura, Stress matin uniquement, pas
- * automatique - à assigner manuellement si besoin).
+ * Semaine impaire : Lun Stress matin+am ; Mar EE1 matin (tour de Val sur Stress) ;
+ * Mer Stress matin (Val à EE1) ; Jeu miroir D (Stress matin + D) ; Ven absence fixe.
  */
 export function veroFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean): ValFixedSlot[] {
   const odd = isOddIsoWeekLocal(weekKey)
@@ -183,7 +179,7 @@ export function veroFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean)
     return [
       // Lundi : absence fixe - rien à ajouter.
       { row: "Matin - Stress", day: "MARDI", slot: "matin" },
-      // Mardi am : libre (alternance manuelle avec Val) - non forcé.
+      // Mardi am : libre - non forcé.
       { row: "Matin - Stress", day: "MERCREDI", slot: "matin" },
       // Mercredi am : absence fixe - rien à ajouter.
       ...thursdaySlots,
@@ -194,13 +190,12 @@ export function veroFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean)
   return [
     { row: "Matin - Stress", day: "LUNDI", slot: "matin" },
     { row: "Apm - Stress", day: "LUNDI", slot: "am" },
-    { row: "Matin - Stress", day: "MARDI", slot: "matin" },
-    // Mardi am : libre (alternance manuelle avec Val) - non forcé.
-    { row: "Matin - Stress", day: "MERCREDI", slot: "matin" },
+    { row: "Matin - EE1", day: "MARDI", slot: "matin" }, // Mardi impair : Val est sur Stress -> Véro passe sur EE1
+    // Mardi am : libre - non forcé.
+    { row: "Matin - Stress", day: "MERCREDI", slot: "matin" }, // Mercredi : Véro est sur Stress -> Val est sur EE1
     // Mercredi am : absence fixe - rien à ajouter.
     ...thursdaySlots,
-    // Vendredi : absence fixe - rien à ajouter (repli Laura possible,
-    // manuel uniquement, voir doc ci-dessus).
+    // Vendredi : absence fixe - rien à ajouter.
   ]
 }
 
@@ -220,6 +215,38 @@ export function ensureNurseDoctorBinomeProposals(
   let next = schedule
   const dateStrFn = (day: string) => dateStrForWeekDay(weekKey, day)
 
+  const NURSE_STRESS_EE_ROWS = [
+    "Matin - Stress", "Apm - Stress",
+    "Matin - EE1", "Apm - EE1",
+    "Matin - EE2", "Apm - EE2",
+  ] as const
+
+  const DAYS_LIST = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]
+
+  // 0. Sécurité : Val et Véro ne sont JAMAIS ensemble dans la même case
+  for (const rowKey of NURSE_STRESS_EE_ROWS) {
+    if (!next[rowKey]) continue
+    for (const day of DAYS_LIST) {
+      const cell = next[rowKey][day]
+      if (!cell) continue
+      const vals = cell.value || []
+      if (vals.includes("Val") && vals.includes("Véro")) {
+        // Enlever Val de cette case
+        const cleaned = vals.filter((d) => d !== "Val")
+        next = {
+          ...next,
+          [rowKey]: {
+            ...next[rowKey],
+            [day]: {
+              ...cell,
+              value: cleaned,
+            },
+          },
+        }
+      }
+    }
+  }
+
   // 1. Jeudi Matin - Stress : D + Véro systématiques (double affectation)
   const thuDate = dateStrFn("JEUDI")
   if (thuDate && next["Matin - Stress"]?.JEUDI) {
@@ -231,7 +258,7 @@ export function ensureNurseDoctorBinomeProposals(
       const hasD = current.includes("D")
       const hasVero = current.includes("Véro")
       if (!hasD || !hasVero) {
-        const merged = Array.from(new Set([...current, "D", "Véro"]))
+        const merged = Array.from(new Set([...current.filter(d => d !== "Val"), "D", "Véro"]))
         next = {
           ...next,
           ["Matin - Stress"]: {
@@ -249,13 +276,6 @@ export function ensureNurseDoctorBinomeProposals(
   }
 
   // 2. Pour toute vacation Stress/EE où Véro ou Val est présente sans médecin
-  const NURSE_STRESS_EE_ROWS = [
-    "Matin - Stress", "Apm - Stress",
-    "Matin - EE1", "Apm - EE1",
-    "Matin - EE2", "Apm - EE2",
-  ] as const
-
-  const DAYS_LIST = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]
 
   for (const rowKey of NURSE_STRESS_EE_ROWS) {
     if (!next[rowKey]) continue
