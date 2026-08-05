@@ -30,6 +30,7 @@ import {
   type LastComboGardeState,
 } from "@/lib/weekend-combo-solver";
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules";
+import { canAssignDoctorToSlot } from "@/lib/slot-blocking";
 
 // Configuration
 const GUARD_API_URL =
@@ -511,6 +512,12 @@ export async function generateGuardsViaAPI(
       console.warn("[generateGuardsViaAPI] rotation Coro M/O/W ignorée:", coroErr);
     }
 
+    try {
+      scheduleData = fillClinicalProposalsForEmptyRows(scheduleData, weekKey, vacations);
+    } catch (propErr) {
+      console.warn("[generateGuardsViaAPI] propositions Cs/Pré-op ignorées:", propErr);
+    }
+
     // 7ter. Post-nettoyage des médecins virtuels injectés pour éviter le crash solveur
     // (laisse les cases vides pour l'utilisateur car les médecins sont en vacances).
     conflictsToPostClean.forEach(({ row, day, doctor }) => {
@@ -746,4 +753,67 @@ export async function getHistoricalLastWednesdayApmCoroDoctor(): Promise<"M" | "
 
 // Export pour compatibilité avec l'ancien code
 export { convertAPIResponseToSchedule };
+
+/**
+ * Remplisseur intelligent de propositions pour les cases de consultations (Cs PSS, Cs Tessée)
+ * et Pré-op si le solveur les a laissées vides.
+ */
+function fillClinicalProposalsForEmptyRows(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[] = [],
+): ScheduleData {
+  let next = schedule
+  const dateStrFn = (day: string) => dateStrForWeekDay(weekKey, day)
+
+  const CLINICAL_PROPOSAL_TARGETS: Array<{
+    row: string
+    pool: readonly string[]
+  }> = [
+    { row: "Matin - Cs PSS", pool: ["H", "Z", "G", "S", "B", "A", "K"] },
+    { row: "Apm - Cs PSS", pool: ["H", "Z", "G", "S", "B", "A", "K"] },
+    { row: "Matin - Cs Tessée", pool: ["B", "S", "V", "U"] },
+    { row: "Apm - Cs Tessée", pool: ["B", "S", "V", "U"] },
+    { row: "Pré-op", pool: ["A", "H", "W", "B", "Z", "K", "G", "S"] },
+  ]
+
+  const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"]
+
+  for (const { row, pool } of CLINICAL_PROPOSAL_TARGETS) {
+    if (!next[row]) continue
+    for (const day of WEEKDAYS) {
+      const cell = next[row][day]
+      const currentValues = cell?.value || []
+
+      // Seulement si la case est vide et non verrouillée manuellement
+      if (currentValues.length === 0 && !cell?.manuallyCleared) {
+        const dateStr = dateStrFn(day)
+        if (!dateStr) continue
+
+        // Trouver le premier médecin disponible du pool
+        const candidate = pool.find((doc) => {
+          if (isDoctorOnVacationForFixed(doc, dateStr, vacations)) return false
+          return canAssignDoctorToSlot(doc, dateStr, row, day, { schedule: next, vacations })
+        })
+
+        if (candidate) {
+          next = {
+            ...next,
+            [row]: {
+              ...next[row],
+              [day]: {
+                value: [candidate],
+                type: "doctor",
+                status: "pending", // Proposition violette Générer !
+              },
+            },
+          }
+        }
+      }
+    }
+  }
+
+  return next
+}
+
 
