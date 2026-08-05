@@ -1800,6 +1800,17 @@ export function ScheduleApp({
                         <span className="hidden sm:inline">Mes créneaux</span>
                       </Button>
                     )}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 border-emerald-300 bg-emerald-50 px-2 text-[11px] font-semibold !text-emerald-800 hover:bg-emerald-100 hover:!text-emerald-900"
+                      onClick={() => setShowGuardPicks(true)}
+                      title="Choix de gardes week-end et jours fériés"
+                    >
+                      <CalendarCheck2 className="mr-1 h-3.5 w-3.5 shrink-0 !text-emerald-700" strokeWidth={2.25} />
+                      <span className="hidden sm:inline">Choix de Gardes</span>
+                    </Button>
                   </div>
                 )}
 
@@ -1946,6 +1957,17 @@ export function ScheduleApp({
                         <Button
                           variant="outline"
                           size="sm"
+                          className="h-7 border-emerald-300 bg-emerald-50 px-2 text-[11px] font-semibold !text-emerald-800 hover:bg-emerald-100 hover:!text-emerald-900"
+                          onClick={() => setShowGuardPicks(true)}
+                          title="Choix de gardes week-end et jours fériés"
+                        >
+                          <CalendarCheck2 className="mr-1 h-3.5 w-3.5 shrink-0 !text-emerald-700" strokeWidth={2.25} />
+                          <span className="hidden lg:inline">Choix de Gardes</span>
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="h-7 border-indigo-300 bg-indigo-50 px-2 text-[11px] font-semibold !text-indigo-800 hover:bg-indigo-100 hover:!text-indigo-900"
                           onClick={() => setShowSixMonthProjection(true)}
                           title="Projection planning 6 mois via solveur"
@@ -2036,18 +2058,6 @@ export function ScheduleApp({
                       >
                         <BarChart3 className="size-4 text-blue-600" />
                         <span>Statistiques de charge</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowGuardPicks(true)
-                          setPraticienPopoverOpen(false)
-                        }}
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-800"
-                      >
-                        <CalendarCheck2 className="size-4 text-emerald-600" />
-                        <span>Choix de Gardes WE & Fériés</span>
                       </button>
 
                       {isAdmin && (
