@@ -770,11 +770,24 @@ function fillClinicalProposalsForEmptyRows(
     row: string
     pool: readonly string[]
   }> = [
-    { row: "Matin - Cs PSS", pool: ["H", "Z", "G", "S", "B", "A", "K"] },
-    { row: "Apm - Cs PSS", pool: ["H", "Z", "G", "S", "B", "A", "K"] },
+    // Cs PSS : H, Z, G, B, A, K + M, O, W, P, U (hors Coro/Astreintes/Rythmo)
+    { row: "Matin - Cs PSS", pool: ["H", "Z", "G", "B", "A", "M", "O", "W", "P", "U", "K"] },
+    { row: "Apm - Cs PSS", pool: ["H", "Z", "G", "B", "A", "M", "O", "W", "P", "U", "K"] },
+    // Cs Tessée : B, S, V, U
     { row: "Matin - Cs Tessée", pool: ["B", "S", "V", "U"] },
     { row: "Apm - Cs Tessée", pool: ["B", "S", "V", "U"] },
+    // Pré-op
     { row: "Pré-op", pool: ["A", "H", "W", "B", "Z", "K", "G", "S"] },
+    // Repli de K sur ETT, Stress, EE et Rééducation si les titulaires sont absents
+    { row: "Matin - ETT salle 1", pool: ["A", "H", "B", "Z", "G", "S", "K"] },
+    { row: "Matin - ETT salle 2", pool: ["A", "H", "B", "Z", "G", "S", "K"] },
+    { row: "Apm - ETT salle 1", pool: ["A", "H", "B", "Z", "G", "S", "K"] },
+    { row: "Apm - ETT salle 2", pool: ["A", "H", "B", "Z", "G", "S", "K"] },
+    { row: "Matin - EE1", pool: ["A", "H", "W", "B", "O", "Z", "U", "V", "G", "S", "M", "R", "K"] },
+    { row: "Apm - EE1", pool: ["A", "H", "W", "B", "O", "Z", "U", "V", "G", "S", "M", "R", "K"] },
+    { row: "Matin - EE2", pool: ["A", "H", "W", "B", "O", "Z", "U", "V", "G", "S", "M", "R", "K"] },
+    { row: "Apm - EE2", pool: ["A", "H", "W", "B", "O", "Z", "U", "V", "G", "S", "M", "R", "K"] },
+    { row: "Apm - RÉEDUCATION", pool: ["Z", "B", "S", "G", "H", "R", "K"] },
   ]
 
   const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"]

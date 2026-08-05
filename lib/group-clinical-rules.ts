@@ -68,6 +68,8 @@ export const DOC022_CLINICAL_ELIGIBILITY = {
   scinti: ["T", "R"],
   /** Cs cabinet Tessé (préférence) */
   cs_tesse: ["B", "S", "V", "U"],
+  /** Cs PSS (cabinet PSS) — H, Z, G, B, A, K + M, O, W, P, U (hors Coro/Astreintes/Rythmo) */
+  cs_pss: ["H", "Z", "G", "B", "A", "K", "M", "O", "W", "P", "U"],
 } as const
 
 /**
