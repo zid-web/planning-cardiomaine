@@ -10,7 +10,6 @@ import { updateProfile, changePassword } from '@/app/actions/profile-actions'
 
 interface ProfileFormProps {
   user: User
-  supabaseClient: any
 }
 
 export function ProfileForm({ user }: ProfileFormProps) {
