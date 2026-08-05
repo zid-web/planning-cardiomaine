@@ -31,7 +31,7 @@ import {
   Plus,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { DOCTOR_COLORS } from "@/lib/constants"
+import { DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
 import {
   getSemesterGuardSlots,
   groupSlotsByMonth,
@@ -94,6 +94,7 @@ function SlotCard({
   onDelete,
   onApprove,
   onReject,
+  onAdminAssign,
 }: {
   slot: SemesterGuardSlot
   myPicks: GuardPickRow[]
@@ -105,6 +106,7 @@ function SlotCard({
   onDelete: (id: string) => void
   onApprove: (id: string) => void
   onReject: (id: string, note?: string) => void
+  onAdminAssign: (slot: SemesterGuardSlot, guardType: GuardType, doctor: string) => void
 }) {
   const isOnVacation = vacationDates.has(slot.date)
   const myPicksForDate = myPicks.filter(p => p.date === slot.date)
@@ -234,16 +236,23 @@ function SlotCard({
                 {isAdmin && (
                   <div className="space-y-1.5 pt-0.5">
                     {picksForThisSlot.length === 0 ? (
-                      <div className="flex items-center justify-between text-[11px] text-slate-400 italic py-0.5">
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400 italic py-0.5">
                         <span>Aucune demande soumise</span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => onPick(slot, guardType)}
-                          className="h-6 px-2 text-[10px] font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-700 gap-1"
+                        <select
+                          defaultValue=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              onAdminAssign(slot, guardType, e.target.value)
+                              e.target.value = ""
+                            }
+                          }}
+                          className="h-6 rounded-md border border-slate-300 bg-white px-1.5 text-[10px] font-bold text-slate-700 not-italic hover:border-blue-400"
                         >
-                          + Assigner {doctorCode}
-                        </Button>
+                          <option value="">+ Assigner un médecin…</option>
+                          {DOCTORS.map((doc) => (
+                            <option key={doc} value={doc}>{doc}</option>
+                          ))}
+                        </select>
                       </div>
                     ) : (
                       picksForThisSlot.map(pick => (
@@ -352,6 +361,7 @@ function MonthSection({
   onApprove,
   onReject,
   onApproveBulk,
+  onAdminAssign,
 }: {
   monthKey: string
   slots: SemesterGuardSlot[]
@@ -365,6 +375,7 @@ function MonthSection({
   onApprove: (id: string) => void
   onReject: (id: string, note?: string) => void
   onApproveBulk: (ids: string[], label: string) => void
+  onAdminAssign: (slot: SemesterGuardSlot, guardType: GuardType, doctor: string) => void
 }) {
   const [open, setOpen] = useState(true)
 
@@ -425,6 +436,7 @@ function MonthSection({
               onDelete={onDelete}
               onApprove={onApprove}
               onReject={onReject}
+              onAdminAssign={onAdminAssign}
             />
           ))}
         </div>
@@ -503,6 +515,32 @@ export function GuardPicksDialog({ open, onOpenChange, isAdmin, doctorCode }: Pr
         toast.error(res.error)
       } else {
         toast.success(`Préférence enregistrée pour ${slot.label}`)
+        await loadData()
+      }
+    })
+  }
+
+  const handleAdminAssign = (slot: SemesterGuardSlot, guardType: GuardType, doctor: string) => {
+    startTransition(async () => {
+      const submitRes = await submitGuardPick({
+        doctor_code: doctor,
+        semester,
+        year,
+        date: slot.date,
+        day_type: slot.dayType,
+        guard_type: guardType,
+        is_wom_combo: slot.isWomCombo,
+        reason: undefined,
+      })
+      if (submitRes.error || !submitRes.data) {
+        toast.error(submitRes.error || "Erreur lors de l'assignation")
+        return
+      }
+      const approveRes = await approveGuardPick(submitRes.data.id, doctorCode)
+      if (approveRes.error) {
+        toast.error(approveRes.error)
+      } else {
+        toast.success(`${doctor} assigné(e) et intégré(e) directement au planning ! ✅`)
         await loadData()
       }
     })
@@ -723,6 +761,7 @@ export function GuardPicksDialog({ open, onOpenChange, isAdmin, doctorCode }: Pr
                   onApprove={handleApprove}
                   onReject={handleReject}
                   onApproveBulk={handleApproveBulk}
+                  onAdminAssign={handleAdminAssign}
                 />
               ))}
             </>
