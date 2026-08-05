@@ -61,7 +61,8 @@ function main() {
   blocked["Apm - Stress"].MERCREDI = { value: ["G"], type: "doctor", status: "pending" }
   blocked = applyStructuralConstraints(blocked, "2026-W32", [])
   assert.deepEqual(blocked["Apm - Stress"].MERCREDI.value, [])
-  assert.deepEqual(blocked["Matin - Stress"].JEUDI.value, ["D"])
+  assert.ok(blocked["Matin - Stress"].JEUDI.value.includes("D"))
+  assert.ok(blocked["Matin - Stress"].JEUDI.value.includes("Véro"))
 
   const deny = canAssignDoctorToSlot(
     "G",

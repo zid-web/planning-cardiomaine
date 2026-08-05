@@ -15,6 +15,7 @@
  */
 
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
+import { dateStrForWeekDay, isDoctorOnVacationForFixed } from "@/lib/fixed-assignments"
 
 export const NURSES = ["Val", "Véro", "Laura"] as const
 export type NurseId = (typeof NURSES)[number]
@@ -202,3 +203,97 @@ export function veroFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean)
     // manuel uniquement, voir doc ci-dessus).
   ]
 }
+
+/**
+ * Assure qu'une infirmière (Véro ou Val) positionnée sur une vacation Stress/EE
+ * dispose systématiquement d'un médecin partenaire associé (cases à double affectation).
+ *
+ * Pour Véro le jeudi matin sur Matin - Stress : obligatoirement couplée avec D.
+ * Pour les autres vacations Stress/EE avec Véro ou Val : propose un médecin
+ * disponible du pool correspondant (STRESS_PARTNER_POOL / EE_PARTNER_POOL).
+ */
+export function ensureNurseDoctorBinomeProposals(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[] = [],
+): ScheduleData {
+  let next = schedule
+  const dateStrFn = (day: string) => dateStrForWeekDay(weekKey, day)
+
+  // 1. Jeudi Matin - Stress : D + Véro systématiques (double affectation)
+  const thuDate = dateStrFn("JEUDI")
+  if (thuDate && next["Matin - Stress"]?.JEUDI) {
+    const dAbs = isDoctorOnVacationForFixed("D", thuDate, vacations)
+    const veroAbs = isDoctorOnVacationForFixed("Véro", thuDate, vacations)
+    if (!dAbs && !veroAbs) {
+      const cell = next["Matin - Stress"].JEUDI
+      const current = cell.value || []
+      const hasD = current.includes("D")
+      const hasVero = current.includes("Véro")
+      if (!hasD || !hasVero) {
+        const merged = Array.from(new Set([...current, "D", "Véro"]))
+        next = {
+          ...next,
+          ["Matin - Stress"]: {
+            ...next["Matin - Stress"],
+            JEUDI: {
+              ...cell,
+              value: merged,
+              type: "doctor",
+              status: cell.status === "pending" ? "pending" : "validated",
+            },
+          },
+        }
+      }
+    }
+  }
+
+  // 2. Pour toute vacation Stress/EE où Véro ou Val est présente sans médecin
+  const NURSE_STRESS_EE_ROWS = [
+    "Matin - Stress", "Apm - Stress",
+    "Matin - EE1", "Apm - EE1",
+    "Matin - EE2", "Apm - EE2",
+  ] as const
+
+  const DAYS_LIST = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]
+
+  for (const rowKey of NURSE_STRESS_EE_ROWS) {
+    if (!next[rowKey]) continue
+    const pool = rowKey.includes("Stress") ? STRESS_PARTNER_POOL : EE_PARTNER_POOL
+
+    for (const day of DAYS_LIST) {
+      const cell = next[rowKey][day]
+      if (!cell) continue
+      const vals = cell.value || []
+      const hasNurse = vals.some((d) => isNurse(d))
+      if (!hasNurse) continue
+
+      // Y a-t-il déjà un médecin dans cette case ?
+      const hasDoctorPartner = vals.some((d) => !isNurse(d) && d !== "CH")
+      if (!hasDoctorPartner) {
+        const dateStr = dateStrFn(day)
+        // Sélectionner le premier médecin disponible du pool
+        const candidate = pool.find(
+          (doc) => !dateStr || !isDoctorOnVacationForFixed(doc, dateStr, vacations),
+        )
+        if (candidate) {
+          next = {
+            ...next,
+            [rowKey]: {
+              ...next[rowKey],
+              [day]: {
+                ...cell,
+                value: Array.from(new Set([...vals, candidate])),
+                type: "doctor",
+                status: cell.status === "pending" ? "pending" : "validated",
+              },
+            },
+          }
+        }
+      }
+    }
+  }
+
+  return next
+}
+

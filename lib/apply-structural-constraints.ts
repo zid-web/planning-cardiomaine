@@ -25,9 +25,9 @@ import {
 } from "@/lib/half-day-off"
 import { NCT_DATES_2025_DEC, NCT_DATES_2026 } from "@/lib/guard-scheduler"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
-import type { EquityCounts } from "@/lib/equity-tracking"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { applyStressAndDRules } from "@/lib/stress-rules"
+import { ensureNurseDoctorBinomeProposals } from "@/lib/nurse-rules"
 import { applyWeekendWomRules } from "@/lib/weekend-wom-rules"
 import {
   mergeVacancesIntoConges,
@@ -829,6 +829,11 @@ export function applyStructuralConstraints(
 
   // 11) Re-couplage weekend après strips
   next = applyWeekendGardeAtlCoupling(next)
+
+  // 12) Binômes infirmière-médecin (D+Véro le jeudi matin + couplage médecin systématique pour Véro/Val sur Stress/EE)
+  if (weekKey) {
+    next = ensureNurseDoctorBinomeProposals(next, weekKey, vacations)
+  }
 
   return next
 }
