@@ -35,7 +35,7 @@ export default async function ProfilePage() {
             </p>
           </div>
 
-          <ProfileForm user={user} supabaseClient={supabase} />
+          <ProfileForm user={user} />
         </div>
       </main>
     </div>
