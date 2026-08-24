@@ -1,18 +1,22 @@
-// Service worker minimal pour l'installabilité PWA (confirmé utilisateur
-// 24/08/2026) - volontairement SANS mise en cache du planning ou des
-// données : dans une app de planning médical, servir une version périmée
-// depuis le cache serait dangereux/trompeur. Existe uniquement pour
-// satisfaire les critères d'installation des navigateurs.
+"use client"
 
-self.addEventListener("install", (event) => {
-  self.skipWaiting()
-})
+import { useEffect } from "react"
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim())
-})
+/**
+ * Enregistre le service worker pour l'installabilité PWA (icône
+ * d'installation dans le navigateur, ajout à l'écran d'accueil
+ * iOS/Android, installation bureau) - confirmé utilisateur 24/08/2026.
+ * Un service worker minimal suffit pour que Chrome/Edge/Android proposent
+ * l'installation ; pas de mise en cache offline agressive pour ne pas
+ * risquer d'afficher un planning périmé.
+ */
+export function ServiceWorkerRegister() {
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
+    navigator.serviceWorker.register("/sw.js").catch((err) => {
+      console.warn("[pwa] Échec de l'enregistrement du service worker:", err)
+    })
+  }, [])
 
-self.addEventListener("fetch", (event) => {
-  // Simple pass-through fetch - pas de cache, toujours les données fraîches.
-  event.respondWith(fetch(event.request))
-})
+  return null
+}
