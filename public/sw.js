@@ -13,18 +13,23 @@ self.addEventListener("activate", (event) => {
 })
 
 self.addEventListener("fetch", (event) => {
-  // Correctif complet (confirmé utilisateur 25/08/2026) :
-  // - "event.respondWith(fetch(event.request))" pour TOUTES les requêtes
-  //   plantait sur les requêtes de NAVIGATION ("Failed to fetch"), car le
-  //   mode "navigate" ne peut pas être réutilisé directement dans fetch().
-  // - Mais un gestionnaire "fetch" VIDE (sans respondWith) est ignoré par
-  //   Chrome pour l'évaluation d'installabilité PWA ("no-op fetch handler"),
-  //   empêchant l'icône d'installation d'apparaître.
-  // Solution : répondre réellement, mais seulement pour les requêtes NON-
-  // navigation (où event.request est réutilisable sans risque). Les
-  // navigations passent nativement, sans interception.
-  if (event.request.mode === "navigate") {
-    return
+  // Correctif définitif (confirmé utilisateur 25/08/2026) : réutiliser
+  // event.request dans fetch() plantait ("Failed to fetch") pour PLUSIEURS
+  // types de requêtes (pas seulement la navigation - aussi probablement les
+  // requêtes cross-origin/CORS comme Supabase, Analytics, etc., où le
+  // request original a un "mode" incompatible avec un nouvel appel fetch()).
+  // Solution la plus sûre : n'intercepter QUE quelques fichiers statiques
+  // précis et sans risque (nos propres icônes), en reconstruisant une
+  // requête neuve et simple - jamais event.request lui-même. Tout le reste
+  // (navigations, API, Supabase, etc.) passe intégralement sans y toucher,
+  // pour ne jamais interférer avec le fonctionnement normal du site.
+  const url = new URL(event.request.url)
+  const isOwnStaticIcon =
+    event.request.method === "GET" &&
+    url.origin === self.location.origin &&
+    /^\/(icon-192x192|icon-512x512|apple-icon)\.png$/.test(url.pathname)
+
+  if (isOwnStaticIcon) {
+    event.respondWith(fetch(url.pathname))
   }
-  event.respondWith(fetch(event.request))
 })
