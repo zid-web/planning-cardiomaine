@@ -10,13 +10,8 @@ import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { Smartphone, Share, X } from "lucide-react"
 
-export default function Page() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
-
+// Composant PWA isolé pour éviter le BAILOUT_TO_CLIENT_SIDE_RENDERING global
+function InstallPWAButton() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
   const [showInstallBtn, setShowInstallBtn] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
@@ -47,7 +42,7 @@ export default function Page() {
     if (deferredPrompt) {
       deferredPrompt.prompt()
       deferredPrompt.userChoice.then(({ outcome }: { outcome: string }) => {
-        if (outcome === 'accepted') {
+        if (outcome === "accepted") {
           setDeferredPrompt(null)
           setShowInstallBtn(false)
         }
@@ -57,6 +52,69 @@ export default function Page() {
     }
   }
 
+  if (!showInstallBtn) return null
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleInstallClick}
+        className="absolute right-4 top-4 z-50 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-bold text-[#1B3A5C] shadow-sm backdrop-blur-md transition-all hover:bg-slate-50 hover:shadow-md"
+      >
+        <Smartphone className="size-3.5 text-slate-500" />
+        <span>Installer l&apos;application</span>
+      </button>
+
+      {showInstallGuide && isIOS && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-800">
+                Installer l&apos;application
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowInstallGuide(false)}
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <ol className="space-y-3 text-sm text-slate-600">
+              <li className="flex items-start gap-2">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#0F2A47] text-[10px] font-bold text-white">1</span>
+                <span>Appuyez sur l&apos;icône Partager <Share className="inline size-4 text-blue-500" /> en bas de Safari</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#0F2A47] text-[10px] font-bold text-white">2</span>
+                <span>Faites défiler et appuyez sur « Sur l&apos;écran d&apos;accueil »</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#0F2A47] text-[10px] font-bold text-white">3</span>
+                <span>Appuyez sur « Ajouter »</span>
+              </li>
+            </ol>
+            <button
+              type="button"
+              onClick={() => setShowInstallGuide(false)}
+              className="mt-5 w-full rounded-lg bg-[#0F2A47] py-2.5 text-sm font-medium text-white"
+            >
+              Compris
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+export default function Page() {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -64,19 +122,19 @@ export default function Page() {
 
     try {
       if (!email || !password) {
-        throw new Error("Email and password are required")
+        throw new Error("L'email et le mot de passe sont requis")
       }
 
       let supabase
       try {
         supabase = createClient()
         if (!supabase) {
-          throw new Error("Supabase client is not available")
+          throw new Error("Le client Supabase n'est pas disponible")
         }
       } catch (clientError) {
         console.error("[auth/login] Failed to create Supabase client:", clientError)
         throw new Error(
-          "Authentication service is not properly configured. Please contact support.",
+          "Le service d'authentification n'est pas correctement configuré. Veuillez contacter le support.",
         )
       }
 
@@ -88,25 +146,25 @@ export default function Page() {
       if (error) {
         console.error("[auth/login] Auth error:", error.message, error.status)
         if (error.status === 400) {
-          throw new Error("Invalid email or password. Please try again.")
+          throw new Error("Email ou mot de passe incorrect. Veuillez réessayer.")
         } else if (error.status === 422) {
-          throw new Error("Email not found. Please check your email or sign up.")
+          throw new Error("Email introuvable. Vérifiez votre email ou créez un compte.")
         } else if (error.status === 401) {
-          throw new Error("Invalid credentials. Please check your email and password.")
+          throw new Error("Identifiants invalides. Vérifiez votre email et votre mot de passe.")
         } else {
-          throw new Error(error.message || "Authentication failed. Please try again.")
+          throw new Error(error.message || "Échec de l'authentification. Veuillez réessayer.")
         }
       }
 
       if (!data.user) {
         console.error("[auth/login] No user data in response")
-        throw new Error("Login failed: No user data returned")
+        throw new Error("Échec de la connexion : aucune donnée utilisateur retournée")
       }
 
       router.push("/protected/planning")
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "An error occurred"
-      console.error("[auth/login] Login failed:", errorMessage)
+      const errorMessage =
+        error instanceof Error ? error.message : "Une erreur inattendue est survenue"
       setError(errorMessage)
     } finally {
       setIsLoading(false)
@@ -116,14 +174,11 @@ export default function Page() {
   return (
     <div className="layout-main flex h-full min-h-0 w-full overflow-y-auto bg-[#FAFBFC] text-slate-900">
       <div className="flex min-h-full w-full flex-col lg:flex-row">
-        {/* Panneau branding */}
+        {/* Panneau gauche — identité Cardiomaine */}
         <aside className="relative flex w-full flex-col justify-between overflow-hidden bg-[#0F2A47] px-6 py-8 text-white sm:px-10 lg:w-[48%] lg:min-h-svh lg:px-12 lg:py-14">
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.12]"
-            aria-hidden="true"
-          >
+          <div className="pointer-events-none absolute inset-0 opacity-[0.12]" aria-hidden="true">
             <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 px-4 lg:px-8">
-              <EcgTrace className="h-24 w-full text-[#B23A48] sm:h-32 lg:h-40" variant="hero" />
+              <EcgTrace className="ecg-trace overflow-visible h-24 w-full text-[#B23A48] sm:h-32 lg:h-40" />
             </div>
           </div>
 
@@ -136,9 +191,8 @@ export default function Page() {
             </h1>
           </div>
 
-          {/* Séparateur ECG mobile */}
           <div className="relative z-10 mt-6 text-[#B23A48] lg:hidden">
-            <EcgTrace className="h-10 w-full max-w-xs" variant="separator" />
+            <EcgTrace className="ecg-trace overflow-visible h-10 w-full max-w-xs" strokeWidth={1.25} />
           </div>
 
           <p className="relative z-10 mt-8 hidden text-xs text-slate-400 lg:block">
@@ -146,15 +200,23 @@ export default function Page() {
           </p>
         </aside>
 
-        {/* Panneau formulaire */}
+        {/* Panneau droit — formulaire de connexion */}
         <main className="flex w-full flex-1 items-center justify-center px-6 py-10 sm:px-10 lg:w-[52%] lg:px-16 lg:py-14">
           <div className="w-full max-w-[400px]">
             <div className="mb-8">
-              <h2 className="text-2xl font-semibold tracking-tight text-[#0F2A47]">Connexion</h2>
+              <h2 className="text-2xl font-semibold tracking-tight text-[#0F2A47]">
+                Connexion
+              </h2>
               <p className="mt-2 text-sm text-slate-500">
                 Entrez votre email et votre mot de passe pour accéder au planning.
               </p>
             </div>
+
+            {error && (
+              <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
 
             <form onSubmit={handleLogin} className="flex flex-col gap-5">
               <div className="grid gap-2">
@@ -176,13 +238,13 @@ export default function Page() {
               <div className="grid gap-2">
                 <div className="flex items-center justify-between gap-2">
                   <Label htmlFor="password" className="text-sm font-medium text-slate-700">
-                    Password
+                    Mot de passe
                   </Label>
                   <Link
                     href="/auth/forgot-password"
                     className="text-sm text-[#1B3A5C] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B23A48]/50"
                   >
-                    Forgot your password?
+                    Mot de passe oublié ?
                   </Link>
                 </div>
                 <Input
@@ -196,27 +258,21 @@ export default function Page() {
                 />
               </div>
 
-              {error && (
-                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
-                  {error}
-                </p>
-              )}
-
               <Button
                 type="submit"
-                className="h-11 w-full bg-[#B23A48] text-white hover:bg-[#9C2B3E] focus-visible:ring-[#B23A48]/40 disabled:opacity-60"
                 disabled={isLoading}
+                className="h-11 w-full bg-[#B23A48] text-white hover:bg-[#9C2B3E] focus-visible:ring-[#B23A48]/40 disabled:opacity-60"
               >
-                {isLoading ? "Logging in..." : "Login"}
+                {isLoading ? "Connexion en cours…" : "Se connecter"}
               </Button>
 
               <p className="text-center text-sm text-slate-600">
-                Don&apos;t have an account?{" "}
+                Pas encore de compte ?{" "}
                 <Link
                   href="/auth/sign-up"
                   className="font-medium text-[#1B3A5C] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B23A48]/50"
                 >
-                  Sign up
+                  S&apos;inscrire
                 </Link>
               </p>
             </form>
@@ -224,65 +280,8 @@ export default function Page() {
         </main>
       </div>
 
-      <button
-        type="button"
-        onClick={handleInstallClick}
-        className="absolute right-4 top-4 z-50 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-xs font-bold text-[#1B3A5C] shadow-sm backdrop-blur-md transition-all hover:bg-slate-50 hover:shadow-md"
-      >
-        <Smartphone className="size-3.5 text-slate-500" />
-        <span>Installer l&apos;application</span>
-      </button>
-
-      {showInstallGuide && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-sm overflow-hidden rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 flex flex-col gap-4 text-slate-800">
-            <button
-              onClick={() => setShowInstallGuide(false)}
-              className="absolute right-4 top-4 rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-            >
-              <X className="size-5" />
-            </button>
-
-            <div className="flex flex-col items-center text-center gap-2 mt-2">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-[#0F2A47] text-white shadow-md">
-                <Smartphone className="size-6" />
-              </div>
-              <h3 className="text-lg font-bold tracking-tight text-slate-900 mt-2">Installer l&apos;application</h3>
-              <p className="text-xs text-slate-500">Cardiomaine Planning</p>
-            </div>
-
-            <div className="space-y-3.5 text-sm text-slate-600">
-              {isIOS ? (
-                <div className="text-xs leading-relaxed text-slate-700 space-y-1 bg-amber-50/50 border border-amber-100/50 rounded-xl p-3.5">
-                  <p className="font-bold">Sur iPhone & iPad (Safari) :</p>
-                  <p className="flex items-center gap-1 flex-wrap">
-                    1. Appuyez sur le bouton de partage <Share className="size-3.5 text-blue-600 inline" /> en bas de Safari.
-                  </p>
-                  <p>
-                    2. Sélectionnez <span className="font-bold">&ldquo;Sur l&apos;écran d&apos;accueil&rdquo;</span> (icône <span className="font-extrabold border rounded px-1">+</span>).
-                  </p>
-                  <p>
-                    3. Confirmez pour installer l&apos;application.
-                  </p>
-                </div>
-              ) : (
-                <div className="text-xs leading-relaxed text-slate-700 space-y-1 bg-blue-50/50 border border-blue-100/50 rounded-xl p-3.5">
-                  <p className="font-bold">Instructions :</p>
-                  <p>1. Appuyez sur le menu du navigateur (icône menu en haut à droite).</p>
-                  <p>2. Choisissez <span className="font-bold">&ldquo;Installer l&apos;application&rdquo;</span> ou <span className="font-bold">&ldquo;Ajouter à l&apos;écran d&apos;accueil&rdquo;</span>.</p>
-                </div>
-              )}
-            </div>
-
-            <Button
-              onClick={() => setShowInstallGuide(false)}
-              className="w-full bg-[#0F2A47] text-white hover:bg-[#1B3A5C] font-bold"
-            >
-              Fermer
-            </Button>
-          </div>
-        </div>
-      )}
+      {/* Bouton PWA conditionnel — isolé dans son propre composant client */}
+      <InstallPWAButton />
     </div>
   )
 }
