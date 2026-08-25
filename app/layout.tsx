@@ -4,7 +4,6 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Toaster } from "sonner"
-import { PWAInstallProvider } from "@/components/pwa-install-provider"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -62,11 +61,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full overflow-hidden">
       <body className={`font-sans antialiased h-full overflow-hidden m-0 p-0`}>
-        <PWAInstallProvider>
-          <div id="root" className="h-full overflow-hidden">
-            {children}
-          </div>
-        </PWAInstallProvider>
+        <div id="root" className="h-full overflow-hidden">
+          {children}
+        </div>
         <Toaster richColors position="top-center" />
         <Analytics />
         <SpeedInsights />
