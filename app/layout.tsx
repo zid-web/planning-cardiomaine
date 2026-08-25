@@ -50,7 +50,14 @@ export const viewport: Viewport = {
   themeColor: "#0f766e",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // Pas de `maximumScale: 1` : bloquer le zoom pincé casse l'accessibilité
+  // (WCAG 1.4.4) sur une grille de planning dense. Les champs de saisie sont
+  // en `text-base` (16 px) sur mobile, donc iOS ne déclenche pas de zoom
+  // automatique à la prise de focus.
+  // `viewportFit: "cover"` : indispensable en mode standalone iOS pour que
+  // `env(safe-area-inset-*)` (déjà utilisé par `.safe-area-pb`) renvoie autre
+  // chose que 0 — sinon encoche et barre d'accueil recouvrent l'UI.
+  viewportFit: "cover",
 }
 
 export default function RootLayout({
@@ -59,7 +66,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="h-full overflow-hidden">
+    <html lang="fr" className="h-full overflow-hidden">
       <body className={`font-sans antialiased h-full overflow-hidden m-0 p-0`}>
         <div id="root" className="h-full overflow-hidden">
           {children}
