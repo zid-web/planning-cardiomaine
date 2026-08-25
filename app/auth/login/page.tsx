@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Smartphone, Share, X } from "lucide-react"
+import { usePWAInstall } from "@/components/pwa-install-provider"
 
 export default function Page() {
   const [email, setEmail] = useState("")
@@ -17,42 +18,17 @@ export default function Page() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
-  const [showInstallBtn, setShowInstallBtn] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
+  // Contexte partagé (confirmé utilisateur 25/08/2026) : la capture de
+  // l'événement d'installation démarre désormais dès app/layout.tsx (tout
+  // premier chargement de l'app), pas seulement au montage de cette page -
+  // le vrai bouton natif a donc plus de temps pour devenir disponible.
+  const { canInstall, isIOS, promptInstall } = usePWAInstall()
   const [showInstallGuide, setShowInstallGuide] = useState(false)
+  const showInstallBtn = canInstall || (isIOS && typeof window !== "undefined" && !(window.navigator as any).standalone)
 
-  useEffect(() => {
-    const userAgent = window.navigator.userAgent.toLowerCase()
-    const ios = /iphone|ipad|ipod/.test(userAgent)
-    setIsIOS(ios)
-
-    const handler = (e: Event) => {
-      e.preventDefault()
-      setDeferredPrompt(e)
-      setShowInstallBtn(true)
-    }
-    window.addEventListener("beforeinstallprompt", handler)
-
-    if (ios && !(window.navigator as any).standalone) {
-      setShowInstallBtn(true)
-    }
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", handler)
-    }
-  }, [])
-
-  const handleInstallClick = () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt()
-      deferredPrompt.userChoice.then(({ outcome }: { outcome: string }) => {
-        if (outcome === 'accepted') {
-          setDeferredPrompt(null)
-          setShowInstallBtn(false)
-        }
-      })
-    } else {
+  const handleInstallClick = async () => {
+    const triggered = await promptInstall()
+    if (!triggered) {
       setShowInstallGuide(true)
     }
   }
