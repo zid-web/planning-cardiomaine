@@ -4,7 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Toaster } from "sonner"
-import { ServiceWorkerRegister } from "@/components/service-worker-register"
+import { PWAInstallProvider } from "@/components/pwa-install-provider"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -62,13 +62,30 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full overflow-hidden">
       <body className={`font-sans antialiased h-full overflow-hidden m-0 p-0`}>
-        <div id="root" className="h-full overflow-hidden">
-          {children}
-        </div>
+        <PWAInstallProvider>
+          <div id="root" className="h-full overflow-hidden">
+            {children}
+          </div>
+        </PWAInstallProvider>
         <Toaster richColors position="top-center" />
         <Analytics />
         <SpeedInsights />
-        <ServiceWorkerRegister />
+        {/* Enregistrement du service worker en ligne (confirmé utilisateur
+            24/08/2026) - évite toute dépendance à un fichier composant
+            séparé, qui posait problème au déploiement. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+                window.addEventListener("load", function () {
+                  navigator.serviceWorker.register("/sw.js").catch(function (err) {
+                    console.warn("[pwa] Échec de l'enregistrement du service worker:", err);
+                  });
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   )
