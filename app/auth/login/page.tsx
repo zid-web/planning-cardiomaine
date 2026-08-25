@@ -7,51 +7,215 @@ import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
-import { Smartphone, Share, X } from "lucide-react"
+import { Smartphone, Share, X, Download, MoreVertical, MonitorDown } from "lucide-react"
+import { toast } from "sonner"
 
 // ─── SVG ECG inline (évite la dépendance au composant EcgTrace) ──────────────
 const ECG_PATH =
   "M0 40 H18 C20 40 21 38 22 36 C23 34 24 40 26 40 H38 C39 40 40 28 41 22 L44 8 L48 62 L51 34 L53 40 H68 C70 40 72 32 74 30 C78 26 82 38 84 40 H120 C122 40 123 38 124 36 C125 34 126 40 128 40 H160"
 
 // ─── Bouton PWA isolé ─────────────────────────────────────────────────────────
+// L'événement `beforeinstallprompt` est capté très tôt par le script inline du
+// layout racine (il est souvent émis AVANT l'hydratation React : l'écouter
+// seulement ici faisait perdre la promesse d'installation, et le bouton restait
+// inerte). On le relit donc depuis `window.__pwaInstallPrompt`.
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>
+}
+
+declare global {
+  interface Window {
+    __pwaInstallPrompt?: BeforeInstallPromptEvent | null
+  }
+}
+
+// Cible d'installation = système + navigateur, car la marche à suivre diffère
+// (Windows / macOS / Linux / Android / iOS ; Chromium vs Safari vs Firefox).
+type InstallTarget =
+  | "ios-safari"
+  | "ios-other"
+  | "android-chromium"
+  | "android-firefox"
+  | "macos-safari"
+  | "desktop-chromium"
+  | "desktop-firefox"
+
+type InstallTargetInfo = { target: InstallTarget; osLabel: string }
+type InstallEnvironment = InstallTargetInfo & { isInstalled: boolean }
+
+function detectInstallTarget(): InstallTargetInfo {
+  const ua = window.navigator.userAgent
+  const lower = ua.toLowerCase()
+
+  const isIPadOS =
+    /macintosh/.test(lower) && typeof document !== "undefined" && "ontouchend" in document
+  const isIOS = /iphone|ipad|ipod/.test(lower) || isIPadOS
+  const isAndroid = /android/.test(lower)
+  const isFirefox = /firefox|fxios/.test(lower)
+  // Safari = WebKit sans moteur Chromium/Gecko dans l'UA.
+  const isSafari = /safari/.test(lower) && !/chrome|chromium|crios|edg|android|opr|firefox|fxios/.test(lower)
+
+  if (isIOS) {
+    const label = isIPadOS || /ipad/.test(lower) ? "iPad" : "iPhone"
+    // Sur iOS, seul Safari peut ajouter à l'écran d'accueil (tous les
+    // navigateurs iOS utilisent WebKit mais l'action n'existe que dans Safari).
+    return { target: isSafari ? "ios-safari" : "ios-other", osLabel: label }
+  }
+
+  if (isAndroid) {
+    return { target: isFirefox ? "android-firefox" : "android-chromium", osLabel: "Android" }
+  }
+
+  const osLabel = /windows|win32|win64/.test(lower)
+    ? "Windows"
+    : /mac os x|macintosh/.test(lower)
+      ? "macOS"
+      : /cros/.test(lower)
+        ? "ChromeOS"
+        : /linux|x11/.test(lower)
+          ? "Linux"
+          : "bureau"
+
+  if (isSafari) return { target: "macos-safari", osLabel: "macOS" }
+  if (isFirefox) return { target: "desktop-firefox", osLabel }
+  return { target: "desktop-chromium", osLabel }
+}
+
+function isRunningStandalone(): boolean {
+  return (
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
+    window.matchMedia?.("(display-mode: fullscreen)").matches === true ||
+    window.matchMedia?.("(display-mode: minimal-ui)").matches === true ||
+    window.matchMedia?.("(display-mode: window-controls-overlay)").matches === true ||
+    (window.navigator as unknown as { standalone?: boolean }).standalone === true
+  )
+}
+
+const shareIcon = <Share style={{ display: "inline", width: "1rem", height: "1rem", color: "#3b82f6" }} />
+const menuIcon = <MoreVertical style={{ display: "inline", width: "1rem", height: "1rem", color: "#3b82f6" }} />
+const downloadIcon = <Download style={{ display: "inline", width: "1rem", height: "1rem", color: "#3b82f6" }} />
+const monitorIcon = <MonitorDown style={{ display: "inline", width: "1rem", height: "1rem", color: "#3b82f6" }} />
+
+const INSTALL_STEPS: Record<InstallTarget, React.ReactNode[]> = {
+  "ios-safari": [
+    <>Appuyez sur l&apos;icône Partager {shareIcon} dans la barre de Safari</>,
+    <>Faites défiler et appuyez sur « Sur l&apos;écran d&apos;accueil »</>,
+    <>Appuyez sur « Ajouter » : l&apos;icône Cardiomaine apparaît sur votre écran d&apos;accueil</>,
+  ],
+  "ios-other": [
+    <>Sur iPhone/iPad, l&apos;installation se fait uniquement depuis <strong>Safari</strong></>,
+    <>Ouvrez cette page dans Safari, puis appuyez sur Partager {shareIcon}</>,
+    <>Choisissez « Sur l&apos;écran d&apos;accueil » puis « Ajouter »</>,
+  ],
+  "android-chromium": [
+    <>Ouvrez le menu {menuIcon} du navigateur (en haut à droite)</>,
+    <>Appuyez sur « Installer l&apos;application » ou « Ajouter à l&apos;écran d&apos;accueil »</>,
+    <>Confirmez en appuyant sur « Installer »</>,
+  ],
+  "android-firefox": [
+    <>Ouvrez le menu {menuIcon} de Firefox (en haut à droite)</>,
+    <>Appuyez sur « Installer » ou « Ajouter à l&apos;écran d&apos;accueil »</>,
+    <>Pour une installation complète, ouvrez plutôt cette page dans Chrome</>,
+  ],
+  "macos-safari": [
+    <>Dans la barre de menus de Safari, ouvrez « Fichier »</>,
+    <>Choisissez « Ajouter au Dock… » (Safari 17 ou plus récent)</>,
+    <>Confirmez : Cardiomaine s&apos;ouvre alors dans sa propre fenêtre</>,
+  ],
+  "desktop-chromium": [
+    <>Cliquez sur l&apos;icône d&apos;installation {downloadIcon} à droite de la barre d&apos;adresse</>,
+    <>Sinon, menu ⋮ du navigateur → « Installer Planning Cardiomaine… » (ou « Applications » → « Installer ce site »)</>,
+    <>Confirmez avec « Installer » : un raccourci est créé sur le bureau et dans le menu</>,
+  ],
+  "desktop-firefox": [
+    <>Firefox pour ordinateur ne prend pas en charge l&apos;installation des applications web {monitorIcon}</>,
+    <>Ouvrez cette page dans <strong>Chrome</strong>, <strong>Edge</strong> ou <strong>Brave</strong></>,
+    <>Puis utilisez l&apos;icône d&apos;installation {downloadIcon} de la barre d&apos;adresse</>,
+  ],
+}
+
 function InstallPWAButton() {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
-  const [showInstallBtn, setShowInstallBtn] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
+  // Détection navigateur/OS : uniquement côté client (le rendu serveur part
+  // toujours du même état neutre, pas de désynchronisation d'hydratation).
+  const [env, setEnv] = useState<InstallEnvironment>({
+    target: "desktop-chromium",
+    osLabel: "bureau",
+    isInstalled: false,
+  })
+  const { target, osLabel, isInstalled } = env
+  const [isPrompting, setIsPrompting] = useState(false)
   const [showInstallGuide, setShowInstallGuide] = useState(false)
 
   useEffect(() => {
-    const ua = window.navigator.userAgent.toLowerCase()
-    const ios = /iphone|ipad|ipod/.test(ua)
-    setIsIOS(ios)
+    setEnv({ ...detectInstallTarget(), isInstalled: isRunningStandalone() })
 
-    const handler = (e: Event) => {
+    // Filet de sécurité : si le script du layout n'a pas pu s'exécuter, on
+    // capte quand même l'événement ici.
+    const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
-      setDeferredPrompt(e)
-      setShowInstallBtn(true)
+      window.__pwaInstallPrompt = e as BeforeInstallPromptEvent
     }
-    window.addEventListener("beforeinstallprompt", handler)
-
-    if (ios && !(window.navigator as any).standalone) {
-      setShowInstallBtn(true)
+    const handleInstalled = () => {
+      window.__pwaInstallPrompt = null
+      setEnv((prev) => ({ ...prev, isInstalled: true }))
+      setShowInstallGuide(false)
+      toast.success("Application installée : retrouvez-la sur votre écran d'accueil.")
     }
 
-    return () => window.removeEventListener("beforeinstallprompt", handler)
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
+    window.addEventListener("appinstalled", handleInstalled)
+
+    const standaloneQuery = window.matchMedia?.("(display-mode: standalone)")
+    const handleDisplayModeChange = (e: MediaQueryListEvent) =>
+      setEnv((prev) => ({ ...prev, isInstalled: e.matches }))
+    standaloneQuery?.addEventListener?.("change", handleDisplayModeChange)
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt)
+      window.removeEventListener("appinstalled", handleInstalled)
+      standaloneQuery?.removeEventListener?.("change", handleDisplayModeChange)
+    }
   }, [])
 
-  if (!showInstallBtn) return null
+  const isDesktopTarget = target === "desktop-chromium" || target === "desktop-firefox" || target === "macos-safari"
 
-  const handleInstall = () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt()
-      deferredPrompt.userChoice.then(({ outcome }: { outcome: string }) => {
-        if (outcome === "accepted") {
-          setDeferredPrompt(null)
-          setShowInstallBtn(false)
-        }
-      })
-    } else {
+  // Déjà installée : le bouton n'a plus d'objet.
+  if (isInstalled) return null
+
+  // Le bouton est TOUJOURS affiché et cliquable : un clic déclenche
+  // systématiquement le processus d'installation — soit la vraie invite
+  // native du navigateur quand elle est disponible, soit le guide pas-à-pas
+  // correspondant à la plateforme (iOS/Safari, Android, bureau) qui n'exposent
+  // pas `beforeinstallprompt`.
+  const handleInstall = async () => {
+    if (isPrompting) return
+
+    const promptEvent = window.__pwaInstallPrompt
+    if (!promptEvent) {
       setShowInstallGuide(true)
+      return
+    }
+
+    setIsPrompting(true)
+    try {
+      await promptEvent.prompt()
+      const { outcome } = await promptEvent.userChoice
+      // L'événement n'est utilisable qu'une seule fois : le navigateur en
+      // réémettra un nouveau plus tard s'il le juge pertinent.
+      window.__pwaInstallPrompt = null
+      if (outcome === "accepted") {
+        toast.success("Installation en cours…")
+      } else {
+        toast.info("Installation annulée. Vous pouvez la relancer à tout moment.")
+      }
+    } catch {
+      // Invite native indisponible (déjà consommée, navigateur non compatible) :
+      // on bascule sur le guide manuel plutôt que de ne rien faire.
+      window.__pwaInstallPrompt = null
+      setShowInstallGuide(true)
+    } finally {
+      setIsPrompting(false)
     }
   }
 
@@ -60,8 +224,11 @@ function InstallPWAButton() {
       <button
         type="button"
         onClick={handleInstall}
+        aria-label="Installer l'application Cardiomaine"
+        aria-busy={isPrompting}
+        title="Installer l'application Cardiomaine"
         style={{
-          position: "absolute",
+          position: "fixed",
           top: "1rem",
           right: "1rem",
           zIndex: 50,
@@ -77,27 +244,46 @@ function InstallPWAButton() {
           color: "#1B3A5C",
           boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
           backdropFilter: "blur(8px)",
-          cursor: "pointer",
+          cursor: isPrompting ? "progress" : "pointer",
+          opacity: isPrompting ? 0.7 : 1,
+          transition: "background-color 150ms ease, box-shadow 150ms ease, opacity 150ms ease",
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.backgroundColor = "#fff"
+          e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.12)"
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.9)"
+          e.currentTarget.style.boxShadow = "0 1px 2px rgba(0,0,0,0.05)"
         }}
       >
-        <Smartphone style={{ width: "0.875rem", height: "0.875rem", color: "#64748b" }} />
-        <span>Installer l&apos;application</span>
+        {isDesktopTarget ? (
+          <MonitorDown style={{ width: "0.875rem", height: "0.875rem", color: "#64748b" }} />
+        ) : (
+          <Smartphone style={{ width: "0.875rem", height: "0.875rem", color: "#64748b" }} />
+        )}
+        <span>{isPrompting ? "Installation…" : "Installer l'application"}</span>
       </button>
 
-      {showInstallGuide && isIOS && (
+      {showInstallGuide && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Installer l'application"
+          onClick={() => setShowInstallGuide(false)}
+          className="items-end sm:items-center"
           style={{
             position: "fixed",
             inset: 0,
-            zIndex: 50,
+            zIndex: 60,
             display: "flex",
-            alignItems: "flex-end",
             justifyContent: "center",
             padding: "1rem",
             backgroundColor: "rgba(0,0,0,0.4)",
           }}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",
               maxWidth: "24rem",
@@ -105,24 +291,25 @@ function InstallPWAButton() {
               backgroundColor: "#fff",
               padding: "1.5rem",
               boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+              marginBottom: "env(safe-area-inset-bottom)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
-              <h3 style={{ fontWeight: 600, color: "#1e293b" }}>Installer l&apos;application</h3>
+              <div>
+                <h3 style={{ fontWeight: 600, color: "#1e293b" }}>Installer l&apos;application</h3>
+                <p style={{ margin: "0.125rem 0 0", fontSize: "0.75rem", color: "#64748b" }}>Sur {osLabel}</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowInstallGuide(false)}
+                aria-label="Fermer"
                 style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}
               >
                 <X style={{ width: "1rem", height: "1rem" }} />
               </button>
             </div>
             <ol style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "0.75rem", fontSize: "0.875rem", color: "#475569" }}>
-              {[
-                <>Appuyez sur l&apos;icône Partager <Share style={{ display: "inline", width: "1rem", height: "1rem", color: "#3b82f6" }} /> en bas de Safari</>,
-                <>Faites défiler et appuyez sur « Sur l&apos;écran d&apos;accueil »</>,
-                <>Appuyez sur « Ajouter »</>,
-              ].map((step, i) => (
+              {INSTALL_STEPS[target].map((step, i) => (
                 <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem" }}>
                   <span
                     style={{
@@ -475,7 +662,7 @@ export default function LoginPage() {
         </main>
       </div>
 
-      {/* Bouton PWA — rendu uniquement si installable */}
+      {/* Bouton PWA — toujours affiché tant que l'app n'est pas installée */}
       <InstallPWAButton />
     </div>
   )

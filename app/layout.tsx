@@ -69,16 +69,32 @@ export default function RootLayout({
         <SpeedInsights />
         {/* Enregistrement du service worker en ligne (confirmé utilisateur
             24/08/2026) - évite toute dépendance à un fichier composant
-            séparé, qui posait problème au déploiement. */}
+            séparé, qui posait problème au déploiement.
+            + Capture TRÈS TÔT de "beforeinstallprompt" : le navigateur émet
+            souvent cet événement avant l'hydratation React, donc l'écouter
+            seulement depuis un composant faisait perdre l'invite native et le
+            bouton « Installer l'application » restait inerte. On mémorise
+            l'événement sur window.__pwaInstallPrompt pour que le bouton
+            puisse le déclencher au clic, quel que soit le moment. */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
-              if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-                window.addEventListener("load", function () {
-                  navigator.serviceWorker.register("/sw.js").catch(function (err) {
-                    console.warn("[pwa] Échec de l'enregistrement du service worker:", err);
-                  });
+              if (typeof window !== "undefined") {
+                window.__pwaInstallPrompt = window.__pwaInstallPrompt || null;
+                window.addEventListener("beforeinstallprompt", function (e) {
+                  e.preventDefault();
+                  window.__pwaInstallPrompt = e;
                 });
+                window.addEventListener("appinstalled", function () {
+                  window.__pwaInstallPrompt = null;
+                });
+                if ("serviceWorker" in navigator) {
+                  window.addEventListener("load", function () {
+                    navigator.serviceWorker.register("/sw.js").catch(function (err) {
+                      console.warn("[pwa] Échec de l'enregistrement du service worker:", err);
+                    });
+                  });
+                }
               }
             `,
           }}
