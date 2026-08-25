@@ -4,12 +4,27 @@
 // depuis le cache serait dangereux/trompeur. Existe uniquement pour
 // satisfaire les critères d'installation des navigateurs.
 
-self.addEventListener("install", (event) => {
-  self.skipWaiting()
+// Version du worker : la modifier force le navigateur à le réinstaller.
+const SW_VERSION = "2"
+
+self.addEventListener("install", () => {
+  // Volontairement PAS de skipWaiting() automatique (confirmé 25/08/2026) :
+  // activer le nouveau worker sous une page qui tourne encore sur l'ancien
+  // code enlève à l'utilisateur le contrôle du moment du rechargement — une
+  // modale d'affectation peut contenir une saisie non enregistrée. Le worker
+  // reste donc en attente, `AppUpdateWatcher` propose « Recharger », et
+  // l'activation n'a lieu qu'au message SKIP_WAITING ci-dessous.
 })
 
 self.addEventListener("activate", (event) => {
+  console.info("[pwa] service worker v" + SW_VERSION + " activé")
   event.waitUntil(self.clients.claim())
+})
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting()
+  }
 })
 
 self.addEventListener("fetch", (event) => {
