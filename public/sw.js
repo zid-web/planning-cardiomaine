@@ -13,13 +13,18 @@ self.addEventListener("activate", (event) => {
 })
 
 self.addEventListener("fetch", (event) => {
-  // Correctif (confirmé utilisateur 24/08/2026) : "event.respondWith(fetch(event.request))"
-  // plantait systématiquement pour les requêtes de NAVIGATION (chargement
-  // de page) avec "TypeError: Failed to fetch" - le mode "navigate" d'une
-  // requête ne peut pas être réutilisé directement dans fetch(), ce qui
-  // rendait le site entier inaccessible une fois le service worker actif.
-  // Chrome exige seulement qu'un gestionnaire "fetch" EXISTE pour
-  // l'installabilité - il n'a pas besoin d'intercepter quoi que ce soit.
-  // Ne rien faire ici = toutes les requêtes passent normalement au réseau,
-  // exactement comme sans service worker.
+  // Correctif complet (confirmé utilisateur 25/08/2026) :
+  // - "event.respondWith(fetch(event.request))" pour TOUTES les requêtes
+  //   plantait sur les requêtes de NAVIGATION ("Failed to fetch"), car le
+  //   mode "navigate" ne peut pas être réutilisé directement dans fetch().
+  // - Mais un gestionnaire "fetch" VIDE (sans respondWith) est ignoré par
+  //   Chrome pour l'évaluation d'installabilité PWA ("no-op fetch handler"),
+  //   empêchant l'icône d'installation d'apparaître.
+  // Solution : répondre réellement, mais seulement pour les requêtes NON-
+  // navigation (où event.request est réutilisable sans risque). Les
+  // navigations passent nativement, sans interception.
+  if (event.request.mode === "navigate") {
+    return
+  }
+  event.respondWith(fetch(event.request))
 })
