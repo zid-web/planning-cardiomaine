@@ -85,7 +85,15 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // `_vercel` exclu (confirmé 25/08/2026) : sans cela, les scripts de
+  // `<Analytics />` et `<SpeedInsights />` (/_vercel/insights/script.js,
+  // /_vercel/speed-insights/script.js) partaient en redirection vers
+  // /auth/login. Le navigateur recevait du HTML à la place du JS et rejetait
+  // les deux fichiers ("Unexpected token '<'"), donc aucune métrique n'était
+  // collectée — y compris le `?source=pwa` du manifest. Ces chemins sont
+  // servis par la plateforme Vercel et n'exposent aucune donnée applicative :
+  // les soustraire au contrôle d'authentification est sans effet de bord.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|_vercel|favicon.ico|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }
