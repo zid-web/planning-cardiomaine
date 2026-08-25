@@ -21,6 +21,7 @@ export async function proxy(request: NextRequest) {
     "/auth/sign-up-success",
     "/auth/reset-password-confirm",
     "/api/ping-solver", // keep-alive cron (cron-job.org / Vercel Cron) — no login
+    "/api/version", // version du déploiement (AppUpdateWatcher) — monté aussi sur la page de connexion
     "/api/test-s44",
   ]
 
