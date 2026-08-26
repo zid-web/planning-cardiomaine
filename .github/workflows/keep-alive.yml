@@ -9,8 +9,9 @@ name: Keep Alive
 #
 # On ne le reveille donc qu'aux heures ouvrees. Hors fenetre, Render
 # l'endort apres 15 min d'inactivite et il cesse de consommer des heures ;
-# le front le reveille a la demande via /api/ping-solver quand quelqu'un
-# ouvre l'application (voir components/schedule-app.tsx).
+# le front le reveille a la demande via /api/ping-solver quand un **admin**
+# ouvre l'application (voir components/schedule-app.tsx) — seuls les admins
+# lancent « Generer », donc seuls eux ont besoin du solveur.
 #
 # Les crons GitHub sont en UTC. La fenetre 05:00-18:50 UTC couvre
 # 7h-20h50 en France l'ete (UTC+2) et 6h-19h50 l'hiver (UTC+1).
