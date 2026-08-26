@@ -112,15 +112,10 @@ export const DOC022_FIXED_CLINICAL_SLOTS: Doc022FixedSlot[] = [
     doctor: "S",
     note: "DOC022 ECHO1 écho enfants (ETT ped) Dr Saint André 14h–16h30",
   },
-  // EE2 : Bros vendredi matin (DAAS reste apm lundi).
-  // Lundi matin : le créneau DOC022 « Dr Lefebvre 9h30–11h30 » est remplacé par
-  // la préférence H (consigne utilisateur 26/08/2026, voir vacation-preferences).
-  {
-    row: "Matin - EE2",
-    day: "VENDREDI",
-    doctor: "O",
-    note: "DOC022 EE2 matin réservé Dr Bros",
-  },
+  // EE2 matin : plus aucun créneau fixe (DAAS reste apm lundi). Les
+  // réservations DOC022 « Dr Lefebvre » (lundi) et « Dr Bros » (vendredi) sont
+  // remplacées par des préférences souples H / O — consigne utilisateur
+  // 26/08/2026, voir lib/vacation-preferences.ts.
   // EE1 mercredi après-midi : toujours T (consigne utilisateur 26/08/2026)
   {
     row: "Apm - EE1",

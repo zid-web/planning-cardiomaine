@@ -249,6 +249,26 @@ function main() {
     "aucune préférence EE2 le mardi matin",
   )
 
+  // --- O souvent en EE2 vendredi matin, mais plus en créneau fixe ---
+  assert.deepEqual(eeBias["Matin - EE2"].VENDREDI.eligible_doctors, ["O"])
+  assert.equal(
+    DOC022_FIXED_CLINICAL_SLOTS.some((s) => s.row === "Matin - EE2"),
+    false,
+    "plus aucun créneau fixe sur EE2 matin",
+  )
+  const noFixedEe2 = applyFixedClinicalAssignments(
+    generateWeekSchedule(weekKey, []),
+    weekKey,
+    [],
+  )
+  assert.deepEqual(
+    noFixedEe2["Matin - EE2"].VENDREDI.value,
+    [],
+    "EE2 vendredi matin n'est plus pré-remplie avec O",
+  )
+  r = canAssignDoctorToSlot("O", "2026-07-24", "Matin - EE2", "VENDREDI", noFixedEe2, [])
+  assert.equal(r.allowed, true, `O reste assignable à la main: ${r.reason}`)
+
   // --- T toujours sur EE1 mercredi après-midi ---
   assert.ok(
     DOC022_FIXED_CLINICAL_SLOTS.some(
