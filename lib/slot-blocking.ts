@@ -9,6 +9,8 @@
  * le même matin (pas Coro / Rythmo / Rééducation). **S+I** peut aussi garder l’IRM.
  * **S** mercredi apm : ETT ped (salle 1) + Garde Midi / ATL Midi autorisés.
  * Une garde admin peut remplacer l’IRM fixe sur le même créneau.
+ * Hors site en demi-journée : IRM (S lundi matin / vendredi apm) et **CDL mardi
+ *   matin** (O / V) — l’autre demi-journée reste libre (Coro, ATL Midi…).
  */
 
 import { DAYS } from "@/lib/constants"
@@ -185,8 +187,20 @@ export function wouldBePairedWithIntern(
 }
 
 /**
+ * Vacations hors site qui ne durent qu’une demi-journée (l’autre demi-journée
+ * reste libre pour Coro / Astreinte ATL / Cs…).
+ * IRM : S lundi matin + vendredi après-midi.
+ * CDL : mardi matin (O / V) — l’après-midi reste assignable.
+ * Sur les autres jours (saisie manuelle exceptionnelle) la ligne reste « day ».
+ */
+const OFF_SITE_HALF_DAY_PERIODS: Record<string, Record<string, DayPeriod>> = {
+  [IRM_ROW]: { LUNDI: "matin", VENDREDI: "apm" },
+  [CDL_ROW]: { MARDI: "matin" },
+}
+
+/**
  * Classe une ligne planning dans une période de conflit.
- * IRM : Lundi = matin, Vendredi = après-midi ; sinon « day ».
+ * IRM : Lundi = matin, Vendredi = après-midi ; CDL : Mardi = matin ; sinon « day ».
  */
 export function periodOfRow(rowKey: string, day?: string): DayPeriod {
   if (
@@ -205,12 +219,9 @@ export function periodOfRow(rowKey: string, day?: string): DayPeriod {
   if (rowKey.startsWith("Matin -")) return "matin"
   if (rowKey.startsWith("Apm -")) return "apm"
   if (rowKey === "Pré-op" || rowKey === "Entrées PSS") return "matin"
-  // IRM = S Lundi matin + Vendredi après-midi (pas journée entière)
-  if (rowKey === IRM_ROW) {
-    if (day === "LUNDI") return "matin"
-    if (day === "VENDREDI") return "apm"
-    return "day"
-  }
+  // Hors site en demi-journée (IRM lundi/vendredi, CDL mardi matin)
+  const halfDayPeriod = day ? OFF_SITE_HALF_DAY_PERIODS[rowKey]?.[day] : undefined
+  if (halfDayPeriod) return halfDayPeriod
   if (rowKey === LFB_ROW || rowKey === CDL_ROW || rowKey.startsWith("Hors site -")) {
     return "day"
   }

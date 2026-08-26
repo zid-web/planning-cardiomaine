@@ -9,6 +9,7 @@ import {
   formatDoctorWithDoublon,
   applySlotBlockingStrips,
   isDoublonEligibleRow,
+  periodOfRow,
   INTERN_CODE,
 } from "@/lib/slot-blocking"
 import type { DoctorVacation } from "@/lib/types"
@@ -284,6 +285,25 @@ function main() {
   }
   r = canAssignDoctorToSlot(sunAtlDoc, "2026-07-26", "Garde Matin", "DIMANCHE", schedule, [])
   assert.equal(r.allowed, true, "½-off n’empêche pas association remplacant week-end")
+
+  // CDL mardi matin = demi-journée : l'après-midi reste assignable (ATL Midi + Coro apm)
+  schedule = generateWeekSchedule("2026-W39", [])
+  schedule["Hors site - CDL"].MARDI = { value: ["O"], type: "doctor", status: "validated" }
+  assert.equal(periodOfRow("Hors site - CDL", "MARDI"), "matin")
+  assert.equal(periodOfRow("Hors site - CDL", "MERCREDI"), "day")
+  r = canAssignDoctorToSlot("O", "2026-09-22", "Astreintes ATL Midi", "MARDI", schedule, [])
+  assert.equal(r.allowed, true, "CDL mardi matin n’empêche pas l’astreinte ATL Midi")
+  r = canAssignDoctorToSlot("O", "2026-09-22", "Apm - Coro", "MARDI", schedule, [])
+  assert.equal(r.allowed, true, "CDL mardi matin n’empêche pas la Coro l’après-midi")
+  r = canAssignDoctorToSlot("O", "2026-09-22", "Matin - Coro", "MARDI", schedule, [])
+  assert.equal(r.allowed, false, "CDL mardi matin bloque toujours le matin")
+
+  schedule["Astreintes ATL Midi"].MARDI = { value: ["O"], type: "doctor", status: "validated" }
+  schedule["Apm - Coro"].MARDI = { value: ["O"], type: "doctor", status: "validated" }
+  const afterCdl = applySlotBlockingStrips(schedule)
+  assert.deepEqual(afterCdl["Hors site - CDL"].MARDI.value, ["O"], "CDL mardi matin conservé")
+  assert.deepEqual(afterCdl["Astreintes ATL Midi"].MARDI.value, ["O"])
+  assert.deepEqual(afterCdl["Apm - Coro"].MARDI.value, ["O"])
 
   console.log("✅ slot-blocking tests passed")
 }
