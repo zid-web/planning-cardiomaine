@@ -334,6 +334,7 @@ function main() {
   assert.equal(formatPersonLabel("Val"), "Val")
   assert.equal(formatPersonLabel("Véro"), "Véro")
   assert.equal(formatPersonLabel("Laura"), "Laura")
+  assert.equal(formatPersonLabel("CH"), "CH", "CH = structure externe, pas un Dr.")
   assert.equal(formatPersonLabel("S"), "Dr. S")
   assert.equal(formatPersonLabel("K"), "Dr. K")
   assert.equal(formatPersonLabel(""), "—")
