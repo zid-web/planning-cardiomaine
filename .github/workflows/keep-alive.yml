@@ -12,14 +12,7 @@ name: Keep Alive
 # le front le reveille a la demande via /api/ping-solver quand un **admin**
 # ouvre l'application (voir components/schedule-app.tsx) — seuls les admins
 # lancent « Generer », donc seuls eux ont besoin du solveur.
-#
-# NOTE — ce workflow fait desormais doublon avec les taches pg_cron installees
-# par supabase/migrations/20260826000000_keep_alive_cron.sql, qui tiennent le
-# meme horaire de facon fiable. Il est conserve volontairement comme filet de
-# securite : si le projet Supabase venait a etre mis en pause, pg_cron
-# s'arreterait avec lui et ne pourrait plus rien pinguer. Ce workflow, lui,
-# tourne en dehors. Les deux pings sur la meme fenetre ne coutent pas
-# d'instance hours supplementaires (le service est deja eveille).
+
 #
 # Les crons GitHub sont en UTC. La fenetre 06:00-10:50 UTC couvre les
 # matinees 8h-12h demandees : 8h-12h50 en France l'ete (UTC+2), 7h-11h50
