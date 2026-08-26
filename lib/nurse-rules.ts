@@ -115,10 +115,11 @@ export type ValFixedSlot = { row: string; day: string; slot: "matin" | "am" }
  * Semaine paire : Lun Stress matin+am ; Mar ETT Tessé matin + EE am ;
  * Mer ETT Tessé matin + ETT2 am ; Jeu Stress matin + EE am ;
  * Ven ETT2 matin, absence fixe am.
+ * Val est à l'ETT Tessé les mardis et mercredis matin dans les deux parités
+ * (consigne 26/08/2026).
  *
- * Semaine impaire : Lun absence fixe ; Mar am libre/flexible (le Stress du
- * mardi matin revient à Véro toutes les semaines) ; Mer ETT2 am (EE1 matin
- * fermée) ;
+ * Semaine impaire : Lun absence fixe ; Mar ETT Tessé matin (am libre/flexible) ;
+ * Mer ETT Tessé matin + ETT2 am ;
  * Jeu EE matin (D est toujours Stress le matin) + [EE si D fait Stress
  * l'am (1er jeudi du mois), Stress si D fait EE l'am (autres jeudis)] ;
  * Ven ETT2 matin + EE am.
@@ -146,11 +147,12 @@ export function valFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean):
 // Semaine impaire
   const slots: ValFixedSlot[] = [
     // Lundi : absence fixe - rien à ajouter.
-    // Mardi matin : Véro tient le Stress toutes les semaines (consigne
-    // 26/08/2026) - plus de tour de Val ce matin-là.
+    // Val est à l'ETT Tessé les mardis et mercredis matin dans les deux
+    // parités (consigne 26/08/2026) : le Stress du mardi matin revient à Véro
+    // toutes les semaines et EE1 matin est fermée le mercredi.
+    { row: "Matin - ETT Tessé", day: "MARDI", slot: "matin" },
     // Mardi am : libre/flexible (alternance manuelle avec Véro) - non forcé.
-    // Mercredi matin : EE1 matin est fermée (cf. lib/closed-slots.ts) et Véro
-    // tient le Stress - Val n'a plus de vacation fixe ce matin-là.
+    { row: "Matin - ETT Tessé", day: "MERCREDI", slot: "matin" },
     { row: "Apm - ETT salle 2", day: "MERCREDI", slot: "am" },
     { row: "Matin - EE1", day: "JEUDI", slot: "matin" }, // D toujours Stress le matin -> Val toujours EE
     { row: "Matin - ETT salle 2", day: "VENDREDI", slot: "matin" },

@@ -235,6 +235,20 @@ function main() {
     "plus de créneau fixe DOC022 sur EE2 lundi matin",
   )
 
+  // --- R souvent en EE2 mercredi matin ; sa Scinti du mardi est inchangée ---
+  assert.deepEqual(eeBias["Matin - EE2"].MERCREDI.eligible_doctors, ["R"])
+  assert.ok(
+    DOC022_FIXED_CLINICAL_SLOTS.some(
+      (s) => s.row === "Hors site - Scinti" && s.day === "MARDI" && s.doctor === "R",
+    ),
+    "Scinti R mardi matin conservée",
+  )
+  assert.equal(
+    eeBias["Matin - EE2"].MARDI,
+    undefined,
+    "aucune préférence EE2 le mardi matin",
+  )
+
   // --- T toujours sur EE1 mercredi après-midi ---
   assert.ok(
     DOC022_FIXED_CLINICAL_SLOTS.some(
@@ -275,6 +289,18 @@ function main() {
       `plus d'infirmière sur EE1 mercredi matin (${wk})`,
     )
   }
+  // --- Val à l'ETT Tessé mardi et mercredi matin dans les deux parités ---
+  for (const wk of ["2026-W30", "2026-W31"]) {
+    const nurse = applyNurseFixedAssignments(generateWeekSchedule(wk, []), wk, [])
+    for (const day of ["MARDI", "MERCREDI"]) {
+      assert.deepEqual(
+        nurse["Matin - ETT Tessé"][day].value,
+        ["Val"],
+        `Val à l'ETT Tessé ${day} matin (${wk})`,
+      )
+    }
+  }
+
   // Le jeudi matin reste ouvert : Val y garde son EE1 en semaine impaire
   const oddNurse = applyNurseFixedAssignments(
     generateWeekSchedule("2026-W31", []),
