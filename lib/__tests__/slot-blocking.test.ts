@@ -136,8 +136,11 @@ function main() {
   assert.equal(r.allowed, true, r.reason)
   r = canAssignDoctorToSlot("G", "2026-07-22", "Matin - ETT salle 1", "MERCREDI", schedule, [])
   assert.equal(r.allowed, true, r.reason)
-  r = canAssignDoctorToSlot("G", "2026-07-22", "Matin - EE1", "MERCREDI", schedule, [])
+  // EE1 matin est fermée le mercredi → on vérifie le cumul sur EE2
+  r = canAssignDoctorToSlot("G", "2026-07-22", "Matin - EE2", "MERCREDI", schedule, [])
   assert.equal(r.allowed, true, r.reason)
+  r = canAssignDoctorToSlot("G", "2026-07-22", "Matin - EE1", "MERCREDI", schedule, [])
+  assert.equal(r.allowed, false, "EE1 matin fermée le mercredi")
 
   // Avec I : Coro / Rythmo / Rééducation interdits
   r = canAssignDoctorToSlot("G", "2026-07-22", "Matin - Coro", "MERCREDI", schedule, [])

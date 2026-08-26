@@ -25,6 +25,7 @@ import {
 } from "@/lib/half-day-off"
 import { NCT_DATES_2025_DEC, NCT_DATES_2026 } from "@/lib/guard-scheduler"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
+import { applyClosedSlotsClear } from "@/lib/closed-slots"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { applyStressAndDRules } from "@/lib/stress-rules"
 import { ensureNurseDoctorBinomeProposals } from "@/lib/nurse-rules"
@@ -58,6 +59,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "Weekend Garde : Sam Matin = Ven Nuit (+ associé Sam Midi/Nuit) ; Sam Midi=Nuit ; Dim Matin=Midi=Nuit",
   "Weekend ATL : Sam Matin=Midi=Nuit ; Dim Matin=Midi=Nuit (un médecin / jour)",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
+  "Cases fermées : Stress Mer/Ven apm ; EE1 matin sauf jeudi",
   "Blocages créneau : congés, ½-off, 1 tâche/matin|apm (sauf ATL+Coro, ETT 1+2, EE1+EE2), LFB/CDL hors garde J/J+1 ; doublon Cs=2× case, ETT/EE=2 salles",
 ] as const
 
@@ -808,6 +810,9 @@ export function applyStructuralConstraints(
   if (vacations.length > 0) {
     next = clearFixedAssigneesOnVacation(next, weekKey, vacations)
   }
+
+  // 8bis) Cases fermées (Stress Mer/Ven apm, EE1 matin sauf jeudi)
+  next = applyClosedSlotsClear(next)
 
   // 9) Strips bloquants (½-off, exclusion créneau, LFB/CDL vs garde)
   next = applySlotBlockingStrips(next)

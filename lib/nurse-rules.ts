@@ -7,6 +7,8 @@
  *         correspondant.
  * - Véro, Laura : ne font jamais ETT2 ni ETT Tessé - uniquement Stress/EE,
  *         toujours en binôme.
+ * - Val en ETT : TOUJOURS ETT salle 2, jamais ETT salle 1 (consigne 26/08/2026).
+ * - Laura en congés : repli systématique sur Val (consigne 26/08/2026).
  * - "La vacation est considérée comme indisponible si l'un du couple
  *   (infirmière/médecin) est absent" : si le partenaire prévu est en congé,
  *   la case devient indisponible pour l'infirmière aussi (et vice versa) -
@@ -16,12 +18,37 @@
 
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { dateStrForWeekDay, isDoctorOnVacationForFixed } from "@/lib/fixed-assignments"
+import { preferredPartnerForNurseSlot } from "@/lib/vacation-preferences"
 
 export const NURSES = ["Val", "Véro", "Laura"] as const
 export type NurseId = (typeof NURSES)[number]
 
 export function isNurse(doctorId: string): doctorId is NurseId {
   return (NURSES as readonly string[]).includes(doctorId)
+}
+
+/**
+ * Lignes ETT interdites par infirmière (consigne utilisateur 26/08/2026).
+ * Val en ETT = **toujours** ETT salle 2, jamais salle 1 (ETT Tessé reste un
+ * site distinct et lui reste ouvert).
+ */
+export const NURSE_FORBIDDEN_ROWS: Record<string, readonly string[]> = {
+  Val: ["Matin - ETT salle 1", "Apm - ETT salle 1"],
+}
+
+/**
+ * Infirmière de repli quand la titulaire est en congés (consigne utilisateur
+ * 26/08/2026 : Laura absente → Val systématiquement).
+ */
+export const NURSE_ABSENCE_FALLBACK: Record<string, string> = {
+  Laura: "Val",
+}
+
+/** L'infirmière peut-elle prendre cette ligne ? (false = affectation interdite) */
+export function canNurseTakeRow(nurseId: string, rowKey: string): boolean {
+  const forbidden = NURSE_FORBIDDEN_ROWS[nurseId]
+  if (!forbidden) return true
+  return !forbidden.includes(rowKey)
 }
 
 /** Lignes où Val peut être seule, sans binôme (ETT2 et ETT Tessé). */
@@ -88,9 +115,11 @@ export type ValFixedSlot = { row: string; day: string; slot: "matin" | "am" }
  * Semaine paire : Lun Stress matin+am ; Mar ETT Tessé matin + EE am ;
  * Mer ETT Tessé matin + ETT2 am ; Jeu Stress matin + EE am ;
  * Ven ETT2 matin, absence fixe am.
+ * Val est à l'ETT Tessé les mardis et mercredis matin dans les deux parités
+ * (consigne 26/08/2026).
  *
- * Semaine impaire : Lun absence fixe ; Mar Stress matin (am libre/flexible,
- * non forcé - alternance manuelle avec Véro) ; Mer Stress matin + ETT2 am ;
+ * Semaine impaire : Lun absence fixe ; Mar ETT Tessé matin (am libre/flexible) ;
+ * Mer ETT Tessé matin + ETT2 am ;
  * Jeu EE matin (D est toujours Stress le matin) + [EE si D fait Stress
  * l'am (1er jeudi du mois), Stress si D fait EE l'am (autres jeudis)] ;
  * Ven ETT2 matin + EE am.
@@ -118,9 +147,12 @@ export function valFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean):
 // Semaine impaire
   const slots: ValFixedSlot[] = [
     // Lundi : absence fixe - rien à ajouter.
-    { row: "Matin - Stress", day: "MARDI", slot: "matin" }, // Tour de Val le mardi impair
+    // Val est à l'ETT Tessé les mardis et mercredis matin dans les deux
+    // parités (consigne 26/08/2026) : le Stress du mardi matin revient à Véro
+    // toutes les semaines et EE1 matin est fermée le mercredi.
+    { row: "Matin - ETT Tessé", day: "MARDI", slot: "matin" },
     // Mardi am : libre/flexible (alternance manuelle avec Véro) - non forcé.
-    { row: "Matin - EE1", day: "MERCREDI", slot: "matin" }, // Val est sur EE1 le mercredi (Véro est sur Stress)
+    { row: "Matin - ETT Tessé", day: "MERCREDI", slot: "matin" },
     { row: "Apm - ETT salle 2", day: "MERCREDI", slot: "am" },
     { row: "Matin - EE1", day: "JEUDI", slot: "matin" }, // D toujours Stress le matin -> Val toujours EE
     { row: "Matin - ETT salle 2", day: "VENDREDI", slot: "matin" },
@@ -157,11 +189,12 @@ export function lauraFixedSlotsForWeek(weekKey: string): ValFixedSlot[] {
 /**
  * Planning fixe de Véro :
  *
- * Semaine paire : Lun absence fixe ; Mar Stress matin (Val à ETT Tessé/EE) ;
- * Mer Stress matin (Val à EE1) ; Jeu miroir D (Stress matin + D) ; Ven Stress matin.
+ * Semaine paire : Lun absence fixe ; Mar Stress matin (Val à ETT Tessé) ;
+ * Mer Stress matin ; Jeu miroir D (Stress matin + D) ; Ven Stress matin.
  *
- * Semaine impaire : Lun Stress matin+am ; Mar EE1 matin (tour de Val sur Stress) ;
- * Mer Stress matin (Val à EE1) ; Jeu miroir D (Stress matin + D) ; Ven absence fixe.
+ * Semaine impaire : Lun Stress matin+am ; Mar Stress matin ; Mer Stress matin ;
+ * Jeu miroir D (Stress matin + D) ; Ven absence fixe.
+ * Véro est au Stress **tous** les mardis et mercredis matin (consigne 26/08/2026).
  */
 export function veroFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean): ValFixedSlot[] {
   const odd = isOddIsoWeekLocal(weekKey)
@@ -190,7 +223,7 @@ export function veroFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean)
   return [
     { row: "Matin - Stress", day: "LUNDI", slot: "matin" },
     { row: "Apm - Stress", day: "LUNDI", slot: "am" },
-    { row: "Matin - EE1", day: "MARDI", slot: "matin" }, // Mardi impair : Val est sur Stress -> Véro passe sur EE1
+    { row: "Matin - Stress", day: "MARDI", slot: "matin" }, // Véro est au Stress tous les mardis matin (consigne 26/08/2026)
     // Mardi am : libre - non forcé.
     { row: "Matin - Stress", day: "MERCREDI", slot: "matin" }, // Mercredi : Véro est sur Stress -> Val est sur EE1
     // Mercredi am : absence fixe - rien à ajouter.
@@ -292,10 +325,18 @@ export function ensureNurseDoctorBinomeProposals(
       const hasDoctorPartner = vals.some((d) => !isNurse(d) && d !== "CH")
       if (!hasDoctorPartner) {
         const dateStr = dateStrFn(day)
-        // Sélectionner le premier médecin disponible du pool
-        const candidate = pool.find(
-          (doc) => !dateStr || !isDoctorOnVacationForFixed(doc, dateStr, vacations),
-        )
+        const isAvailable = (doc: string) =>
+          !dateStr || !isDoctorOnVacationForFixed(doc, dateStr, vacations)
+        // Préférence groupe pour cette case (K mardi matin, S vendredi matin…),
+        // sinon premier médecin disponible du pool.
+        const preferred = preferredPartnerForNurseSlot(rowKey, day, pool, {
+          weekKey,
+          schedule: next,
+          vacations,
+          dateStrForDay: dateStrFn,
+        })
+        const candidate =
+          preferred && isAvailable(preferred) ? preferred : pool.find(isAvailable)
         if (candidate) {
           next = {
             ...next,
