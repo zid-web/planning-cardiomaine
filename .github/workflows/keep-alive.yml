@@ -13,13 +13,15 @@ name: Keep Alive
 # ouvre l'application (voir components/schedule-app.tsx) — seuls les admins
 # lancent « Generer », donc seuls eux ont besoin du solveur.
 #
-# Les crons GitHub sont en UTC. La fenetre 05:00-18:50 UTC couvre
-# 7h-20h50 en France l'ete (UTC+2) et 6h-19h50 l'hiver (UTC+1).
+# Les crons GitHub sont en UTC. La fenetre 06:00-10:50 UTC couvre les
+# matinees 8h-12h demandees : 8h-12h50 en France l'ete (UTC+2), 7h-11h50
+# l'hiver (UTC+1). Une seule fenetre UTC ne peut pas coller exactement aux
+# deux saisons — elle deborde d'une heure l'hiver, ce qui reste marginal.
 on:
   schedule:
-    # Solveur Render : lun-ven uniquement, dans la fenetre de travail.
-    # ~14 h/jour x 22 jours ouvres = ~315 h/mois (marge : ~435 h).
-    - cron: '*/10 5-18 * * 1-5'
+    # Solveur Render : lun-ven, matinees uniquement.
+    # ~5 h/jour x 22 jours ouvres = ~112 h/mois (marge : ~640 h).
+    - cron: '*/10 6-10 * * 1-5'
     # Supabase : un seul ping par jour suffit (pause a 7 jours d'inactivite),
     # tous les jours pour couvrir les semaines de conges.
     - cron: '17 6 * * *'
@@ -37,7 +39,7 @@ jobs:
       - name: Ping Backend (Guard API)
         id: backend
         # Uniquement sur le cron de la fenetre de travail (et en manuel).
-        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/10 5-18 * * 1-5'
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/10 6-10 * * 1-5'
         run: |
           echo "🔄 Pinging backend..."
           RESPONSE=$(curl -s -w "\n%{http_code}" https://guard-api-cardiomaine.onrender.com/)
