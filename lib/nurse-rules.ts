@@ -7,6 +7,8 @@
  *         correspondant.
  * - Véro, Laura : ne font jamais ETT2 ni ETT Tessé - uniquement Stress/EE,
  *         toujours en binôme.
+ * - Val en ETT : TOUJOURS ETT salle 2, jamais ETT salle 1 (consigne 26/08/2026).
+ * - Laura en congés : repli systématique sur Val (consigne 26/08/2026).
  * - "La vacation est considérée comme indisponible si l'un du couple
  *   (infirmière/médecin) est absent" : si le partenaire prévu est en congé,
  *   la case devient indisponible pour l'infirmière aussi (et vice versa) -
@@ -16,12 +18,37 @@
 
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { dateStrForWeekDay, isDoctorOnVacationForFixed } from "@/lib/fixed-assignments"
+import { preferredPartnerForNurseSlot } from "@/lib/vacation-preferences"
 
 export const NURSES = ["Val", "Véro", "Laura"] as const
 export type NurseId = (typeof NURSES)[number]
 
 export function isNurse(doctorId: string): doctorId is NurseId {
   return (NURSES as readonly string[]).includes(doctorId)
+}
+
+/**
+ * Lignes ETT interdites par infirmière (consigne utilisateur 26/08/2026).
+ * Val en ETT = **toujours** ETT salle 2, jamais salle 1 (ETT Tessé reste un
+ * site distinct et lui reste ouvert).
+ */
+export const NURSE_FORBIDDEN_ROWS: Record<string, readonly string[]> = {
+  Val: ["Matin - ETT salle 1", "Apm - ETT salle 1"],
+}
+
+/**
+ * Infirmière de repli quand la titulaire est en congés (consigne utilisateur
+ * 26/08/2026 : Laura absente → Val systématiquement).
+ */
+export const NURSE_ABSENCE_FALLBACK: Record<string, string> = {
+  Laura: "Val",
+}
+
+/** L'infirmière peut-elle prendre cette ligne ? (false = affectation interdite) */
+export function canNurseTakeRow(nurseId: string, rowKey: string): boolean {
+  const forbidden = NURSE_FORBIDDEN_ROWS[nurseId]
+  if (!forbidden) return true
+  return !forbidden.includes(rowKey)
 }
 
 /** Lignes où Val peut être seule, sans binôme (ETT2 et ETT Tessé). */
@@ -292,10 +319,18 @@ export function ensureNurseDoctorBinomeProposals(
       const hasDoctorPartner = vals.some((d) => !isNurse(d) && d !== "CH")
       if (!hasDoctorPartner) {
         const dateStr = dateStrFn(day)
-        // Sélectionner le premier médecin disponible du pool
-        const candidate = pool.find(
-          (doc) => !dateStr || !isDoctorOnVacationForFixed(doc, dateStr, vacations),
-        )
+        const isAvailable = (doc: string) =>
+          !dateStr || !isDoctorOnVacationForFixed(doc, dateStr, vacations)
+        // Préférence groupe pour cette case (K mardi matin, S vendredi matin…),
+        // sinon premier médecin disponible du pool.
+        const preferred = preferredPartnerForNurseSlot(rowKey, day, pool, {
+          weekKey,
+          schedule: next,
+          vacations,
+          dateStrForDay: dateStrFn,
+        })
+        const candidate =
+          preferred && isAvailable(preferred) ? preferred : pool.find(isAvailable)
         if (candidate) {
           next = {
             ...next,

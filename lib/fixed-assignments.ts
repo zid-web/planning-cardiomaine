@@ -1,7 +1,12 @@
 import { parseISO, isAfter, isBefore } from "date-fns"
 import { DAYS } from "@/lib/constants"
 import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
-import { valFixedSlotsForWeek, veroFixedSlotsForWeek, lauraFixedSlotsForWeek } from "@/lib/nurse-rules"
+import {
+  valFixedSlotsForWeek,
+  veroFixedSlotsForWeek,
+  lauraFixedSlotsForWeek,
+  NURSE_ABSENCE_FALLBACK,
+} from "@/lib/nurse-rules"
 import { isFirstThursdayOfMonth } from "@/lib/stress-rules"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 
@@ -243,9 +248,47 @@ export function applyNurseFixedAssignments(
   }
   for (const slot of lauraFixedSlotsForWeek(weekKey)) {
     if (!schedule[slot.row]) continue
-    appendFixedOccupant(schedule, slot.row, slot.day, "Laura", weekKey, vacations, expected)
+    const dateStr = dateStrForWeekDay(weekKey, slot.day)
+    const lauraAbsent = dateStr
+      ? isDoctorAbsentForFixed(schedule, "Laura", slot.day, dateStr, vacations)
+      : false
+    // Laura en congés : repli systématique sur Val (consigne 26/08/2026).
+    // Val ne pouvant tenir deux vacations le même créneau, on libère ses
+    // autres cases fixes de la même demi-journée avant de la poser ici.
+    const occupant = lauraAbsent ? (NURSE_ABSENCE_FALLBACK["Laura"] as string) : "Laura"
+    if (lauraAbsent) {
+      appendFixedOccupant(schedule, slot.row, slot.day, "Laura", weekKey, vacations, expected)
+      releaseNurseFromOtherSlots(schedule, occupant, slot.day, slot.slot, slot.row)
+    }
+    appendFixedOccupant(schedule, slot.row, slot.day, occupant, weekKey, vacations, expected)
   }
   return schedule
+}
+
+/**
+ * Libère une infirmière de ses autres vacations de la même demi-journée
+ * (utilisé par le repli Laura → Val : une seule vacation par créneau).
+ */
+function releaseNurseFromOtherSlots(
+  schedule: ScheduleData,
+  nurse: string,
+  day: string,
+  slot: "matin" | "am",
+  keepRow: string,
+): void {
+  const prefix = slot === "matin" ? "Matin - " : "Apm - "
+  for (const rowKey of Object.keys(schedule)) {
+    if (rowKey === keepRow) continue
+    if (!rowKey.startsWith(prefix)) continue
+    const current = schedule[rowKey]?.[day]?.value || []
+    if (!current.includes(nurse)) continue
+    setDoctors(
+      schedule,
+      rowKey,
+      day,
+      current.filter((d) => d !== nurse),
+    )
+  }
 }
 
 /**

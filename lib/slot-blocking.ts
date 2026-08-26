@@ -11,6 +11,7 @@
  * Une garde admin peut remplacer l’IRM fixe sur le même créneau.
  * Hors site en demi-journée : IRM (S lundi matin / vendredi apm) et **CDL mardi
  *   matin** (O / V) — l’autre demi-journée reste libre (Coro, ATL Midi…).
+ * Val en ETT : toujours **ETT salle 2**, jamais salle 1.
  */
 
 import { DAYS } from "@/lib/constants"
@@ -25,7 +26,12 @@ import { isStressSlotClosed } from "@/lib/stress-rules"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
 import { isRoomUnderMaintenanceOnDate } from "@/lib/room-maintenance"
-import { isNurse, isValidNursePartner, nurseRequiresBinome } from "@/lib/nurse-rules"
+import {
+  canNurseTakeRow,
+  isNurse,
+  isValidNursePartner,
+  nurseRequiresBinome,
+} from "@/lib/nurse-rules"
 
 export type DayPeriod = "matin" | "apm" | "nuit" | "day" | "meta"
 
@@ -471,6 +477,14 @@ export function canAssignDoctorToSlot(
         allowed: false,
         reason: "ETT Tessé réservé à Val, S et B.",
       }
+    }
+  }
+
+  // Val en ETT : toujours salle 2, jamais salle 1 (consigne 26/08/2026).
+  if (isNurse(doctorId) && !canNurseTakeRow(doctorId, rowKey)) {
+    return {
+      allowed: false,
+      reason: `${doctorId} ne fait pas cette vacation (en ETT : toujours ETT salle 2).`,
     }
   }
 

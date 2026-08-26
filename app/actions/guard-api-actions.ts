@@ -19,6 +19,7 @@ import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
 import { toSolverClinicalRulesPayload } from "@/lib/group-clinical-rules";
+import { applyPreferenceBias } from "@/lib/vacation-preferences";
 import { buildActivityMaintenancePayload, buildDefaultActivityMaintenance2026 } from "@/lib/activity-maintenance";
 import { buildRoomMaintenancePayload } from "@/lib/room-maintenance";
 import { dateStrForWeekDay, isDoctorOnVacationForFixed, mondayOfIsoWeekKey } from "@/lib/fixed-assignments";
@@ -328,6 +329,10 @@ export async function generateGuardsViaAPI(
       }
     };
 
+    // Planning courant : positions infirmières + contexte des préférences
+    // souples (congés déjà posés, garde de nuit de la veille).
+    let currentScheduleForPrefs: ScheduleData | undefined
+
     try {
       // Priorité au planning transmis directement par le front
       let currentSchedule: ScheduleData | undefined = currentScheduleParam
@@ -340,6 +345,7 @@ export async function generateGuardsViaAPI(
           .single()
         currentSchedule = curRow?.schedule_data as ScheduleData | undefined
       }
+      currentScheduleForPrefs = currentSchedule
       if (currentSchedule) {
         for (const row of NURSE_STRESS_EE_ROWS) {
           for (const day of DAYS) {
@@ -397,7 +403,14 @@ export async function generateGuardsViaAPI(
         points_ett: doc.points_ett,
         points_stress: doc.points_stress,
       })),
-      historical_patterns: historicalPatterns,
+      // Historique + préférences groupe souples (K mardi matin / pas mercredi,
+      // S vendredi matin sauf lendemain de garde ou congés)
+      historical_patterns: applyPreferenceBias(historicalPatterns, {
+        weekKey: currentWeekKey,
+        schedule: currentScheduleForPrefs,
+        vacations,
+        dateStrForDay: (day: string) => dateStrForWeekDay(currentWeekKey, day),
+      }),
       // Consignes DOC022 (éligibilités + créneaux) — merge côté solveur si supporté
       rules_override: toSolverClinicalRulesPayload(currentWeekKey, vacations),
       // Suspensions NCT / PSSL / LFB / CDL (périodes calendrier — optionnel)
