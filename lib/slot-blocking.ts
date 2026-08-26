@@ -12,6 +12,7 @@
  * Hors site en demi-journée : IRM (S lundi matin / vendredi apm) et **CDL mardi
  *   matin** (O / V) — l’autre demi-journée reste libre (Coro, ATL Midi…).
  * Val en ETT : toujours **ETT salle 2**, jamais salle 1.
+ * Cases fermées (`lib/closed-slots.ts`) : Stress Mer/Ven apm, EE1 matin sauf jeudi.
  */
 
 import { DAYS } from "@/lib/constants"
@@ -22,7 +23,7 @@ import {
   appendSpecialDoctorLabel,
   isEttPedWithGardeOrAtlMidi,
 } from "@/lib/special-activity-labels"
-import { isStressSlotClosed } from "@/lib/stress-rules"
+import { closedSlotReason, isSlotClosed } from "@/lib/closed-slots"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
 import { isRoomUnderMaintenanceOnDate } from "@/lib/room-maintenance"
@@ -39,6 +40,7 @@ const GARDE_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
 const LFB_ROW = "Hors site - LFB"
 const CDL_ROW = "Hors site - CDL"
 const IRM_ROW = "Hors site - IRM"
+const SCINTI_ROW = "Hors site - Scinti"
 const ATL_ROWS = [
   "Astreintes ATL Matin",
   "Astreintes ATL Midi",
@@ -197,11 +199,15 @@ export function wouldBePairedWithIntern(
  * reste libre pour Coro / Astreinte ATL / Cs…).
  * IRM : S lundi matin + vendredi après-midi.
  * CDL : mardi matin (O / V) — l’après-midi reste assignable.
+ * Scinti : lundi / mardi / mercredi matin (DOC022 : « Dr Cloitre lundi matin »,
+ *   « mercredi matin », « Dr Rousseau mardi matin ») — les après-midi restent
+ *   assignables (T sur EE1 le mercredi après-midi, par exemple).
  * Sur les autres jours (saisie manuelle exceptionnelle) la ligne reste « day ».
  */
 const OFF_SITE_HALF_DAY_PERIODS: Record<string, Record<string, DayPeriod>> = {
   [IRM_ROW]: { LUNDI: "matin", VENDREDI: "apm" },
   [CDL_ROW]: { MARDI: "matin" },
+  [SCINTI_ROW]: { LUNDI: "matin", MARDI: "matin", MERCREDI: "matin" },
 }
 
 /**
@@ -388,11 +394,11 @@ export function canAssignDoctorToSlot(
     }
   }
 
-  // Stress : jamais Mer/Ven après-midi
-  if (isStressSlotClosed(rowKey, day)) {
+  // Cases fermées : Stress Mer/Ven après-midi, EE1 matin hors jeudi
+  if (isSlotClosed(rowKey, day)) {
     return {
       allowed: false,
-      reason: "Pas de vacation Stress le mercredi ni le vendredi après-midi.",
+      reason: closedSlotReason(rowKey, day) || "Vacation fermée ce jour.",
     }
   }
 

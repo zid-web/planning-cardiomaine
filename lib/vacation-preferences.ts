@@ -42,6 +42,8 @@ export type VacationPreference = {
  * - K souvent au Stress le mardi matin, en binôme avec Véro.
  * - K rarement au Stress le mercredi matin.
  * - S souvent au Stress le vendredi matin, sauf lendemain de garde ou congés.
+ * - H souvent en EE2 le lundi matin, sauf congés (remplace le créneau fixe
+ *   DOC022 « EE2 matin réservé Dr Lefebvre »).
  */
 export const VACATION_PREFERENCES: readonly VacationPreference[] = [
   {
@@ -66,6 +68,13 @@ export const VACATION_PREFERENCES: readonly VacationPreference[] = [
     strength: "souvent",
     notAfterNightGuard: true,
     note: "S souvent au Stress vendredi matin, sauf lendemain de garde ou congés",
+  },
+  {
+    row: "Matin - EE2",
+    day: "LUNDI",
+    doctor: "H",
+    strength: "souvent",
+    note: "H souvent en EE2 lundi matin, sauf congés",
   },
 ] as const
 

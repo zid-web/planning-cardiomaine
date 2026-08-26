@@ -80,7 +80,7 @@ import {
   sisterRoomForDoublon,
 } from "@/lib/slot-blocking"
 import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
-import { isStressSlotClosed } from "@/lib/stress-rules"
+import { isSlotClosed } from "@/lib/closed-slots"
 import {
   applyStructuralConstraints,
   schedulesDiffer,
@@ -1578,8 +1578,8 @@ export function ScheduleApp({
       return true
     }
 
-    // Stress : jamais mercredi / vendredi après-midi
-    if (isStressSlotClosed(row, day)) return true
+    // Cases fermées : Stress mercredi/vendredi apm, EE1 matin sauf jeudi
+    if (isSlotClosed(row, day)) return true
 
     // Rythmo : non disponible Lundi matin et Jeudi matin
     if (row.includes("Rythmo") && row.includes("Matin") && (day === "LUNDI" || day === "JEUDI")) {

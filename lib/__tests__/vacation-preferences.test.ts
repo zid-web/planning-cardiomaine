@@ -3,9 +3,15 @@
  */
 import assert from "node:assert/strict"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
-import { applyNurseFixedAssignments, dateStrForWeekDay } from "@/lib/fixed-assignments"
+import {
+  applyFixedClinicalAssignments,
+  applyNurseFixedAssignments,
+  dateStrForWeekDay,
+} from "@/lib/fixed-assignments"
+import { applyClosedSlotsClear, isSlotClosed } from "@/lib/closed-slots"
+import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
 import { canNurseTakeRow, ensureNurseDoctorBinomeProposals } from "@/lib/nurse-rules"
-import { canAssignDoctorToSlot } from "@/lib/slot-blocking"
+import { canAssignDoctorToSlot, periodOfRow } from "@/lib/slot-blocking"
 import {
   applyPreferenceBias,
   isDayAfterNightGuard,
@@ -193,6 +199,89 @@ function main() {
     false,
     "Val libère son ETT salle 2 du même matin (une vacation par créneau)",
   )
+
+  // --- EE1 matin fermée sauf le jeudi ---
+  for (const day of ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"]) {
+    assert.equal(isSlotClosed("Matin - EE1", day), true, `EE1 matin fermée ${day}`)
+  }
+  assert.equal(isSlotClosed("Matin - EE1", "JEUDI"), false, "EE1 matin ouverte le jeudi")
+  assert.equal(isSlotClosed("Apm - EE1", "MERCREDI"), false, "EE1 après-midi reste ouverte")
+  assert.equal(isSlotClosed("Matin - EE2", "LUNDI"), false, "EE2 matin reste ouverte")
+  // La fermeture Stress historique passe par le même point d'entrée
+  assert.equal(isSlotClosed("Apm - Stress", "MERCREDI"), true)
+  assert.equal(isSlotClosed("Apm - Stress", "JEUDI"), false)
+
+  sched = generateWeekSchedule(weekKey, [])
+  r = canAssignDoctorToSlot("H", "2026-07-20", "Matin - EE1", "LUNDI", sched, [])
+  assert.equal(r.allowed, false, "EE1 matin non assignable le lundi")
+  assert.match(r.reason || "", /EE1 n’ouvre le matin que le jeudi/)
+  // (H est déjà sur LFB le jeudi dans une semaine vierge — on teste avec G)
+  r = canAssignDoctorToSlot("G", "2026-07-23", "Matin - EE1", "JEUDI", sched, [])
+  assert.equal(r.allowed, true, `EE1 matin assignable le jeudi: ${r.reason}`)
+
+  sched["Matin - EE1"].LUNDI = { value: ["H"], type: "doctor", status: "validated" }
+  sched["Matin - EE1"].JEUDI = { value: ["Val"], type: "doctor", status: "validated" }
+  const cleared = applyClosedSlotsClear(sched)
+  assert.deepEqual(cleared["Matin - EE1"].LUNDI.value, [], "case fermée vidée")
+  assert.equal(cleared["Matin - EE1"].LUNDI.type, "empty")
+  assert.deepEqual(cleared["Matin - EE1"].JEUDI.value, ["Val"], "jeudi préservé")
+
+  // --- H souvent en EE2 lundi matin (le créneau fixe DOC022 de V est retiré) ---
+  const eeBias = applyPreferenceBias({})
+  assert.deepEqual(eeBias["Matin - EE2"].LUNDI.eligible_doctors, ["H"])
+  assert.equal(
+    DOC022_FIXED_CLINICAL_SLOTS.some((s) => s.row === "Matin - EE2" && s.day === "LUNDI"),
+    false,
+    "plus de créneau fixe DOC022 sur EE2 lundi matin",
+  )
+
+  // --- T toujours sur EE1 mercredi après-midi ---
+  assert.ok(
+    DOC022_FIXED_CLINICAL_SLOTS.some(
+      (s) => s.row === "Apm - EE1" && s.day === "MERCREDI" && s.doctor === "T",
+    ),
+    "créneau fixe T sur EE1 mercredi après-midi",
+  )
+  // Scinti est une demi-journée matin : T reste libre l'après-midi
+  assert.equal(periodOfRow("Hors site - Scinti", "MERCREDI"), "matin")
+  assert.equal(periodOfRow("Hors site - Scinti", "JEUDI"), "day")
+  const fixedSched = applyFixedClinicalAssignments(
+    generateWeekSchedule(weekKey, []),
+    weekKey,
+    [],
+  )
+  assert.deepEqual(fixedSched["Apm - EE1"].MERCREDI.value, ["T"])
+  assert.deepEqual(fixedSched["Hors site - Scinti"].MERCREDI.value, ["T"])
+  r = canAssignDoctorToSlot("T", "2026-07-22", "Apm - EE1", "MERCREDI", fixedSched, [])
+  assert.equal(r.allowed, true, `T doit rester assignable l'après-midi: ${r.reason}`)
+
+  // --- Véro au Stress tous les mardis et mercredis matin (deux parités) ---
+  for (const wk of ["2026-W30", "2026-W31"]) {
+    const nurse = applyNurseFixedAssignments(generateWeekSchedule(wk, []), wk, [])
+    for (const day of ["MARDI", "MERCREDI"]) {
+      assert.ok(
+        nurse["Matin - Stress"][day].value.includes("Véro"),
+        `Véro au Stress ${day} matin (${wk})`,
+      )
+    }
+    assert.deepEqual(
+      nurse["Matin - EE1"].MARDI.value,
+      [],
+      `plus d'infirmière sur EE1 mardi matin (${wk})`,
+    )
+    assert.deepEqual(
+      nurse["Matin - EE1"].MERCREDI.value,
+      [],
+      `plus d'infirmière sur EE1 mercredi matin (${wk})`,
+    )
+  }
+  // Le jeudi matin reste ouvert : Val y garde son EE1 en semaine impaire
+  const oddNurse = applyNurseFixedAssignments(
+    generateWeekSchedule("2026-W31", []),
+    "2026-W31",
+    [],
+  )
+  assert.deepEqual(oddNurse["Matin - EE1"].JEUDI.value, ["Val"])
 
   console.log("✅ vacation-preferences tests passed")
 }
