@@ -267,6 +267,17 @@ export function ScheduleApp({
       setCurrentUserId(data.user?.id || null)
     })
   }, [supabase])
+  // Réveil du solveur Render à l'ouverture de l'application.
+  // Le plan gratuit endort le service après 15 min d'inactivité et le
+  // keep-alive GitHub ne couvre que les heures ouvrées (voir
+  // .github/workflows/keep-alive.yml) : ce ping lance le démarrage à froid
+  // (~30-60 s) pendant que l'utilisateur consulte la grille, au lieu de le
+  // lui faire subir au premier « Générer ». Fire-and-forget : un échec est
+  // sans conséquence, la génération réessaiera de toute façon.
+  useEffect(() => {
+    void fetch("/api/ping-solver", { cache: "no-store" }).catch(() => {})
+  }, [])
+
   const router = useRouter()
   const isGlobalView = activeTab === "all"
   const compactHeader = isGlobalView && !toolbarExpanded
