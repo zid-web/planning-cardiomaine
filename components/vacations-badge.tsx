@@ -3,6 +3,7 @@
 import React from 'react'
 import { DoctorVacation } from '@/lib/types'
 import { isDoctorOnVacation } from '@/lib/vacation-utils'
+import { formatPersonLabel } from "@/lib/doctor-code"
 
 interface VacationsBadgeProps {
   doctorCode: string
@@ -35,9 +36,9 @@ export function VacationsBadge({ doctorCode, date, vacations, size = 'md' }: Vac
   return (
     <span
       className={`inline-flex items-center justify-center bg-amber-100 text-amber-800 rounded-full font-semibold border border-amber-200 ${sizeClasses[size]}`}
-      title={`Dr. ${doctorCode} en vacances`}
+      title={`${formatPersonLabel(doctorCode)} en vacances`}
       role="status"
-      aria-label={`Dr. ${doctorCode} en vacances`}
+      aria-label={`${formatPersonLabel(doctorCode)} en vacances`}
     >
       {initials}
     </span>

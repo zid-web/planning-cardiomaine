@@ -19,6 +19,7 @@ import {
   PREFERENCE_BONUS,
 } from "@/lib/vacation-preferences"
 import { STRESS_PARTNER_POOL } from "@/lib/nurse-rules"
+import { formatPersonLabel } from "@/lib/doctor-code"
 import type { DoctorVacation } from "@/lib/types"
 
 function main() {
@@ -328,6 +329,16 @@ function main() {
     [],
   )
   assert.deepEqual(oddNurse["Matin - EE1"].JEUDI.value, ["Val"])
+
+  // --- Libellé d'affichage : pas de « Dr. » pour les infirmières ---
+  assert.equal(formatPersonLabel("Val"), "Val")
+  assert.equal(formatPersonLabel("Véro"), "Véro")
+  assert.equal(formatPersonLabel("Laura"), "Laura")
+  assert.equal(formatPersonLabel("S"), "Dr. S")
+  assert.equal(formatPersonLabel("K"), "Dr. K")
+  assert.equal(formatPersonLabel(""), "—")
+  assert.equal(formatPersonLabel(null), "—")
+  assert.equal(formatPersonLabel("  Val  "), "Val", "libellé trimé")
 
   console.log("✅ vacation-preferences tests passed")
 }

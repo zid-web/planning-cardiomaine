@@ -8,6 +8,7 @@ import {
   getSpecialActivityDisplayNameForDoctors,
 } from "@/lib/special-activity-labels"
 import { cn } from "@/lib/utils"
+import { formatPersonLabel } from "@/lib/doctor-code"
 
 export type DayTask = {
   activity: string
@@ -150,7 +151,7 @@ export function TodayView({
               </span>
               {doctorCode && (
                 <span className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-200">
-                  Dr. {doctorCode}
+                  {formatPersonLabel(doctorCode)}
                 </span>
               )}
             </div>

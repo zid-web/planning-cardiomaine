@@ -39,6 +39,7 @@ import {
   speechErrorMessage,
   type SpeechRecognitionLike,
 } from '@/lib/speech-recognition'
+import { formatPersonLabel } from "@/lib/doctor-code"
 
 interface VoiceAndUploadPanelProps {
   onCommandExecuted?: (result: any) => void
@@ -341,7 +342,7 @@ export function VoiceAndUploadPanel({
     // Tenter l'interprétation locale immédiate (<50ms)
     const localParsed = parseVoiceCommandLocally(trimmed, payload.reference_date, knownDoctors)
     if (localParsed?.doctor_in) {
-      const successMessage = `✨ Appliqué : Dr. ${localParsed.doctor_in} → ${localParsed.activity} (${localParsed.slot}) le ${localParsed.date}`
+      const successMessage = `✨ Appliqué : ${formatPersonLabel(localParsed.doctor_in)} → ${localParsed.activity} (${localParsed.slot}) le ${localParsed.date}`
       setStatus({ type: "success", message: successMessage })
       toast.success(successMessage)
       setTranscript("")

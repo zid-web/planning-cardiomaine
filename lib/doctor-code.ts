@@ -1,5 +1,17 @@
-import { DOCTORS } from "@/lib/constants"
+import { DOCTORS, NURSES } from "@/lib/constants"
 import type { CellData } from "@/lib/types"
+
+/**
+ * Libellé d'affichage d'un intervenant : « Dr. X » pour les médecins, **nom
+ * seul** pour les infirmières (Val, Véro, Laura — elles figurent dans `DOCTORS`
+ * pour le planning mais ne portent pas le titre de docteur).
+ */
+export function formatPersonLabel(code: string | null | undefined): string {
+  const trimmed = (code || "").trim()
+  if (!trimmed) return "—"
+  if ((NURSES as readonly string[]).includes(trimmed)) return trimmed
+  return `Dr. ${trimmed}`
+}
 
 /** Initiale / code présent dans la liste officielle des médecins. */
 export function isListedDoctor(code: string): boolean {

@@ -50,6 +50,7 @@ import {
   type GuardPickRow,
 } from "@/app/actions/guard-picks-actions"
 import { toast } from "sonner"
+import { formatPersonLabel } from "@/lib/doctor-code"
 
 type Props = {
   open: boolean
@@ -216,7 +217,7 @@ function SlotCard({
                         </div>
                       ) : approvedPick ? (
                         <Badge className="text-[10px] bg-emerald-100 text-emerald-800 border-emerald-300 font-extrabold">
-                          ✓ Attribuée à Dr. {approvedPick.doctor_code}
+                          ✓ Attribuée à {formatPersonLabel(approvedPick.doctor_code)}
                         </Badge>
                       ) : (
                         <Button
@@ -277,7 +278,7 @@ function SlotCard({
                             >
                               {pick.doctor_code}
                             </span>
-                            <span className="font-extrabold text-xs">Dr. {pick.doctor_code}</span>
+                            <span className="font-extrabold text-xs">{formatPersonLabel(pick.doctor_code)}</span>
                             <Badge
                               className={cn(
                                 "text-[9px] px-1.5 py-0 h-4 border font-bold",
