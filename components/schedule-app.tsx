@@ -84,6 +84,13 @@ import {
 import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
 import { isSlotClosed } from "@/lib/closed-slots"
 import {
+  isOffSiteRow,
+  offSiteSlotOf,
+  OFF_SITE_SLOT_BADGES,
+  OFF_SITE_SLOT_LABELS,
+  OFF_SITE_SLOT_ORDER,
+} from "@/lib/off-site-slots"
+import {
   applyStructuralConstraints,
   schedulesDiffer,
   twinCoroAtlRow,
@@ -2339,6 +2346,24 @@ export function ScheduleApp({
                                               : "")
                                       }
                                     >
+                                      {isOffSiteRow(rowKey) &&
+                                        displayAssignees.length > 0 &&
+                                        !cellBlocked && (
+                                          <span
+                                            className="pointer-events-none absolute left-0.5 top-0.5 z-[1] rounded bg-sky-600 px-1 py-px text-[8px] font-bold uppercase leading-none tracking-wide text-white shadow-sm"
+                                            title={`Hors site : ${
+                                              OFF_SITE_SLOT_LABELS[
+                                                offSiteSlotOf(schedule, rowKey, day) || "day"
+                                              ]
+                                            }`}
+                                          >
+                                            {
+                                              OFF_SITE_SLOT_BADGES[
+                                                offSiteSlotOf(schedule, rowKey, day) || "day"
+                                              ]
+                                            }
+                                          </span>
+                                        )}
                                       {isSolverProposal && !cellBlocked && (
                                         <span
                                           className="pointer-events-none absolute right-0.5 top-0.5 z-[1] rounded bg-violet-600 px-1 py-px text-[8px] font-bold uppercase leading-none tracking-wide text-white shadow-sm"
@@ -2629,6 +2654,41 @@ export function ScheduleApp({
                     )
                   })}
                 </div>
+                {selectedCell && isOffSiteRow(selectedCell.row) && (
+                  <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50/80 p-2">
+                    <Label className="text-xs font-medium text-sky-900">
+                      Créneau hors site
+                    </Label>
+                    <p className="mt-0.5 text-[11px] leading-snug text-sky-800">
+                      Détermine la disponibilité sur l’autre demi-journée.
+                    </p>
+                    <div className="mt-1.5 flex gap-1.5">
+                      {OFF_SITE_SLOT_ORDER.map((slot) => {
+                        const current = schedule
+                          ? offSiteSlotOf(schedule, selectedCell.row, selectedCell.day)
+                          : null
+                        const active = current === slot
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            disabled={!isAdmin}
+                            onClick={() =>
+                              patchSelectedCell((cell) => ({ ...cell, offSiteSlot: slot }))
+                            }
+                            className={`h-9 flex-1 rounded-md border text-xs font-bold transition-all ${
+                              active
+                                ? "border-sky-500 bg-sky-600 text-white shadow-sm"
+                                : "border-sky-200 bg-white text-sky-900 hover:bg-sky-100"
+                            } ${!isAdmin ? "cursor-not-allowed opacity-50" : "active:scale-95"}`}
+                          >
+                            {OFF_SITE_SLOT_LABELS[slot]}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/80 p-2">
                   <Label htmlFor="remplacant-input" className="text-xs font-medium text-amber-900">
                     Remplaçant (texte libre)

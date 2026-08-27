@@ -1,3 +1,6 @@
+/** Créneau d'une vacation hors site : matin, après-midi ou journée entière. */
+export type OffSiteSlot = "matin" | "apm" | "day"
+
 export type CellData = {
   value: string[]
   type?: "doctor" | "shift" | "location" | "procedure" | "empty"
@@ -12,6 +15,12 @@ export type CellData = {
    * volontairement" (doit rester vide). Confirmé utilisateur 31/07/2026.
    */
   manuallyCleared?: boolean
+  /**
+   * Lignes « Hors site - … » uniquement : créneau réellement occupé.
+   * Absent = valeur par défaut de la ligne/jour (voir `lib/off-site-slots.ts`).
+   * Détermine la disponibilité du médecin sur l'autre demi-journée.
+   */
+  offSiteSlot?: OffSiteSlot
   request?: {
     requester: string
     status: "pending" | "validated"
