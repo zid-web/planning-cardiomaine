@@ -41,11 +41,30 @@ const LFB_ROW = "Hors site - LFB"
 const CDL_ROW = "Hors site - CDL"
 const IRM_ROW = "Hors site - IRM"
 const SCINTI_ROW = "Hors site - Scinti"
+
+/** Seul médecin autorisé sur l’IRM (consigne 26/08/2026). */
+export const IRM_DOCTOR = "S"
+export { IRM_ROW }
 const ATL_ROWS = [
   "Astreintes ATL Matin",
   "Astreintes ATL Midi",
   "Astreintes ATL Nuit",
 ] as const
+
+/**
+ * Vacations **non bloquantes** (consigne utilisateur 26/08/2026) : elles
+ * n'occupent pas le créneau, le médecin qui y figure reste assignable à une
+ * autre tâche la même demi-journée.
+ * - « Entrées PSS » : passage administratif, pas une vacation pleine.
+ * - « Matin - Visite » (B / U / A) : la visite laisse la matinée disponible.
+ * Les congés et les ½ journées off continuent de s'appliquer normalement —
+ * seule l'exclusion mutuelle entre vacations est levée.
+ */
+export const NON_BLOCKING_ROWS: readonly string[] = ["Entrées PSS", "Matin - Visite"]
+
+export function isNonBlockingRow(rowKey: string): boolean {
+  return NON_BLOCKING_ROWS.includes(rowKey)
+}
 
 /** Code de l’interne (associé à un médecin sur Garde Matin). */
 export const INTERN_CODE = "I"
@@ -285,6 +304,8 @@ export function areCompatibleSamePeriod(
   ctx?: CompatibilityContext,
 ): boolean {
   if (rowA === rowB) return true
+  // Vacation non bloquante d'un côté : jamais de conflit de créneau.
+  if (isNonBlockingRow(rowA) || isNonBlockingRow(rowB)) return true
   if (isAtlCoroPair(rowA, rowB)) return true
   if (isRoomDoublonPair(rowA, rowB)) return true
 
@@ -358,6 +379,40 @@ export function isLfbCdlBlockedByGarde(
   return { blocked: false }
 }
 
+/**
+ * L'IRM étant strictement réservée à S, la case n'a aucun candidat possible
+ * quand S est en congés : elle est alors grisée (consigne 26/08/2026).
+ * `dateStr` null → on ne peut pas trancher, la case reste ouverte.
+ */
+export function isIrmSlotClosed(
+  rowKey: string,
+  dateStr: string | null,
+  vacations: DoctorVacation[],
+): boolean {
+  if (rowKey !== IRM_ROW) return false
+  if (!dateStr) return false
+  return isDoctorUnavailable(IRM_DOCTOR, dateStr, vacations)
+}
+
+/**
+ * Jour adjacent (Lun-Ven) où le médecin est déjà sur Garde Nuit, ou null.
+ * Le week-end est exclu des deux côtés : Ven Nuit → Sam Matin est un
+ * enchaînement voulu, pas une nuit consécutive.
+ */
+export function adjacentWeekdayNightGuard(
+  schedule: ScheduleData,
+  day: string,
+  doctorId: string,
+): string | null {
+  const idx = DAYS.indexOf(day as (typeof DAYS)[number])
+  if (idx < 0) return null
+  for (const neighbour of [DAYS[idx - 1], DAYS[idx + 1]]) {
+    if (!neighbour || isWeekendDay(neighbour)) continue
+    if (doctorOnRow(schedule, "Garde Nuit", neighbour, doctorId)) return neighbour
+  }
+  return null
+}
+
 function periodsConflict(target: DayPeriod, occupied: DayPeriod): boolean {
   if (target === "meta" || occupied === "meta") return false
   if (target === occupied) return true
@@ -391,6 +446,18 @@ export function canAssignDoctorToSlot(
     return {
       allowed: false,
       reason: "K n'est jamais présent le Lundi et le Vendredi (règle fixe).",
+    }
+  }
+
+  // Jamais deux gardes de nuit consécutives en semaine (consigne 26/08/2026).
+  // Le week-end est exempt : il a son propre enchaînement (Sam Matin = Ven Nuit).
+  if (rowKey === "Garde Nuit" && !isWeekendDay(day)) {
+    const conflict = adjacentWeekdayNightGuard(schedule, day, doctorId)
+    if (conflict) {
+      return {
+        allowed: false,
+        reason: `${doctorId} est déjà de garde la nuit du ${conflict.toLowerCase()} — jamais deux nuits consécutives.`,
+      }
     }
   }
 
@@ -483,6 +550,15 @@ export function canAssignDoctorToSlot(
         allowed: false,
         reason: "ETT Tessé réservé à Val, S et B.",
       }
+    }
+  }
+
+  // IRM strictement réservé à S (consigne 26/08/2026) : la case est fermée
+  // pour tout le monde, et grisée quand S est absent (voir isIrmSlotClosed).
+  if (rowKey === IRM_ROW && doctorId !== IRM_DOCTOR) {
+    return {
+      allowed: false,
+      reason: `L’IRM est strictement réservée à ${IRM_DOCTOR}.`,
     }
   }
 

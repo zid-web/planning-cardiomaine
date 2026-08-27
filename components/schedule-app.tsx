@@ -76,6 +76,7 @@ import {
 } from "@/lib/doctor-code"
 import {
   countDoctorInCell,
+  isIrmSlotClosed,
   formatDoctorWithDoublon,
   isDoublonEligibleRow,
   sisterRoomForDoublon,
@@ -1596,6 +1597,9 @@ export function ScheduleApp({
 
     // Cases fermées : Stress mercredi/vendredi apm, EE1 matin sauf jeudi
     if (isSlotClosed(row, day)) return true
+
+    // IRM réservée à S : rien à proposer s'il est en congés ce jour-là
+    if (isIrmSlotClosed(row, dateStrForWeekDay(weekKey, day), vacations)) return true
 
     // Rythmo : non disponible Lundi matin et Jeudi matin
     if (row.includes("Rythmo") && row.includes("Matin") && (day === "LUNDI" || day === "JEUDI")) {

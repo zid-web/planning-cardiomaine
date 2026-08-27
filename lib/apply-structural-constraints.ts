@@ -56,6 +56,9 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines impaires) — jamais Garde Matin/Midi/Nuit",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
   "ATL Matin/Midi/Soir = M/O/W/CH ; FV = ATL Midi jeudi seulement (= Coro)",
+  "Gardes Lun-Ven : Matin/Midi/Nuit au même médecin (cases vides only) ; jamais deux nuits consécutives",
+  "IRM strictement réservée à S (case grisée si S absent)",
+  "Vacations non bloquantes : Entrées PSS, Matin - Visite (autre tâche possible le même créneau)",
   "Weekend Garde : Sam Matin = Ven Nuit (+ associé Sam Midi/Nuit) ; Sam Midi=Nuit ; Dim Matin=Midi=Nuit",
   "Weekend ATL : Sam Matin=Midi=Nuit ; Dim Matin=Midi=Nuit (un médecin / jour)",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
@@ -505,6 +508,26 @@ function fillEmptyFromPriorityListedDoctors(
 }
 
 /**
+ * Gardes de semaine (couplage **souple**) — consigne utilisateur 26/08/2026 :
+ * Lun-Ven, Garde Matin / Midi / Nuit reviennent le plus souvent au **même**
+ * médecin. On ne remplit que les cases **vides**, en partant de la Garde Nuit
+ * (celle que le roulement attribue), donc toute exception saisie à la main est
+ * conservée telle quelle. L'interne I, posé à côté d'un médecin sur Garde
+ * Matin, n'est jamais propagé : il n'est pas un médecin listé.
+ */
+export function applyWeekdayGardeCoupling(schedule: ScheduleData): ScheduleData {
+  let next = schedule
+  for (const day of WEEKDAYS) {
+    next = fillEmptyFromPriorityListedDoctors(next, GARDE_PERIOD_ROWS, day, [
+      "Garde Nuit",
+      "Garde Midi",
+      "Garde Matin",
+    ])
+  }
+  return next
+}
+
+/**
  * Weekend Garde + ATL (couplage **souple**) :
  * - Remplit les cases **vides** pour aligner Sam/Dim ATL Matin/Midi/Nuit,
  *   Sam Garde Midi↔Nuit, Dim Garde Matin/Midi/Nuit,
@@ -834,6 +857,9 @@ export function applyStructuralConstraints(
 
   // 11) Re-couplage weekend après strips
   next = applyWeekendGardeAtlCoupling(next)
+
+  // 11bis) Couplage gardes de semaine (Matin/Midi/Nuit = même médecin)
+  next = applyWeekdayGardeCoupling(next)
 
   // 12) Binômes infirmière-médecin (D+Véro le jeudi matin + couplage médecin systématique pour Véro/Val sur Stress/EE)
   if (weekKey) {

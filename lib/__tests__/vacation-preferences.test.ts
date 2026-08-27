@@ -11,7 +11,15 @@ import {
 import { applyClosedSlotsClear, isSlotClosed } from "@/lib/closed-slots"
 import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
 import { canNurseTakeRow, ensureNurseDoctorBinomeProposals } from "@/lib/nurse-rules"
-import { canAssignDoctorToSlot, periodOfRow } from "@/lib/slot-blocking"
+import {
+  adjacentWeekdayNightGuard,
+  applySlotBlockingStrips,
+  canAssignDoctorToSlot,
+  isIrmSlotClosed,
+  isNonBlockingRow,
+  periodOfRow,
+} from "@/lib/slot-blocking"
+import { applyWeekdayGardeCoupling } from "@/lib/apply-structural-constraints"
 import {
   applyPreferenceBias,
   isDayAfterNightGuard,
@@ -340,6 +348,85 @@ function main() {
   assert.equal(formatPersonLabel(""), "—")
   assert.equal(formatPersonLabel(null), "—")
   assert.equal(formatPersonLabel("  Val  "), "Val", "libellé trimé")
+
+  // --- IRM strictement réservée à S ---
+  sched = generateWeekSchedule(weekKey, [])
+  r = canAssignDoctorToSlot("G", "2026-07-20", "Hors site - IRM", "LUNDI", sched, [])
+  assert.equal(r.allowed, false, "IRM interdite aux autres médecins")
+  assert.match(r.reason || "", /strictement réservée à S/)
+  r = canAssignDoctorToSlot("S", "2026-07-20", "Hors site - IRM", "LUNDI", sched, [])
+  assert.equal(r.allowed, true, `S reste assignable à l'IRM: ${r.reason}`)
+
+  const sOff: DoctorVacation[] = [
+    {
+      id: "3",
+      doctor_id: "S",
+      start_date: "2026-07-20",
+      end_date: "2026-07-20",
+      created_at: "",
+      updated_at: "",
+    },
+  ]
+  assert.equal(
+    isIrmSlotClosed("Hors site - IRM", "2026-07-20", sOff),
+    true,
+    "case IRM grisée quand S est en congés",
+  )
+  assert.equal(isIrmSlotClosed("Hors site - IRM", "2026-07-20", []), false)
+  assert.equal(isIrmSlotClosed("Hors site - IRM", null, sOff), false, "sans date, case ouverte")
+  assert.equal(isIrmSlotClosed("Matin - Coro", "2026-07-20", sOff), false, "ne vise que l'IRM")
+
+  // --- Vacations non bloquantes : Entrées PSS et Visite ---
+  assert.equal(isNonBlockingRow("Entrées PSS"), true)
+  assert.equal(isNonBlockingRow("Matin - Visite"), true)
+  assert.equal(isNonBlockingRow("Matin - Coro"), false)
+
+  sched = generateWeekSchedule(weekKey, [])
+  sched["Entrées PSS"].LUNDI = { value: ["B"], type: "doctor", status: "validated" }
+  sched["Matin - Visite"].LUNDI = { value: ["U"], type: "doctor", status: "validated" }
+  r = canAssignDoctorToSlot("B", "2026-07-20", "Matin - Cs PSS", "LUNDI", sched, [])
+  assert.equal(r.allowed, true, `Entrées PSS ne bloque pas la matinée: ${r.reason}`)
+  r = canAssignDoctorToSlot("U", "2026-07-20", "Matin - Cs PSS", "LUNDI", sched, [])
+  assert.equal(r.allowed, true, `la Visite ne bloque pas la matinée: ${r.reason}`)
+  // Les deux vacations survivent aux strips (pas de conflit de créneau)
+  sched["Matin - Cs PSS"].LUNDI = { value: ["B", "U"], type: "doctor", status: "validated" }
+  const keptNonBlocking = applySlotBlockingStrips(sched)
+  assert.deepEqual(keptNonBlocking["Entrées PSS"].LUNDI.value, ["B"])
+  assert.deepEqual(keptNonBlocking["Matin - Visite"].LUNDI.value, ["U"])
+  assert.deepEqual(keptNonBlocking["Matin - Cs PSS"].LUNDI.value, ["B", "U"])
+
+  // --- Jamais deux gardes de nuit consécutives (Lun-Ven) ---
+  sched = generateWeekSchedule(weekKey, [])
+  sched["Garde Nuit"].MARDI = { value: ["G"], type: "doctor", status: "validated" }
+  assert.equal(adjacentWeekdayNightGuard(sched, "MERCREDI", "G"), "MARDI")
+  assert.equal(adjacentWeekdayNightGuard(sched, "LUNDI", "G"), "MARDI", "la veille compte aussi")
+  assert.equal(adjacentWeekdayNightGuard(sched, "JEUDI", "G"), null)
+  r = canAssignDoctorToSlot("G", "2026-07-22", "Garde Nuit", "MERCREDI", sched, [])
+  assert.equal(r.allowed, false, "pas deux nuits consécutives")
+  assert.match(r.reason || "", /deux nuits consécutives/)
+  r = canAssignDoctorToSlot("G", "2026-07-23", "Garde Nuit", "JEUDI", sched, [])
+  assert.equal(r.allowed, true, `nuit non adjacente autorisée: ${r.reason}`)
+  // Week-end exempt : Ven Nuit -> Sam est un enchaînement voulu
+  sched["Garde Nuit"].VENDREDI = { value: ["H"], type: "doctor", status: "validated" }
+  r = canAssignDoctorToSlot("H", "2026-07-25", "Garde Nuit", "SAMEDI", sched, [])
+  assert.equal(r.allowed, true, `week-end exempt: ${r.reason}`)
+
+  // --- Gardes de semaine : Matin/Midi/Nuit au même médecin ---
+  sched = generateWeekSchedule(weekKey, [])
+  sched["Garde Nuit"].MERCREDI = { value: ["G"], type: "doctor", status: "validated" }
+  // Exception saisie à la main le jeudi matin : elle doit survivre
+  sched["Garde Matin"].JEUDI = { value: ["H"], type: "doctor", status: "validated" }
+  sched["Garde Nuit"].JEUDI = { value: ["Z"], type: "doctor", status: "validated" }
+  const coupled = applyWeekdayGardeCoupling(sched)
+  assert.deepEqual(coupled["Garde Matin"].MERCREDI.value, ["G"])
+  assert.deepEqual(coupled["Garde Midi"].MERCREDI.value, ["G"])
+  assert.deepEqual(coupled["Garde Nuit"].MERCREDI.value, ["G"])
+  assert.deepEqual(
+    coupled["Garde Matin"].JEUDI.value,
+    ["H"],
+    "exception manuelle jamais écrasée",
+  )
+  assert.deepEqual(coupled["Garde Midi"].JEUDI.value, ["Z"])
 
   console.log("✅ vacation-preferences tests passed")
 }
