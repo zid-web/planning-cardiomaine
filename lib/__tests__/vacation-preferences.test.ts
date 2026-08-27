@@ -19,7 +19,15 @@ import {
   isNonBlockingRow,
   periodOfRow,
 } from "@/lib/slot-blocking"
-import { applyWeekdayGardeCoupling } from "@/lib/apply-structural-constraints"
+import {
+  applyStructuralConstraints,
+  applyWeekdayGardeCoupling,
+} from "@/lib/apply-structural-constraints"
+import {
+  defaultLfbDoctor,
+  lfbDoctorForWeekNum,
+  LFB_POOL,
+} from "@/lib/week-generation-params"
 import {
   applyPreferenceBias,
   isDayAfterNightGuard,
@@ -378,12 +386,18 @@ function main() {
 
   // --- Vacations non bloquantes : Entrées PSS et Visite ---
   assert.equal(isNonBlockingRow("Entrées PSS"), true)
+  assert.equal(isNonBlockingRow("Pré-op"), true)
   assert.equal(isNonBlockingRow("Matin - Visite"), true)
   assert.equal(isNonBlockingRow("Matin - Coro"), false)
+  // Il n'existe pas de « Apm - Visite » dans la grille
+  assert.equal(generateWeekSchedule(weekKey, [])["Apm - Visite"], undefined)
 
   sched = generateWeekSchedule(weekKey, [])
   sched["Entrées PSS"].LUNDI = { value: ["B"], type: "doctor", status: "validated" }
+  sched["Pré-op"].LUNDI = { value: ["Z"], type: "doctor", status: "validated" }
   sched["Matin - Visite"].LUNDI = { value: ["U"], type: "doctor", status: "validated" }
+  r = canAssignDoctorToSlot("Z", "2026-07-20", "Matin - ETT salle 1", "LUNDI", sched, [])
+  assert.equal(r.allowed, true, `Pré-op ne bloque pas la matinée: ${r.reason}`)
   r = canAssignDoctorToSlot("B", "2026-07-20", "Matin - Cs PSS", "LUNDI", sched, [])
   assert.equal(r.allowed, true, `Entrées PSS ne bloque pas la matinée: ${r.reason}`)
   r = canAssignDoctorToSlot("U", "2026-07-20", "Matin - Cs PSS", "LUNDI", sched, [])
@@ -392,6 +406,7 @@ function main() {
   sched["Matin - Cs PSS"].LUNDI = { value: ["B", "U"], type: "doctor", status: "validated" }
   const keptNonBlocking = applySlotBlockingStrips(sched)
   assert.deepEqual(keptNonBlocking["Entrées PSS"].LUNDI.value, ["B"])
+  assert.deepEqual(keptNonBlocking["Pré-op"].LUNDI.value, ["Z"])
   assert.deepEqual(keptNonBlocking["Matin - Visite"].LUNDI.value, ["U"])
   assert.deepEqual(keptNonBlocking["Matin - Cs PSS"].LUNDI.value, ["B", "U"])
 
@@ -427,6 +442,42 @@ function main() {
     "exception manuelle jamais écrasée",
   )
   assert.deepEqual(coupled["Garde Midi"].JEUDI.value, ["Z"])
+
+  // --- Rotation LFB : une seule source, H -> S -> G ---
+  assert.deepEqual([...LFB_POOL], ["H", "S", "G"])
+  assert.equal(lfbDoctorForWeekNum(37), "S")
+  assert.equal(lfbDoctorForWeekNum(38), "G")
+  assert.equal(lfbDoctorForWeekNum(39), "H")
+  // Le titulaire proposé et celui que la contrainte structurelle pose doivent
+  // coïncider — ils divergeaient deux semaines sur trois.
+  for (const w of [37, 38, 39, 40, 41, 42]) {
+    const wkKey = `2026-W${w}`
+    const built = applyStructuralConstraints(generateWeekSchedule(wkKey, []), wkKey, [])
+    assert.deepEqual(
+      built["Hors site - LFB"].JEUDI.value,
+      [defaultLfbDoctor(w)],
+      `LFB S${w} : proposition et contrainte structurelle doivent coïncider`,
+    )
+  }
+
+  // --- FV n'est jamais propagé par le couplage des gardes de semaine ---
+  // Externe : Garde Nuit du lundi et Coro du jeudi apm, rien d'autre.
+  const fvWeek = "2026-W40"
+  const fvBuilt = applyStructuralConstraints(generateWeekSchedule(fvWeek, []), fvWeek, [])
+  assert.deepEqual(fvBuilt["Garde Nuit"].LUNDI.value, ["FV"])
+  assert.deepEqual(
+    fvBuilt["Garde Matin"].LUNDI.value,
+    [],
+    "FV ne doit pas être propagé sur la Garde Matin du lundi",
+  )
+  assert.deepEqual(fvBuilt["Garde Midi"].LUNDI.value, [])
+  // O reste librement assignable sur cette Garde Matin, avec l'interne I
+  const mondayStr = dateStrForWeekDay(fvWeek, "LUNDI")!
+  r = canAssignDoctorToSlot("O", mondayStr, "Garde Matin", "LUNDI", fvBuilt, [])
+  assert.equal(r.allowed, true, `O doit rester assignable: ${r.reason}`)
+  fvBuilt["Garde Matin"].LUNDI = { value: ["I"], type: "doctor", status: "validated" }
+  r = canAssignDoctorToSlot("O", mondayStr, "Garde Matin", "LUNDI", fvBuilt, [])
+  assert.equal(r.allowed, true, `O assignable à côté de I: ${r.reason}`)
 
   console.log("✅ vacation-preferences tests passed")
 }
