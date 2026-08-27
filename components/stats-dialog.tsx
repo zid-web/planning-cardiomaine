@@ -35,6 +35,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts"
+import { formatPersonLabel } from "@/lib/doctor-code"
 
 type Props = {
   open: boolean
@@ -185,7 +186,7 @@ export function StatsDialog({
                 ) : (
                   <>
                     <UserCheck className="w-5 h-5 text-emerald-600" />
-                    Mes Statistiques de Charge (Dr. {myDoctorCode})
+                    Mes Statistiques de Charge ({formatPersonLabel(myDoctorCode)})
                   </>
                 )}
               </DialogTitle>
@@ -248,7 +249,7 @@ export function StatsDialog({
                       {myDoctorCode}
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-slate-800">Dr. {myDoctorCode}</h3>
+                      <h3 className="text-base font-bold text-slate-800">{formatPersonLabel(myDoctorCode)}</h3>
                       <p className="text-xs text-slate-500 capitalize">Période : {stats.label}</p>
                     </div>
                   </div>

@@ -12,6 +12,7 @@ import { DOCTOR_COLORS, DOCTOR_METADATA, DOCTORS } from '@/lib/constants'
 import type { DoctorVacation } from '@/lib/types'
 import { formatDateRange, getVacationDayCount } from '@/lib/vacation-utils'
 import { cn } from '@/lib/utils'
+import { formatPersonLabel } from "@/lib/doctor-code"
 
 interface VacationsModalProps {
   doctorId?: string
@@ -290,7 +291,7 @@ export function VacationsModal({
                 <option value="all">Tous les médecins</option>
                 {CONGES_DOCTORS.map((code) => (
                   <option key={code} value={code}>
-                    Dr. {code}
+                    {formatPersonLabel(code)}
                   </option>
                 ))}
               </select>
@@ -328,7 +329,7 @@ export function VacationsModal({
                     <option value="">-- Médecin --</option>
                     {CONGES_DOCTORS.map((code) => (
                       <option key={code} value={code}>
-                        Dr. {code}
+                        {formatPersonLabel(code)}
                       </option>
                     ))}
                   </select>
@@ -407,7 +408,7 @@ export function VacationsModal({
             {filteredVacations.length === 0 ? (
               <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm italic text-gray-500">
                 Aucun congé enregistré
-                {filterDoctor !== 'all' ? ` pour Dr. ${filterDoctor}` : ''}
+                {filterDoctor !== 'all' ? ` pour ${formatPersonLabel(filterDoctor)}` : ''}
               </p>
             ) : (
               <div className="flex flex-col gap-4">
@@ -423,7 +424,7 @@ export function VacationsModal({
                       <span className={cn('inline-flex items-center justify-center rounded-lg w-8 h-8 text-sm font-bold text-white', DOCTOR_COLORS[docId] || 'bg-slate-500')}>
                         {docId}
                       </span>
-                      <h4 className="font-semibold text-gray-900">Dr. {docId}</h4>
+                      <h4 className="font-semibold text-gray-900">{formatPersonLabel(docId)}</h4>
                       <span className="ml-auto text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
                         {vacs.length} période{vacs.length > 1 ? 's' : ''}
                       </span>

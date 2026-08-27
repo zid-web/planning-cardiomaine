@@ -72,9 +72,11 @@ import {
   getCellDisplayAssignees,
   isListedDoctor,
   normalizeRemplacantLabel,
+  formatPersonLabel,
 } from "@/lib/doctor-code"
 import {
   countDoctorInCell,
+  isIrmSlotClosed,
   formatDoctorWithDoublon,
   isDoublonEligibleRow,
   sisterRoomForDoublon,
@@ -266,6 +268,21 @@ export function ScheduleApp({
       setCurrentUserId(data.user?.id || null)
     })
   }, [supabase])
+  // Réveil du solveur Render à l'ouverture de l'application — **admins
+  // uniquement**, eux seuls lancent « Générer ».
+  // Le plan gratuit endort le service après 15 min d'inactivité et le
+  // keep-alive GitHub ne couvre que les heures ouvrées (voir
+  // .github/workflows/keep-alive.yml) : ce ping lance le démarrage à froid
+  // (~30-60 s) pendant que l'admin consulte la grille, au lieu de le lui
+  // faire subir au premier « Générer ». Le réveiller pour un praticien qui
+  // ne génère jamais ne ferait que consommer des instance hours.
+  // Fire-and-forget : un échec est sans conséquence, la génération
+  // réessaiera de toute façon.
+  useEffect(() => {
+    if (!isAdmin) return
+    void fetch("/api/ping-solver", { cache: "no-store" }).catch(() => {})
+  }, [isAdmin])
+
   const router = useRouter()
   const isGlobalView = activeTab === "all"
   const compactHeader = isGlobalView && !toolbarExpanded
@@ -414,7 +431,7 @@ export function ScheduleApp({
             const isRecipient = newRow && doctorCode && newRow.requested_doctor?.toUpperCase() === doctorCode.toUpperCase()
             if (isRecipient) {
               toast.message("Demande de remplacement reçue 📩", {
-                description: `Le Dr. ${newRow.current_doctor || "Admin"} sollicite votre remplacement pour ${newRow.row_key} le ${newRow.day_name}.`,
+                description: `${formatPersonLabel(newRow.current_doctor || "Admin")} sollicite votre remplacement pour ${newRow.row_key} le ${newRow.day_name}.`,
                 duration: 8000,
               })
             }
@@ -1581,6 +1598,9 @@ export function ScheduleApp({
     // Cases fermées : Stress mercredi/vendredi apm, EE1 matin sauf jeudi
     if (isSlotClosed(row, day)) return true
 
+    // IRM réservée à S : rien à proposer s'il est en congés ce jour-là
+    if (isIrmSlotClosed(row, dateStrForWeekDay(weekKey, day), vacations)) return true
+
     // Rythmo : non disponible Lundi matin et Jeudi matin
     if (row.includes("Rythmo") && row.includes("Matin") && (day === "LUNDI" || day === "JEUDI")) {
       return true
@@ -1998,7 +2018,7 @@ export function ScheduleApp({
                         {doctorCode || "P"}
                       </div>
                       <span className="text-xs font-bold text-slate-800">
-                        Dr. {doctorCode || currentUser || "—"}
+                        {formatPersonLabel(doctorCode || currentUser)}
                       </span>
                       <div className="relative">
                         <User className="size-3.5 text-slate-400" />
@@ -2010,7 +2030,7 @@ export function ScheduleApp({
                   </PopoverTrigger>
                   <PopoverContent align="end" className="w-56 p-1.5 shadow-xl border-slate-200 bg-white z-[120]">
                     <div className="px-2.5 py-2 border-b border-slate-100 mb-1">
-                      <p className="text-xs font-extrabold text-slate-900">Dr. {doctorCode || currentUser}</p>
+                      <p className="text-xs font-extrabold text-slate-900">{formatPersonLabel(doctorCode || currentUser)}</p>
                       <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Espace Praticien</p>
                     </div>
                     
@@ -2744,7 +2764,7 @@ export function ScheduleApp({
                 if (!isTenant) {
                   return (
                     <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-2 text-xs font-semibold text-red-700">
-                      ⚠️ Vous n’êtes pas assigné à cette case. Seul l’occupant (Dr. {doctorCode}) a le droit d’en demander le changement.
+                      ⚠️ Vous n’êtes pas assigné à cette case. Seul l’occupant ({formatPersonLabel(doctorCode)}) a le droit d’en demander le changement.
                     </div>
                   )
                 }
@@ -2988,7 +3008,7 @@ export function ScheduleApp({
                       {privateNotesList.map((n) => (
                         <div key={n.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs relative">
                           <div className="flex justify-between items-center mb-1">
-                            <span className="font-extrabold text-slate-900">Pour Dr. {n.target_doctor}</span>
+                            <span className="font-extrabold text-slate-900">Pour {formatPersonLabel(n.target_doctor)}</span>
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"

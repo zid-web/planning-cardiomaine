@@ -37,6 +37,7 @@ import { DOCTOR_COLORS } from "@/lib/constants"
 import { toast } from "sonner"
 import { generateGuardsViaAPI } from "@/app/actions/guard-api-actions"
 import { getSemesterGuardSlots, mondayOfWeekKey, monthLabelFromKey } from "@/lib/semester-guard-slots"
+import { formatPersonLabel } from "@/lib/doctor-code"
 
 type Semester = 1 | 2
 
@@ -475,7 +476,7 @@ export function SixMonthProjectionDialog({ open, onOpenChange, currentUser }: Pr
                                 >
                                   {doc}
                                 </span>
-                                <span className="font-semibold text-slate-700">Dr. {doc}</span>
+                                <span className="font-semibold text-slate-700">{formatPersonLabel(doc)}</span>
                               </div>
                             </td>
                             <td className="py-1.5 px-2 text-right font-bold text-slate-800">{count}</td>

@@ -43,6 +43,9 @@ export const DOCTORS = [
   "Y",
 ]
 
+/** Infirmières (dans DOCTORS pour le planning, mais jamais « Dr. » à l'affichage). */
+export const NURSES = ["Val", "Véro", "Laura"] as const
+
 export const STAFF_INITIALS = [
   "P",
   "Z",

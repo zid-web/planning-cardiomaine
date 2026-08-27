@@ -1,8 +1,31 @@
 name: Keep Alive
 
+# Render free tier : 750 instance hours / mois pour tout le workspace.
+# Un service eveille 24/7 en consomme 744 sur un mois de 31 jours — il ne
+# reste que 6 h de marge, et chaque redeploiement en consomme aussi. Garder
+# le solveur eveille en permanence est donc structurellement impossible sur
+# l'offre gratuite : le ping toutes les 10 min etait la cause de la
+# consommation, pas une protection.
+#
+# On ne le reveille donc qu'aux heures ouvrees. Hors fenetre, Render
+# l'endort apres 15 min d'inactivite et il cesse de consommer des heures ;
+# le front le reveille a la demande via /api/ping-solver quand un **admin**
+# ouvre l'application (voir components/schedule-app.tsx) — seuls les admins
+# lancent « Generer », donc seuls eux ont besoin du solveur.
+
+#
+# Les crons GitHub sont en UTC. La fenetre 06:00-10:50 UTC couvre les
+# matinees 8h-12h demandees : 8h-12h50 en France l'ete (UTC+2), 7h-11h50
+# l'hiver (UTC+1). Une seule fenetre UTC ne peut pas coller exactement aux
+# deux saisons — elle deborde d'une heure l'hiver, ce qui reste marginal.
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    # Solveur Render : lun-ven, matinees uniquement.
+    # ~5 h/jour x 22 jours ouvres = ~112 h/mois (marge : ~640 h).
+    - cron: '*/10 6-10 * * 1-5'
+    # Supabase : un seul ping par jour suffit (pause a 7 jours d'inactivite),
+    # tous les jours pour couvrir les semaines de conges.
+    - cron: '17 6 * * *'
   workflow_dispatch:
 
 env:
@@ -16,6 +39,8 @@ jobs:
     steps:
       - name: Ping Backend (Guard API)
         id: backend
+        # Uniquement sur le cron de la fenetre de travail (et en manuel).
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/10 6-10 * * 1-5'
         run: |
           echo "🔄 Pinging backend..."
           RESPONSE=$(curl -s -w "\n%{http_code}" https://guard-api-cardiomaine.onrender.com/)
@@ -32,6 +57,8 @@ jobs:
 
       - name: Ping Supabase (évite la pause à 7 jours d'inactivité)
         id: supabase
+        # Une fois par jour seulement — inutile de le pinguer toutes les 10 min.
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '17 6 * * *'
         run: |
           echo "🔄 Pinging Supabase..."
           if [ -z "$SUPABASE_ANON_KEY" ]; then

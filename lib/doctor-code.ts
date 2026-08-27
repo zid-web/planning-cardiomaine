@@ -1,5 +1,23 @@
-import { DOCTORS } from "@/lib/constants"
+import { DOCTORS, NURSES } from "@/lib/constants"
 import type { CellData } from "@/lib/types"
+
+/**
+ * Codes affichés **sans** le titre « Dr. » : les infirmières (Val, Véro, Laura)
+ * et **CH** (Centre Hospitalier — une structure externe, pas une personne).
+ * Tous figurent dans `DOCTORS` pour les besoins du planning.
+ */
+const CODES_WITHOUT_DOCTOR_TITLE: readonly string[] = [...NURSES, "CH"]
+
+/**
+ * Libellé d'affichage d'un intervenant : « Dr. X » pour les médecins, **nom
+ * seul** pour les infirmières et pour CH.
+ */
+export function formatPersonLabel(code: string | null | undefined): string {
+  const trimmed = (code || "").trim()
+  if (!trimmed) return "—"
+  if (CODES_WITHOUT_DOCTOR_TITLE.includes(trimmed)) return trimmed
+  return `Dr. ${trimmed}`
+}
 
 /** Initiale / code présent dans la liste officielle des médecins. */
 export function isListedDoctor(code: string): boolean {

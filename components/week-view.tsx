@@ -3,6 +3,7 @@
 import { CalendarDays, ChevronRight, Activity, Moon, Sun, Sunrise } from "lucide-react"
 import { getSpecialActivityDisplayName } from "@/lib/special-activity-labels"
 import { cn } from "@/lib/utils"
+import { formatPersonLabel } from "@/lib/doctor-code"
 
 type WeekViewProps = {
   days: string[]
@@ -78,7 +79,7 @@ export function WeekView({
               </span>
               {doctorCode && (
                 <span className="inline-flex items-center rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-semibold text-slate-200">
-                  Dr. {doctorCode}
+                  {formatPersonLabel(doctorCode)}
                 </span>
               )}
             </div>

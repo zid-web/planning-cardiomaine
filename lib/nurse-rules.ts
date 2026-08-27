@@ -19,8 +19,9 @@
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { dateStrForWeekDay, isDoctorOnVacationForFixed } from "@/lib/fixed-assignments"
 import { preferredPartnerForNurseSlot } from "@/lib/vacation-preferences"
+import { NURSES } from "@/lib/constants"
 
-export const NURSES = ["Val", "Véro", "Laura"] as const
+export { NURSES } from "@/lib/constants"
 export type NurseId = (typeof NURSES)[number]
 
 export function isNurse(doctorId: string): doctorId is NurseId {
