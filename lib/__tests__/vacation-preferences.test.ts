@@ -19,7 +19,15 @@ import {
   isNonBlockingRow,
   periodOfRow,
 } from "@/lib/slot-blocking"
-import { applyWeekdayGardeCoupling } from "@/lib/apply-structural-constraints"
+import {
+  applyStructuralConstraints,
+  applyWeekdayGardeCoupling,
+} from "@/lib/apply-structural-constraints"
+import {
+  defaultLfbDoctor,
+  lfbDoctorForWeekNum,
+  LFB_POOL,
+} from "@/lib/week-generation-params"
 import {
   applyPreferenceBias,
   isDayAfterNightGuard,
@@ -434,6 +442,42 @@ function main() {
     "exception manuelle jamais écrasée",
   )
   assert.deepEqual(coupled["Garde Midi"].JEUDI.value, ["Z"])
+
+  // --- Rotation LFB : une seule source, H -> S -> G ---
+  assert.deepEqual([...LFB_POOL], ["H", "S", "G"])
+  assert.equal(lfbDoctorForWeekNum(37), "S")
+  assert.equal(lfbDoctorForWeekNum(38), "G")
+  assert.equal(lfbDoctorForWeekNum(39), "H")
+  // Le titulaire proposé et celui que la contrainte structurelle pose doivent
+  // coïncider — ils divergeaient deux semaines sur trois.
+  for (const w of [37, 38, 39, 40, 41, 42]) {
+    const wkKey = `2026-W${w}`
+    const built = applyStructuralConstraints(generateWeekSchedule(wkKey, []), wkKey, [])
+    assert.deepEqual(
+      built["Hors site - LFB"].JEUDI.value,
+      [defaultLfbDoctor(w)],
+      `LFB S${w} : proposition et contrainte structurelle doivent coïncider`,
+    )
+  }
+
+  // --- FV n'est jamais propagé par le couplage des gardes de semaine ---
+  // Externe : Garde Nuit du lundi et Coro du jeudi apm, rien d'autre.
+  const fvWeek = "2026-W40"
+  const fvBuilt = applyStructuralConstraints(generateWeekSchedule(fvWeek, []), fvWeek, [])
+  assert.deepEqual(fvBuilt["Garde Nuit"].LUNDI.value, ["FV"])
+  assert.deepEqual(
+    fvBuilt["Garde Matin"].LUNDI.value,
+    [],
+    "FV ne doit pas être propagé sur la Garde Matin du lundi",
+  )
+  assert.deepEqual(fvBuilt["Garde Midi"].LUNDI.value, [])
+  // O reste librement assignable sur cette Garde Matin, avec l'interne I
+  const mondayStr = dateStrForWeekDay(fvWeek, "LUNDI")!
+  r = canAssignDoctorToSlot("O", mondayStr, "Garde Matin", "LUNDI", fvBuilt, [])
+  assert.equal(r.allowed, true, `O doit rester assignable: ${r.reason}`)
+  fvBuilt["Garde Matin"].LUNDI = { value: ["I"], type: "doctor", status: "validated" }
+  r = canAssignDoctorToSlot("O", mondayStr, "Garde Matin", "LUNDI", fvBuilt, [])
+  assert.equal(r.allowed, true, `O assignable à côté de I: ${r.reason}`)
 
   console.log("✅ vacation-preferences tests passed")
 }

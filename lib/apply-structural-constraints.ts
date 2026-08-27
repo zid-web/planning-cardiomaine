@@ -26,6 +26,7 @@ import {
 import { NCT_DATES_2025_DEC, NCT_DATES_2026 } from "@/lib/guard-scheduler"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { applyClosedSlotsClear } from "@/lib/closed-slots"
+import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { applyStressAndDRules } from "@/lib/stress-rules"
 import { ensureNurseDoctorBinomeProposals } from "@/lib/nurse-rules"
@@ -514,15 +515,28 @@ function fillEmptyFromPriorityListedDoctors(
  * (celle que le roulement attribue), donc toute exception saisie à la main est
  * conservée telle quelle. L'interne I, posé à côté d'un médecin sur Garde
  * Matin, n'est jamais propagé : il n'est pas un médecin listé.
+ *
+ * **FV est exclu du couplage** : médecin externe, il ne fait que la Garde Nuit
+ * du lundi et la Coro du jeudi après-midi. Propager sa garde de nuit vers
+ * Matin/Midi lui inventerait des vacations qu'il n'assure pas, et occuperait
+ * des cases que l'admin doit pouvoir remplir librement.
  */
+const GARDE_COUPLING_EXCLUDED = ["FV"] as const
+
 export function applyWeekdayGardeCoupling(schedule: ScheduleData): ScheduleData {
   let next = schedule
   for (const day of WEEKDAYS) {
-    next = fillEmptyFromPriorityListedDoctors(next, GARDE_PERIOD_ROWS, day, [
-      "Garde Nuit",
-      "Garde Midi",
-      "Garde Matin",
-    ])
+    const anchor = ["Garde Nuit", "Garde Midi", "Garde Matin"].find((row) => {
+      const listed = listedInCell(next, row, day)
+      return listed.length > 0
+    })
+    if (!anchor) continue
+    // Ancre portée uniquement par un médecin exclu (FV le lundi) : ne rien propager.
+    const listed = listedInCell(next, anchor, day)
+    if (listed.every((d) => (GARDE_COUPLING_EXCLUDED as readonly string[]).includes(d))) {
+      continue
+    }
+    next = fillEmptyFromPriorityListedDoctors(next, GARDE_PERIOD_ROWS, day, [anchor])
   }
   return next
 }
@@ -666,7 +680,7 @@ export function applyLfbThursdayRotation(
       ? lfbDoctorOverride
       : null
   const lfbUser =
-    fromOverride || (["H", "S", "G"] as const)[((weekNum % 3) + 3) % 3]
+    fromOverride || lfbDoctorForWeekNum(weekNum)
   const cell = schedule["Hors site - LFB"].JEUDI
   if ((cell?.value || []).length > 0) return schedule
   return setValidatedDoctors(schedule, "Hors site - LFB", "JEUDI", [lfbUser])

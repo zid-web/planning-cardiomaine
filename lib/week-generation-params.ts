@@ -17,8 +17,20 @@
 export const VISITE_POOL = ["U", "A", "B"] as const
 export type VisiteDoctor = (typeof VISITE_POOL)[number]
 
-/** Pool LFB (G, S, H). */
-export const LFB_POOL = ["G", "S", "H"] as const
+/**
+ * Pool LFB — rotation **H → S → G** (modulo 3 sur le numéro ISO de semaine).
+ * Source unique : `apply-structural-constraints` et `schedule-utils` importent
+ * cette constante. L'ordre était auparavant divergent entre les trois fichiers
+ * (`G, S, H` ici contre `H, S, G` ailleurs), si bien que le `lfb_doctor` envoyé
+ * au solveur ne désignait pas le médecin que la contrainte structurelle posait
+ * ensuite — deux semaines sur trois. Ordre confirmé utilisateur 26/08/2026.
+ */
+export const LFB_POOL = ["H", "S", "G"] as const
+
+/** Titulaire LFB du jeudi pour une semaine ISO, hors suspension estivale. */
+export function lfbDoctorForWeekNum(weekNum: number): (typeof LFB_POOL)[number] {
+  return LFB_POOL[((weekNum % 3) + 3) % 3]
+}
 export type LfbDoctor = (typeof LFB_POOL)[number]
 
 /** Pool PSSL (B, Z). */
@@ -48,12 +60,12 @@ export function defaultVisiteDoctor(weekNum: number): VisiteDoctor {
 }
 
 /**
- * Défaut LFB jeudi = G → S → H (modulo 3).
+ * Défaut LFB jeudi = H → S → G (modulo 3).
  * Retourne null pendant les congés d'été (S28-S36).
  */
 export function defaultLfbDoctor(weekNum: number): LfbDoctor | null {
   if (isSummerSuspension(weekNum)) return null
-  return LFB_POOL[((weekNum % 3) + 3) % 3]
+  return lfbDoctorForWeekNum(weekNum)
 }
 
 /**

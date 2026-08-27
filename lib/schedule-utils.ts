@@ -3,6 +3,7 @@ import { applyFixedClinicalAssignments } from "./fixed-assignments"
 import { applyHabitualHalfDaysOff } from "./half-day-off"
 import type { CellData, DoctorVacation, ScheduleData } from "./types"
 import { constraints2026, generateAstreinteRotation, NCT_DATES_2026, NCT_DATES_2025_DEC } from "./guard-scheduler"
+import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
 
 export const getWeekNumber = (d: Date) => {
   // Copy date so don't modify original
@@ -213,8 +214,7 @@ export const generateWeekSchedule = (
   if (schedule["Hors site - LFB"]) {
     DAYS.forEach((day) => (schedule["Hors site - LFB"][day].value = []))
     if (schedule["Hors site - LFB"]["JEUDI"]) {
-      const lfbUsers = ["H", "S", "G"]
-      const lfbUser = lfbUsers[((weekNum % 3) + 3) % 3]
+      const lfbUser = lfbDoctorForWeekNum(weekNum)
       schedule["Hors site - LFB"]["JEUDI"].value = [lfbUser]
     }
   }
