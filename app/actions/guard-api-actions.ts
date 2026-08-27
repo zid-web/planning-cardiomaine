@@ -819,7 +819,13 @@ function fillClinicalProposalsForEmptyRows(
         // Trouver le premier médecin disponible du pool
         const candidate = pool.find((doc) => {
           if (isDoctorOnVacationForFixed(doc, dateStr, vacations)) return false
-          return canAssignDoctorToSlot(doc, dateStr, row, day, { schedule: next, vacations })
+          // Bug corrigé : les arguments étaient passés sous forme d'objet
+          // (5 arguments au lieu de 6) et la valeur de retour n'était pas
+          // déréférencée. `schedule` recevait donc un objet quelconque — aucune
+          // case n'était lue, aucun conflit détecté — et `{ allowed, reason }`
+          // étant toujours truthy, `find` retenait le premier médecin du pool
+          // sans qu'aucune règle ne soit vérifiée.
+          return canAssignDoctorToSlot(doc, dateStr, row, day, next, vacations).allowed
         })
 
         if (candidate) {

@@ -302,10 +302,13 @@ function main() {
   // W32 (8–9 août 2026) : M en vacances → retiré, pas réinjecté ; saisie O possible
   const vacM = [
     {
+      id: "vac-m-w32",
       doctor_id: "M",
       start_date: "2026-08-07",
       end_date: "2026-08-10",
       reason: "congé",
+      created_at: "",
+      updated_at: "",
     },
   ]
   let w32 = applyStructuralConstraints(generateWeekSchedule("2026-W32", []), "2026-W32", vacM)
@@ -326,7 +329,15 @@ function main() {
 
   // Preset W40 : M en vacances → case vidée (pas de réinjection M)
   let w40Vac = applyStructuralConstraints(generateWeekSchedule("2026-W40", []), "2026-W40", [
-    { doctor_id: "M", start_date: "2026-09-28", end_date: "2026-10-04", reason: "congé" },
+    {
+      id: "vac-m-w40",
+      doctor_id: "M",
+      start_date: "2026-09-28",
+      end_date: "2026-10-04",
+      reason: "congé",
+      created_at: "",
+      updated_at: "",
+    },
   ])
   assert.ok(!w40Vac["Astreintes ATL Matin"].SAMEDI.value.includes("M"))
   assert.ok(!w40Vac["Astreintes ATL Matin"].DIMANCHE.value.includes("M"))

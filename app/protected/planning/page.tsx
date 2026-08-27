@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import useSWR from "swr"
+import useSWR, { useSWRConfig } from "swr"
 import { createClient } from "@/lib/supabase/client"
 import { ScheduleApp } from "@/components/schedule-app"
 import { loadFullScheduleFromDb } from "@/app/actions/schedule-actions"
@@ -46,6 +46,9 @@ export default function PlanningPage() {
     revalidateOnFocus: true,
     dedupingInterval: 10_000,
   })
+  // `mutate` ci-dessus est lié à cette clé (data, options) ; vider TOUT le cache
+  // à la déconnexion demande le mutate global, qui accepte un filtre de clés.
+  const { mutate: globalMutate } = useSWRConfig()
 
   const [localSchedule, setLocalSchedule] = useState<FullSchedule>({})
 
@@ -88,7 +91,10 @@ export default function PlanningPage() {
 
   const handleLogout = async () => {
     try {
-      await mutate(() => true, undefined, { revalidate: false })
+      // Bug corrigé : ce filtre de clés était passé au mutate **lié**, qui
+      // l'interprétait comme une fonction de mise à jour — la déconnexion
+      // écrivait donc `true` dans le cache au lieu de le vider.
+      await globalMutate(() => true, undefined, { revalidate: false })
     } catch (err) {
       console.error("[planning] SWR mutate clear error:", err)
     }

@@ -4,7 +4,7 @@
 import assert from "node:assert/strict"
 import { DAYS } from "@/lib/constants"
 import {
-  WORKLOAD_STATS_EXCLUDED_DOCTORS,
+  WORKLOAD_STATS_INCLUDED_DOCTORS,
   calculateMonthlyWorkloadStats,
   calculateWorkloadStats,
   isWorkloadStatsDoctor,
@@ -37,7 +37,11 @@ function main() {
   assert.equal(isWorkloadStatsDoctor("I"), false)
   assert.equal(isWorkloadStatsDoctor("Val"), false)
   assert.equal(isWorkloadStatsDoctor("R"), false)
-  assert.ok(WORKLOAD_STATS_EXCLUDED_DOCTORS.has("DAAS"))
+  // La liste a été inversée : c'est désormais une **allowlist** des médecins
+  // comptabilisés (WORKLOAD_STATS_INCLUDED_DOCTORS), et non plus une liste
+  // d'exclus. DAAS n'y figure pas, donc il reste hors statistiques.
+  assert.ok(!WORKLOAD_STATS_INCLUDED_DOCTORS.has("DAAS"))
+  assert.ok(WORKLOAD_STATS_INCLUDED_DOCTORS.has("S"))
 
   // Semaine 2026-W30 : lundi 20 juillet 2026 → jours en juillet
   const week = bareWeek([

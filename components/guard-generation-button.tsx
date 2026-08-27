@@ -86,7 +86,7 @@ export function GuardGenerationButton({
             : ''
 
         if (result.warnings && result.warnings.length > 0) {
-          const actionable = result.warnings.filter(
+          const actionable = (result.warnings as string[]).filter(
             (w) =>
               !/historical_patterns\s*:.*non reconnu/i.test(w) &&
               !/non disponible.*vacances\/congé/i.test(w) &&

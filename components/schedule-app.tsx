@@ -3090,7 +3090,10 @@ export function ScheduleApp({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => void removePrivateNoteItem(dateStrForWeekDay(weekKey, DAYS[currentDayIndex]), n.target_doctor)}
+                                onClick={() => {
+                                  const noteDate = dateStrForWeekDay(weekKey, DAYS[currentDayIndex])
+                                  if (noteDate) void removePrivateNoteItem(noteDate, n.target_doctor)
+                                }}
                                 className="text-slate-400 hover:text-red-600 p-1 rounded transition"
                                 title="Supprimer la note privée"
                               >
@@ -3115,7 +3118,10 @@ export function ScheduleApp({
                         </p>
                         <button
                           type="button"
-                          onClick={() => void removePrivateNoteItem(dateStrForWeekDay(weekKey, DAYS[currentDayIndex]), doctorCode)}
+                          onClick={() => {
+                                  const noteDate = dateStrForWeekDay(weekKey, DAYS[currentDayIndex])
+                                  if (noteDate) void removePrivateNoteItem(noteDate, doctorCode)
+                                }}
                           className="text-slate-400 hover:text-red-600 p-1 rounded transition"
                           title="Supprimer le message"
                         >
@@ -3206,14 +3212,14 @@ export function ScheduleApp({
                               className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                                 req.status === "pending"
                                   ? "bg-amber-100 text-amber-700"
-                                  : (req.status === "validated" || req.status === "approved")
+                                  : req.status === "approved"
                                     ? "bg-green-100 text-green-700"
                                     : "bg-red-100 text-red-700"
                               }`}
                             >
                               {req.status === "pending"
                                 ? "En attente"
-                                : (req.status === "validated" || req.status === "approved")
+                                : req.status === "approved"
                                   ? "Approuvée"
                                   : "Rejetée"}
                             </span>

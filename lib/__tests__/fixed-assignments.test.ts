@@ -63,6 +63,8 @@ function main() {
       start_date: "2026-07-20",
       end_date: "2026-07-20",
       reason: "test",
+      created_at: "",
+      updated_at: "",
     },
     {
       id: "2",
@@ -70,6 +72,8 @@ function main() {
       start_date: "2026-07-20",
       end_date: "2026-07-20",
       reason: "test",
+      created_at: "",
+      updated_at: "",
     },
   ]
   // 2026-W30 Monday = 2026-07-20
@@ -86,6 +90,8 @@ function main() {
       start_date: "2026-07-20",
       end_date: "2026-07-20",
       reason: "test",
+      created_at: "",
+      updated_at: "",
     },
     {
       id: "p",
@@ -93,6 +99,8 @@ function main() {
       start_date: "2026-07-21",
       end_date: "2026-07-21",
       reason: "test",
+      created_at: "",
+      updated_at: "",
     },
     {
       id: "u",
@@ -100,6 +108,8 @@ function main() {
       start_date: "2026-07-22",
       end_date: "2026-07-22",
       reason: "test",
+      created_at: "",
+      updated_at: "",
     },
   ]
   const rythmoOff = applyFixedClinicalAssignments(
@@ -132,6 +142,8 @@ function main() {
       start_date: "2026-07-22",
       end_date: "2026-07-22",
       reason: "test",
+      created_at: "",
+      updated_at: "",
     },
   ]
   let freeWed = generateWeekSchedule(weekKey, [])
