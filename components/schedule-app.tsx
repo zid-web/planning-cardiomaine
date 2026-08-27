@@ -83,6 +83,8 @@ import {
 } from "@/lib/slot-blocking"
 import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
 import { isSlotClosed } from "@/lib/closed-slots"
+import { isVisiteRow, spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
+import { isWeekendDay } from "@/lib/slot-blocking"
 import {
   isOffSiteRow,
   offSiteSlotOf,
@@ -854,6 +856,13 @@ export function ScheduleApp({
           [day]: { ...nextCell },
         },
       }
+    }
+
+    // Visite : vacation hebdomadaire — un changement manuel sur un jour se
+    // reporte du lundi au vendredi, en sautant les jours où le médecin a une
+    // contrainte le matin (voir lib/visite-rotation.ts).
+    if (isVisiteRow(row) && !isWeekendDay(day)) {
+      newSchedule = spreadVisiteAcrossWeek(newSchedule, weekKey, day, vacations)
     }
 
     // Garde Nuit modifiée → reconstruire ½ off matin+apm du lendemain
