@@ -84,6 +84,7 @@ import {
 import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
 import { isSlotClosed } from "@/lib/closed-slots"
 import { isVisiteRow, spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
+import { Switch } from "@/components/ui/switch"
 import { applyOffSiteSlotRestriction, isWeekendDay } from "@/lib/slot-blocking"
 import {
   isOffSiteRow,
@@ -268,6 +269,12 @@ export function ScheduleApp({
   const [historyWeeks, setHistoryWeeks] = useState<PdfWeekExtraction[]>([])
   const [historyImportOpen, setHistoryImportOpen] = useState(false)
   const [remplacantInput, setRemplacantInput] = useState("")
+  /**
+   * Visite : reporter une saisie sur toute la semaine (comportement par défaut,
+   * la visite étant une vacation hebdomadaire). L'admin peut le décocher pour
+   * corriger un seul jour — une exception ponctuelle reste donc possible.
+   */
+  const [spreadVisiteToWeek, setSpreadVisiteToWeek] = useState(true)
 
   const supabase = useMemo(() => createClient(), [])
 
@@ -892,8 +899,9 @@ export function ScheduleApp({
 
     // Visite : vacation hebdomadaire — un changement manuel sur un jour se
     // reporte du lundi au vendredi, en sautant les jours où le médecin a une
-    // contrainte le matin (voir lib/visite-rotation.ts).
-    if (isVisiteRow(row) && !isWeekendDay(day)) {
+    // contrainte le matin (voir lib/visite-rotation.ts). L'admin peut décocher
+    // le report pour n'affecter que la case en cours.
+    if (isVisiteRow(row) && !isWeekendDay(day) && spreadVisiteToWeek) {
       newSchedule = spreadVisiteAcrossWeek(newSchedule, weekKey, day, vacations)
     }
 
@@ -2695,6 +2703,31 @@ export function ScheduleApp({
                     )
                   })}
                 </div>
+                {selectedCell && isVisiteRow(selectedCell.row) && !isWeekendDay(selectedCell.day) && (
+                  <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50/80 p-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Label
+                          htmlFor="visite-spread"
+                          className="text-xs font-medium text-emerald-900"
+                        >
+                          Reporter sur toute la semaine
+                        </Label>
+                        <p className="mt-0.5 text-[11px] leading-snug text-emerald-800">
+                          {spreadVisiteToWeek
+                            ? "La visite est hebdomadaire : la saisie s’applique du lundi au vendredi."
+                            : "Décoché : la saisie ne touche que cette case."}
+                        </p>
+                      </div>
+                      <Switch
+                        id="visite-spread"
+                        checked={spreadVisiteToWeek}
+                        onCheckedChange={setSpreadVisiteToWeek}
+                        disabled={!isAdmin}
+                      />
+                    </div>
+                  </div>
+                )}
                 {selectedCell && isOffSiteRow(selectedCell.row) && (
                   <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50/80 p-2">
                     <Label className="text-xs font-medium text-sky-900">

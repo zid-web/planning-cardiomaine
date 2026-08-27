@@ -40,7 +40,7 @@ import { STRESS_PARTNER_POOL } from "@/lib/nurse-rules"
 import { formatPersonLabel } from "@/lib/doctor-code"
 import { isOffSiteRow, offSiteSlotOf, setOffSiteSlot } from "@/lib/off-site-slots"
 import { spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
-import type { DoctorVacation } from "@/lib/types"
+import type { DoctorVacation, ScheduleData } from "@/lib/types"
 
 function main() {
   // --- K souvent au Stress mardi matin, rarement le mercredi ---
@@ -734,6 +734,51 @@ function main() {
     false,
     "pas de hors site au lendemain d'une garde de nuit",
   )
+
+  // --- Visite : une exception sur un seul jour reste possible ---
+  // Le report hebdomadaire est le défaut, mais l'admin peut le désactiver
+  // (interrupteur dans la modale) pour ne toucher qu'une case. L'exception
+  // ainsi posée ne doit pas être écrasée par les contraintes structurelles.
+  const excWeek = "2026-W40"
+  const excBase = applyStructuralConstraints(
+    generateWeekSchedule(excWeek, []),
+    excWeek,
+    [],
+  )
+  const excSpread = spreadVisiteAcrossWeek(
+    {
+      ...excBase,
+      "Matin - Visite": {
+        ...excBase["Matin - Visite"],
+        MERCREDI: { value: ["B"], type: "doctor", status: "validated" },
+      },
+    },
+    excWeek,
+    "MERCREDI",
+    [],
+  )
+  for (const day of ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"]) {
+    assert.deepEqual(excSpread["Matin - Visite"][day].value, ["B"])
+  }
+
+  // Report désactivé : on pose U sur le seul jeudi, sans appeler le report
+  const excOverride: ScheduleData = {
+    ...excSpread,
+    "Matin - Visite": {
+      ...excSpread["Matin - Visite"],
+      JEUDI: { value: ["U"], type: "doctor", status: "validated" },
+    },
+  }
+  assert.deepEqual(excOverride["Matin - Visite"].JEUDI.value, ["U"])
+  assert.deepEqual(excOverride["Matin - Visite"].MERCREDI.value, ["B"], "les autres jours intacts")
+
+  const excAfter = applyStructuralConstraints(excOverride, excWeek, [])
+  assert.deepEqual(
+    excAfter["Matin - Visite"].JEUDI.value,
+    ["U"],
+    "l'exception d'un jour survit aux contraintes structurelles",
+  )
+  assert.deepEqual(excAfter["Matin - Visite"].LUNDI.value, ["B"])
 
   console.log("✅ vacation-preferences tests passed")
 }
