@@ -781,6 +781,59 @@ export function formatDoctorWithDoublon(
   return appendSpecialDoctorLabel(base, rowKey, day, doctorId)
 }
 
+/**
+ * Applique le créneau hors site d'une case sur le reste de la journée : retire
+ * les médecins de cette case des vacations désormais incompatibles.
+ *
+ * Sert au sélecteur Matin / Après-midi / Journée : basculer sur « Journée »
+ * **impose** la restriction (les tâches de l'autre demi-journée sont retirées),
+ * basculer sur « Matin » ou « Après-midi » la **lève** (rien à retirer, la
+ * demi-journée libérée redevient simplement assignable).
+ *
+ * Gardes, astreintes, congés et ½ journées off ne sont **jamais** touchés :
+ * ce sont des engagements plus forts qu'une vacation hors site, et les retirer
+ * en silence serait dangereux. Ils sont signalés à l'appelant via `conflicts`.
+ */
+export function applyOffSiteSlotRestriction(
+  schedule: ScheduleData,
+  rowKey: string,
+  day: string,
+): {
+  next: ScheduleData
+  removed: Array<{ row: string; doctor: string }>
+  conflicts: Array<{ row: string; doctor: string }>
+} {
+  const removed: Array<{ row: string; doctor: string }> = []
+  const conflicts: Array<{ row: string; doctor: string }> = []
+  if (!isOffSiteRow(rowKey)) return { next: schedule, removed, conflicts }
+
+  const period = periodOfRow(rowKey, day, schedule)
+  if (period === "meta") return { next: schedule, removed, conflicts }
+
+  let next = schedule
+  const doctors = (schedule[rowKey]?.[day]?.value || []).filter(isListedDoctor)
+
+  for (const doctorId of doctors) {
+    for (const otherRow of Object.keys(next)) {
+      if (otherRow === rowKey) continue
+      if (!doctorOnRow(next, otherRow, day, doctorId)) continue
+      const otherPeriod = periodOfRow(otherRow, day, next)
+      if (otherPeriod === "meta") continue
+      if (!periodsConflict(period, otherPeriod)) continue
+      if (areCompatibleSamePeriod(rowKey, otherRow, { schedule: next, day, doctorId })) continue
+
+      if (isGardeRow(otherRow) || isAtlRow(otherRow)) {
+        conflicts.push({ row: otherRow, doctor: doctorId })
+        continue
+      }
+      next = stripDoctorFromRow(next, otherRow, day, doctorId)
+      removed.push({ row: otherRow, doctor: doctorId })
+    }
+  }
+
+  return { next, removed, conflicts }
+}
+
 export function stripDoctorFromRow(
   schedule: ScheduleData,
   rowKey: string,
