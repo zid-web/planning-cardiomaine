@@ -34,7 +34,7 @@ import {
   isValidNursePartner,
   nurseRequiresBinome,
 } from "@/lib/nurse-rules"
-import { isOffSiteRow, offSiteSlotOfCell } from "@/lib/off-site-slots"
+import { isOffSiteRow, offSiteSlotOfCell, OFF_SITE_ROW_PREFIX } from "@/lib/off-site-slots"
 
 export type DayPeriod = "matin" | "apm" | "nuit" | "day" | "meta"
 
@@ -356,15 +356,63 @@ function hasAnyGarde(schedule: ScheduleData, day: string, doctorId: string): boo
 }
 
 /** LFB / CDL interdits le jour d’une garde et le lendemain. */
+/**
+ * Un hors site occupant `offSitePeriod` empêche-t-il la garde `gardeRow` le
+ * **même jour** ?
+ *
+ * La règle était au niveau de la journée : être en LFB/CDL interdisait toute
+ * garde, quelle qu'elle soit. Depuis que le créneau hors site est porté par la
+ * case (`lib/off-site-slots.ts`), on ne bloque plus que ce qui se chevauche
+ * réellement — un médecin en LFB **le matin** est rentré l'après-midi et reste
+ * donc disponible pour la garde de nuit (consigne utilisateur 27/08/2026).
+ *
+ * Journée entière : comportement inchangé, toutes les gardes restent bloquées.
+ */
+export function offSiteBlocksGardeSameDay(
+  offSitePeriod: DayPeriod,
+  gardeRow: string,
+): boolean {
+  if (offSitePeriod === "day") return true
+  if (gardeRow === "Garde Matin") return offSitePeriod === "matin"
+  if (gardeRow === "Garde Midi") return offSitePeriod === "apm"
+  // Garde Nuit : aucun chevauchement avec une demi-journée
+  return false
+}
+
+/** Créneau hors site occupé par le médecin ce jour-là (LFB / CDL), ou null. */
+function offSitePeriodForDoctor(
+  schedule: ScheduleData,
+  day: string,
+  doctorId: string,
+): { row: string; period: DayPeriod } | null {
+  for (const row of [LFB_ROW, CDL_ROW]) {
+    if (!doctorOnRow(schedule, row, day, doctorId)) continue
+    return { row, period: periodOfRow(row, day, schedule) }
+  }
+  return null
+}
+
+/**
+ * Pose d'un LFB/CDL : refusée si une garde du **même jour** chevauche le
+ * créneau visé, ou si le médecin sortait d'une garde la **veille** (repos
+ * post-garde — indépendant du créneau, on ne part pas hors site au lendemain
+ * d'une nuit).
+ */
 export function isLfbCdlBlockedByGarde(
   schedule: ScheduleData,
   day: string,
   doctorId: string,
+  offSitePeriod: DayPeriod = "day",
 ): { blocked: boolean; reason?: string } {
-  if (hasAnyGarde(schedule, day, doctorId)) {
+  const clashing = GARDE_ROWS.find(
+    (gardeRow) =>
+      doctorOnRow(schedule, gardeRow, day, doctorId) &&
+      offSiteBlocksGardeSameDay(offSitePeriod, gardeRow),
+  )
+  if (clashing) {
     return {
       blocked: true,
-      reason: `${doctorId} a une garde ce jour — LFB/CDL impossibles.`,
+      reason: `${doctorId} est sur « ${clashing} » ce jour — LFB/CDL impossibles sur ce créneau.`,
     }
   }
   const prev = previousDayName(day)
@@ -703,15 +751,21 @@ export function canAssignDoctorToSlot(
   }
 
   if (rowKey === LFB_ROW || rowKey === CDL_ROW) {
-    const gardeBlock = isLfbCdlBlockedByGarde(schedule, day, doctorId)
+    const gardeBlock = isLfbCdlBlockedByGarde(
+      schedule,
+      day,
+      doctorId,
+      periodOfRow(rowKey, day, schedule),
+    )
     if (gardeBlock.blocked) return { allowed: false, reason: gardeBlock.reason }
   }
 
   if (GARDE_ROWS.includes(rowKey as (typeof GARDE_ROWS)[number])) {
-    if (doctorOnRow(schedule, LFB_ROW, day, doctorId) || doctorOnRow(schedule, CDL_ROW, day, doctorId)) {
+    const offSite = offSitePeriodForDoctor(schedule, day, doctorId)
+    if (offSite && offSiteBlocksGardeSameDay(offSite.period, rowKey)) {
       return {
         allowed: false,
-        reason: `${doctorId} est en LFB/CDL ce jour — garde impossible (retirez LFB/CDL d’abord).`,
+        reason: `${doctorId} est en ${offSite.row.replace(OFF_SITE_ROW_PREFIX, "")} sur ce créneau — garde impossible (passez le hors site sur l’autre demi-journée, ou retirez-le).`,
       }
     }
     const nextDay = DAYS[DAYS.indexOf(day as (typeof DAYS)[number]) + 1]
@@ -900,9 +954,12 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
         }
       }
 
-      if (isLfbCdlBlockedByGarde(next, day, doctorId).blocked) {
-        next = stripDoctorFromRow(next, LFB_ROW, day, doctorId)
-        next = stripDoctorFromRow(next, CDL_ROW, day, doctorId)
+      for (const offSiteRow of [LFB_ROW, CDL_ROW]) {
+        if (!doctorOnRow(next, offSiteRow, day, doctorId)) continue
+        const period = periodOfRow(offSiteRow, day, next)
+        if (isLfbCdlBlockedByGarde(next, day, doctorId, period).blocked) {
+          next = stripDoctorFromRow(next, offSiteRow, day, doctorId)
+        }
       }
 
       // Strip Coro / Rythmo / Rééducation si Garde Matin + I
