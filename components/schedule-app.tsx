@@ -84,7 +84,7 @@ import {
 import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
 import { isSlotClosed } from "@/lib/closed-slots"
 import { isVisiteRow, spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
-import { isWeekendDay } from "@/lib/slot-blocking"
+import { applyOffSiteSlotRestriction, isWeekendDay } from "@/lib/slot-blocking"
 import {
   isOffSiteRow,
   offSiteSlotOf,
@@ -92,6 +92,7 @@ import {
   OFF_SITE_SLOT_LABELS,
   OFF_SITE_SLOT_ORDER,
 } from "@/lib/off-site-slots"
+import type { OffSiteSlot } from "@/lib/types"
 import {
   applyStructuralConstraints,
   schedulesDiffer,
@@ -820,6 +821,37 @@ export function ScheduleApp({
   }
 
   /** Mise à jour immuable d’une cellule (évite les mutations partagées avec fullSchedule). */
+  /**
+   * Change le créneau d'une case hors site et applique la conséquence tout de
+   * suite : passer à « Journée » retire les vacations de la demi-journée
+   * nouvellement couverte, passer à « Matin » ou « Après-midi » libère l'autre.
+   * Gardes et astreintes ne sont jamais retirées en silence — elles sont
+   * signalées pour que l'admin tranche.
+   */
+  const changeOffSiteSlot = (slot: OffSiteSlot) => {
+    if (!isAdmin || !selectedCell || !schedule) return
+    const { row, day } = selectedCell
+    const cell = schedule[row]?.[day]
+    if (!cell) return
+
+    const withSlot: ScheduleData = {
+      ...schedule,
+      [row]: { ...schedule[row], [day]: { ...cell, offSiteSlot: slot } },
+    }
+    const { next, removed, conflicts } = applyOffSiteSlotRestriction(withSlot, row, day)
+
+    void updateSchedule(next)
+
+    if (removed.length > 0) {
+      const detail = removed.map((x) => `${x.doctor} — ${x.row}`).join(", ")
+      toast.info(`Créneau ${OFF_SITE_SLOT_LABELS[slot].toLowerCase()} : retiré de ${detail}`)
+    }
+    if (conflicts.length > 0) {
+      const detail = conflicts.map((x) => `${x.doctor} — ${x.row}`).join(", ")
+      toast.warning(`Conflit non résolu (garde/astreinte conservée) : ${detail}`)
+    }
+  }
+
   const patchSelectedCell = (
     patch: (cell: CellData) => CellData,
     opts?: { closeModal?: boolean },
@@ -2682,9 +2714,7 @@ export function ScheduleApp({
                             key={slot}
                             type="button"
                             disabled={!isAdmin}
-                            onClick={() =>
-                              patchSelectedCell((cell) => ({ ...cell, offSiteSlot: slot }))
-                            }
+                            onClick={() => changeOffSiteSlot(slot)}
                             className={`h-9 flex-1 rounded-md border text-xs font-bold transition-all ${
                               active
                                 ? "border-sky-500 bg-sky-600 text-white shadow-sm"

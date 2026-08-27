@@ -13,6 +13,7 @@ import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
 import { canNurseTakeRow, ensureNurseDoctorBinomeProposals } from "@/lib/nurse-rules"
 import {
   adjacentWeekdayNightGuard,
+  applyOffSiteSlotRestriction,
   applySlotBlockingStrips,
   canAssignDoctorToSlot,
   isIrmSlotClosed,
@@ -614,6 +615,68 @@ function main() {
     true,
     "visite non bloquante : autre tâche possible le matin",
   )
+
+  // --- Le sélecteur de créneau hors site impose / lève la restriction ---
+  const restrWeek = "2026-W40"
+  const restrDay = "JEUDI"
+  const buildRestr = () => {
+    const base = generateWeekSchedule(restrWeek, [])
+    base["Hors site - LFB"][restrDay] = { value: ["H"], type: "doctor", status: "validated" }
+    base["Matin - Cs PSS"][restrDay] = { value: ["H"], type: "doctor", status: "validated" }
+    base["Apm - Cs PSS"][restrDay] = { value: ["H"], type: "doctor", status: "validated" }
+    return base
+  }
+
+  // « Matin » : la matinée est prise, l'après-midi reste au médecin
+  const toMatin = applyOffSiteSlotRestriction(
+    setOffSiteSlot(buildRestr(), "Hors site - LFB", restrDay, "matin"),
+    "Hors site - LFB",
+    restrDay,
+  )
+  assert.deepEqual(toMatin.next["Matin - Cs PSS"][restrDay].value, [])
+  assert.deepEqual(toMatin.next["Apm - Cs PSS"][restrDay].value, ["H"])
+  assert.deepEqual(toMatin.removed, [{ row: "Matin - Cs PSS", doctor: "H" }])
+
+  // « Après-midi » : symétrique
+  const toApm = applyOffSiteSlotRestriction(
+    setOffSiteSlot(buildRestr(), "Hors site - LFB", restrDay, "apm"),
+    "Hors site - LFB",
+    restrDay,
+  )
+  assert.deepEqual(toApm.next["Matin - Cs PSS"][restrDay].value, ["H"])
+  assert.deepEqual(toApm.next["Apm - Cs PSS"][restrDay].value, [])
+
+  // « Journée » : la restriction est imposée sur les deux demi-journées
+  const toDay = applyOffSiteSlotRestriction(
+    setOffSiteSlot(buildRestr(), "Hors site - LFB", restrDay, "day"),
+    "Hors site - LFB",
+    restrDay,
+  )
+  assert.deepEqual(toDay.next["Matin - Cs PSS"][restrDay].value, [])
+  assert.deepEqual(toDay.next["Apm - Cs PSS"][restrDay].value, [])
+  assert.equal(toDay.removed.length, 2)
+  assert.equal(
+    canAssignDoctorToSlot("H", dateStrForWeekDay(restrWeek, restrDay)!, "Apm - Cs PSS", restrDay, toDay.next, [])
+      .allowed,
+    false,
+    "en journée entière, l'après-midi est de nouveau interdit",
+  )
+
+  // Une garde n'est jamais retirée en silence : elle est signalée
+  const withGarde = buildRestr()
+  withGarde["Garde Matin"][restrDay] = { value: ["H"], type: "doctor", status: "validated" }
+  const gardeKept = applyOffSiteSlotRestriction(
+    setOffSiteSlot(withGarde, "Hors site - LFB", restrDay, "day"),
+    "Hors site - LFB",
+    restrDay,
+  )
+  assert.deepEqual(gardeKept.next["Garde Matin"][restrDay].value, ["H"], "garde conservée")
+  assert.deepEqual(gardeKept.conflicts, [{ row: "Garde Matin", doctor: "H" }])
+
+  // Ligne non hors site : sans effet
+  const noop = applyOffSiteSlotRestriction(buildRestr(), "Matin - Cs PSS", restrDay)
+  assert.deepEqual(noop.removed, [])
+  assert.deepEqual(noop.conflicts, [])
 
   console.log("✅ vacation-preferences tests passed")
 }
