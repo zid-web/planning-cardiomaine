@@ -18,6 +18,7 @@ import {
   canAssignDoctorToSlot,
   isIrmSlotClosed,
   isNonBlockingRow,
+  offSiteBlocksGardeSameDay,
   periodOfRow,
 } from "@/lib/slot-blocking"
 import {
@@ -677,6 +678,62 @@ function main() {
   const noop = applyOffSiteSlotRestriction(buildRestr(), "Matin - Cs PSS", restrDay)
   assert.deepEqual(noop.removed, [])
   assert.deepEqual(noop.conflicts, [])
+
+  // --- Hors site en demi-journée vs garde du même jour ---
+  // Cas du 17/09/2026 : G est en LFB le jeudi. En demi-journée matin, il doit
+  // rester assignable à la garde de nuit du même jour.
+  const gWeek = "2026-W38"
+  const gThu = dateStrForWeekDay(gWeek, "JEUDI")!
+  assert.equal(gThu, "2026-09-17")
+  const gBase = applyStructuralConstraints(generateWeekSchedule(gWeek, []), gWeek, [])
+  assert.ok(gBase["Hors site - LFB"].JEUDI.value.includes("G"), "G est bien en LFB ce jeudi")
+
+  const gardeAllowed = (slot: "matin" | "apm" | "day", gardeRow: string) => {
+    const t = setOffSiteSlot(gBase, "Hors site - LFB", "JEUDI", slot)
+    return canAssignDoctorToSlot("G", gThu, gardeRow, "JEUDI", t, []).allowed
+  }
+
+  // Journée entière : comportement historique conservé, tout est bloqué
+  assert.equal(gardeAllowed("day", "Garde Matin"), false)
+  assert.equal(gardeAllowed("day", "Garde Midi"), false)
+  assert.equal(gardeAllowed("day", "Garde Nuit"), false)
+
+  // Hors site le matin : seule la Garde Matin se chevauche
+  assert.equal(gardeAllowed("matin", "Garde Matin"), false)
+  assert.equal(gardeAllowed("matin", "Garde Midi"), true)
+  assert.equal(gardeAllowed("matin", "Garde Nuit"), true, "LFB le matin → garde de nuit possible")
+
+  // Hors site l'après-midi : seule la Garde Midi se chevauche
+  assert.equal(gardeAllowed("apm", "Garde Matin"), true)
+  assert.equal(gardeAllowed("apm", "Garde Midi"), false)
+  assert.equal(gardeAllowed("apm", "Garde Nuit"), true)
+
+  assert.equal(offSiteBlocksGardeSameDay("day", "Garde Nuit"), true)
+  assert.equal(offSiteBlocksGardeSameDay("matin", "Garde Nuit"), false)
+  assert.equal(offSiteBlocksGardeSameDay("apm", "Garde Midi"), true)
+
+  // Les strips respectent le créneau : le LFB du matin survit à la garde de nuit
+  const gHalf = setOffSiteSlot(gBase, "Hors site - LFB", "JEUDI", "matin")
+  gHalf["Garde Nuit"].JEUDI = { value: ["G"], type: "doctor", status: "validated" }
+  const gHalfAfter = applySlotBlockingStrips(gHalf)
+  assert.deepEqual(gHalfAfter["Hors site - LFB"].JEUDI.value, ["G"], "LFB matin conservé")
+  assert.deepEqual(gHalfAfter["Garde Nuit"].JEUDI.value, ["G"])
+
+  // Journée entière : le LFB cède devant la garde, comme avant
+  const gFull = setOffSiteSlot(gBase, "Hors site - LFB", "JEUDI", "day")
+  gFull["Garde Nuit"].JEUDI = { value: ["G"], type: "doctor", status: "validated" }
+  const gFullAfter = applySlotBlockingStrips(gFull)
+  assert.deepEqual(gFullAfter["Hors site - LFB"].JEUDI.value, [], "LFB journée retiré")
+  assert.deepEqual(gFullAfter["Garde Nuit"].JEUDI.value, ["G"])
+
+  // Le repos post-garde reste indépendant du créneau
+  const gPrev = setOffSiteSlot(gBase, "Hors site - LFB", "JEUDI", "matin")
+  gPrev["Garde Nuit"].MERCREDI = { value: ["G"], type: "doctor", status: "validated" }
+  assert.equal(
+    canAssignDoctorToSlot("G", gThu, "Hors site - LFB", "JEUDI", gPrev, []).allowed,
+    false,
+    "pas de hors site au lendemain d'une garde de nuit",
+  )
 
   console.log("✅ vacation-preferences tests passed")
 }
