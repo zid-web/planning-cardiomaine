@@ -36,6 +36,8 @@ import {
 } from "@/lib/vacation-preferences"
 import { STRESS_PARTNER_POOL } from "@/lib/nurse-rules"
 import { formatPersonLabel } from "@/lib/doctor-code"
+import { isOffSiteRow, offSiteSlotOf, setOffSiteSlot } from "@/lib/off-site-slots"
+import { spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
 import type { DoctorVacation } from "@/lib/types"
 
 function main() {
@@ -478,6 +480,140 @@ function main() {
   fvBuilt["Garde Matin"].LUNDI = { value: ["I"], type: "doctor", status: "validated" }
   r = canAssignDoctorToSlot("O", mondayStr, "Garde Matin", "LUNDI", fvBuilt, [])
   assert.equal(r.allowed, true, `O assignable à côté de I: ${r.reason}`)
+
+  // --- Créneau hors site porté par la case (matin / apm / journée) ---
+  const offWeek = "2026-W40"
+  const thuStr = dateStrForWeekDay(offWeek, "JEUDI")!
+  let off = generateWeekSchedule(offWeek, [])
+  off["Hors site - LFB"].JEUDI = { value: ["H"], type: "doctor", status: "validated" }
+
+  // Défaut : journée entière → indisponible matin ET après-midi
+  assert.equal(offSiteSlotOf(off, "Hors site - LFB", "JEUDI"), "day")
+  assert.equal(periodOfRow("Hors site - LFB", "JEUDI", off), "day")
+  assert.equal(
+    canAssignDoctorToSlot("H", thuStr, "Matin - Cs PSS", "JEUDI", off, []).allowed,
+    false,
+  )
+  assert.equal(
+    canAssignDoctorToSlot("H", thuStr, "Apm - Cs PSS", "JEUDI", off, []).allowed,
+    false,
+  )
+
+  // Hors site le matin → disponible l'après-midi
+  const offMatin = setOffSiteSlot(off, "Hors site - LFB", "JEUDI", "matin")
+  assert.equal(periodOfRow("Hors site - LFB", "JEUDI", offMatin), "matin")
+  assert.equal(
+    canAssignDoctorToSlot("H", thuStr, "Apm - Cs PSS", "JEUDI", offMatin, []).allowed,
+    true,
+    "hors site le matin : l'après-midi reste libre",
+  )
+  assert.equal(
+    canAssignDoctorToSlot("H", thuStr, "Matin - Cs PSS", "JEUDI", offMatin, []).allowed,
+    false,
+    "le matin reste occupé",
+  )
+
+  // Hors site l'après-midi → disponible le matin
+  const offApm = setOffSiteSlot(off, "Hors site - LFB", "JEUDI", "apm")
+  assert.equal(periodOfRow("Hors site - LFB", "JEUDI", offApm), "apm")
+  assert.equal(
+    canAssignDoctorToSlot("H", thuStr, "Matin - Cs PSS", "JEUDI", offApm, []).allowed,
+    true,
+    "hors site l'après-midi : le matin reste libre",
+  )
+  assert.equal(
+    canAssignDoctorToSlot("H", thuStr, "Apm - Cs PSS", "JEUDI", offApm, []).allowed,
+    false,
+  )
+
+  // setOffSiteSlot(null) efface le choix explicite → retour au défaut
+  assert.equal(
+    offSiteSlotOf(setOffSiteSlot(offApm, "Hors site - LFB", "JEUDI", null), "Hors site - LFB", "JEUDI"),
+    "day",
+  )
+  // Ne modifie pas l'objet reçu
+  assert.equal(off["Hors site - LFB"].JEUDI.offSiteSlot, undefined)
+
+  // Rétrocompatibilité : les plannings enregistrés sans le champ gardent
+  // exactement le comportement des anciennes tables statiques.
+  off = generateWeekSchedule(offWeek, [])
+  assert.equal(offSiteSlotOf(off, "Hors site - IRM", "LUNDI"), "matin")
+  assert.equal(offSiteSlotOf(off, "Hors site - IRM", "VENDREDI"), "apm")
+  assert.equal(offSiteSlotOf(off, "Hors site - CDL", "MARDI"), "matin")
+  assert.equal(offSiteSlotOf(off, "Hors site - Scinti", "MERCREDI"), "matin")
+  assert.equal(offSiteSlotOf(off, "Hors site - PSSL", "JEUDI"), "day")
+  assert.equal(offSiteSlotOf(off, "Matin - Coro", "LUNDI"), null, "ne vise que le hors site")
+  assert.equal(isOffSiteRow("Hors site - NCT"), true)
+  assert.equal(isOffSiteRow("Matin - Coro"), false)
+
+  // --- Visite : un changement manuel se reporte du lundi au vendredi ---
+  const visWeek = "2026-W40"
+  const visRow = "Matin - Visite"
+  let vis = generateWeekSchedule(visWeek, [])
+  const rotationDoctor = vis[visRow].LUNDI.value[0]
+  assert.ok(rotationDoctor, "la semaine générée porte déjà un titulaire de visite")
+
+  vis[visRow].MERCREDI = { value: ["B"], type: "doctor", status: "validated" }
+  const spread = spreadVisiteAcrossWeek(vis, visWeek, "MERCREDI", [])
+  for (const day of ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"]) {
+    assert.deepEqual(spread[visRow][day].value, ["B"], `visite reportée sur ${day}`)
+  }
+  // Le week-end n'est pas touché
+  assert.deepEqual(spread[visRow].SAMEDI.value, [])
+
+  // Contrainte le matin d'un jour : congés → case laissée vide ce jour-là
+  const bOff: DoctorVacation[] = [
+    {
+      id: "4",
+      doctor_id: "B",
+      start_date: dateStrForWeekDay(visWeek, "JEUDI")!,
+      end_date: dateStrForWeekDay(visWeek, "JEUDI")!,
+      created_at: "",
+      updated_at: "",
+    },
+  ]
+  const spreadOff = spreadVisiteAcrossWeek(vis, visWeek, "MERCREDI", bOff)
+  assert.deepEqual(spreadOff[visRow].JEUDI.value, [], "jour de congés laissé vide")
+  assert.deepEqual(spreadOff[visRow].LUNDI.value, ["B"], "les autres jours suivent")
+
+  // Contrainte ½ journée off matin → même traitement
+  const visHalf = structuredClone(vis)
+  visHalf["1/2 journée off Matin"].VENDREDI = {
+    value: ["B"],
+    type: "doctor",
+    status: "validated",
+  }
+  const spreadHalf = spreadVisiteAcrossWeek(visHalf, visWeek, "MERCREDI", [])
+  assert.deepEqual(spreadHalf[visRow].VENDREDI.value, [], "½ off matin : pas de visite")
+  assert.deepEqual(spreadHalf[visRow].JEUDI.value, ["B"])
+
+  // Case explicitement vidée par l'admin : jamais re-remplie
+  const visCleared = structuredClone(vis)
+  visCleared[visRow].MARDI = {
+    value: [],
+    type: "empty",
+    status: "validated",
+    manuallyCleared: true,
+  }
+  const spreadCleared = spreadVisiteAcrossWeek(visCleared, visWeek, "MERCREDI", [])
+  assert.deepEqual(spreadCleared[visRow].MARDI.value, [], "case vidée à la main respectée")
+  assert.deepEqual(spreadCleared[visRow].LUNDI.value, ["B"])
+
+  // L'objet d'origine n'est pas muté
+  assert.deepEqual(vis[visRow].LUNDI.value, [rotationDoctor])
+
+  // La visite ne bloque ni le matin ni l'après-midi
+  const thuVisite = dateStrForWeekDay(visWeek, "JEUDI")!
+  assert.equal(
+    canAssignDoctorToSlot("B", thuVisite, "Apm - Cs PSS", "JEUDI", spread, []).allowed,
+    true,
+    "visite le matin : l'après-midi reste libre",
+  )
+  assert.equal(
+    canAssignDoctorToSlot("B", thuVisite, "Matin - ETT salle 1", "JEUDI", spread, []).allowed,
+    true,
+    "visite non bloquante : autre tâche possible le matin",
+  )
 
   console.log("✅ vacation-preferences tests passed")
 }

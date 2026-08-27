@@ -14,6 +14,15 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    // Liste explicite des types globaux. Sans elle, TS inclut tous les @types/*
+    // du projet, dont le stub vide @types/minimatch (tire transitivement) : il
+    // echoue sur TS2688 et ABANDONNE avant de verifier le moindre fichier,
+    // si bien que `tsc --noEmit` ne rapportait plus aucune erreur.
+    "types": [
+      "node",
+      "react",
+      "react-dom"
+    ],
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
