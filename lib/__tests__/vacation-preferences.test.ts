@@ -378,12 +378,18 @@ function main() {
 
   // --- Vacations non bloquantes : Entrées PSS et Visite ---
   assert.equal(isNonBlockingRow("Entrées PSS"), true)
+  assert.equal(isNonBlockingRow("Pré-op"), true)
   assert.equal(isNonBlockingRow("Matin - Visite"), true)
   assert.equal(isNonBlockingRow("Matin - Coro"), false)
+  // Il n'existe pas de « Apm - Visite » dans la grille
+  assert.equal(generateWeekSchedule(weekKey, [])["Apm - Visite"], undefined)
 
   sched = generateWeekSchedule(weekKey, [])
   sched["Entrées PSS"].LUNDI = { value: ["B"], type: "doctor", status: "validated" }
+  sched["Pré-op"].LUNDI = { value: ["Z"], type: "doctor", status: "validated" }
   sched["Matin - Visite"].LUNDI = { value: ["U"], type: "doctor", status: "validated" }
+  r = canAssignDoctorToSlot("Z", "2026-07-20", "Matin - ETT salle 1", "LUNDI", sched, [])
+  assert.equal(r.allowed, true, `Pré-op ne bloque pas la matinée: ${r.reason}`)
   r = canAssignDoctorToSlot("B", "2026-07-20", "Matin - Cs PSS", "LUNDI", sched, [])
   assert.equal(r.allowed, true, `Entrées PSS ne bloque pas la matinée: ${r.reason}`)
   r = canAssignDoctorToSlot("U", "2026-07-20", "Matin - Cs PSS", "LUNDI", sched, [])
@@ -392,6 +398,7 @@ function main() {
   sched["Matin - Cs PSS"].LUNDI = { value: ["B", "U"], type: "doctor", status: "validated" }
   const keptNonBlocking = applySlotBlockingStrips(sched)
   assert.deepEqual(keptNonBlocking["Entrées PSS"].LUNDI.value, ["B"])
+  assert.deepEqual(keptNonBlocking["Pré-op"].LUNDI.value, ["Z"])
   assert.deepEqual(keptNonBlocking["Matin - Visite"].LUNDI.value, ["U"])
   assert.deepEqual(keptNonBlocking["Matin - Cs PSS"].LUNDI.value, ["B", "U"])
 

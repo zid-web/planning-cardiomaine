@@ -55,12 +55,18 @@ const ATL_ROWS = [
  * Vacations **non bloquantes** (consigne utilisateur 26/08/2026) : elles
  * n'occupent pas le créneau, le médecin qui y figure reste assignable à une
  * autre tâche la même demi-journée.
- * - « Entrées PSS » : passage administratif, pas une vacation pleine.
+ * - « Entrées PSS » et « Pré-op » : passages administratifs du matin, pas des
+ *   vacations pleines.
  * - « Matin - Visite » (B / U / A) : la visite laisse la matinée disponible.
+ *   Il n'existe pas de « Apm - Visite » (confirmé utilisateur 26/08/2026).
  * Les congés et les ½ journées off continuent de s'appliquer normalement —
  * seule l'exclusion mutuelle entre vacations est levée.
  */
-export const NON_BLOCKING_ROWS: readonly string[] = ["Entrées PSS", "Matin - Visite"]
+export const NON_BLOCKING_ROWS: readonly string[] = [
+  "Entrées PSS",
+  "Pré-op",
+  "Matin - Visite",
+]
 
 export function isNonBlockingRow(rowKey: string): boolean {
   return NON_BLOCKING_ROWS.includes(rowKey)

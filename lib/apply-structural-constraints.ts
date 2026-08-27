@@ -58,7 +58,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "ATL Matin/Midi/Soir = M/O/W/CH ; FV = ATL Midi jeudi seulement (= Coro)",
   "Gardes Lun-Ven : Matin/Midi/Nuit au même médecin (cases vides only) ; jamais deux nuits consécutives",
   "IRM strictement réservée à S (case grisée si S absent)",
-  "Vacations non bloquantes : Entrées PSS, Matin - Visite (autre tâche possible le même créneau)",
+  "Vacations non bloquantes : Entrées PSS, Pré-op, Matin - Visite (autre tâche possible le même créneau)",
   "Weekend Garde : Sam Matin = Ven Nuit (+ associé Sam Midi/Nuit) ; Sam Midi=Nuit ; Dim Matin=Midi=Nuit",
   "Weekend ATL : Sam Matin=Midi=Nuit ; Dim Matin=Midi=Nuit (un médecin / jour)",
   "Nuits ATL W/O/M : pas de nuits consécutives Lun–Ven (weekend exempt ; CH exempt)",
