@@ -294,7 +294,10 @@ export async function getCoroMOWEquity(
     (total, doc, weekVal) => {
       if (!total.matin) total.matin = { M: 0, O: 0, W: 0 }
       if (!total.apm) total.apm = { M: 0, O: 0, W: 0 }
-      const wv = weekVal as CoroMOWSplitCounts
+      // Même conversion en deux temps que pour `result` plus bas : l'accumulateur
+      // est typé Record<string, number> alors qu'il transporte ici une structure
+      // matin/apm.
+      const wv = weekVal as unknown as CoroMOWSplitCounts
       for (const d of ["M", "O", "W"]) {
         total.matin[d] = (total.matin[d] || 0) + (wv.matin?.[d] || 0)
         total.apm[d] = (total.apm[d] || 0) + (wv.apm?.[d] || 0)

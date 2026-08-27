@@ -12,35 +12,43 @@ import {
 } from "@/lib/group-clinical-rules"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
 
+/** Les pools sont `as const` : élargir pour pouvoir tester une non-appartenance. */
+const asCodes = (list: readonly string[]): readonly string[] => list
+
 function main() {
   assert.equal(DOC022_DOCTOR_NAMES.S, "Saint André")
   assert.equal(DOC022_DOCTOR_NAMES.M, "Zid")
-  assert.ok(DOC022_CLINICAL_ELIGIBILITY.irm.includes("S"))
-  assert.ok(DOC022_CLINICAL_ELIGIBILITY.coro.includes("W"))
-  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.stress.includes("W"), "W non éligible Stress")
-  assert.ok(DOC022_CLINICAL_ELIGIBILITY.reeduc.includes("R"), "R éligible rééducation")
+  assert.ok(asCodes(DOC022_CLINICAL_ELIGIBILITY.irm).includes("S"))
+  assert.ok(asCodes(DOC022_CLINICAL_ELIGIBILITY.coro).includes("W"))
+  assert.ok(!asCodes(DOC022_CLINICAL_ELIGIBILITY.stress).includes("W"), "W non éligible Stress")
+  assert.ok(asCodes(DOC022_CLINICAL_ELIGIBILITY.reeduc).includes("R"), "R éligible rééducation")
   assert.deepEqual(
     [...DOC022_CLINICAL_ELIGIBILITY.atl].sort(),
     ["CH", "M", "O", "W"].sort(),
     "ATL pool général = M/O/W/CH",
   )
-  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("FV"), "FV hors pool ATL général")
+  assert.ok(!asCodes(DOC022_CLINICAL_ELIGIBILITY.atl).includes("FV"), "FV hors pool ATL général")
   assert.equal(isAtlEligibleForCell("FV", "Astreintes ATL Midi", "JEUDI"), true)
   assert.equal(isAtlEligibleForCell("FV", "Astreintes ATL Matin", "JEUDI"), false)
   assert.equal(isAtlEligibleForCell("FV", "Astreintes ATL Midi", "MARDI"), false)
   assert.equal(isAtlEligibleForCell("FV", "Astreintes ATL Nuit", "JEUDI"), false)
   assert.equal(isAtlEligibleForCell("W", "Astreintes ATL Matin", "LUNDI"), true)
-  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("R"))
-  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("V"))
-  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("T"))
-  assert.ok(!DOC022_CLINICAL_ELIGIBILITY.atl.includes("G"))
+  assert.ok(!asCodes(DOC022_CLINICAL_ELIGIBILITY.atl).includes("R"))
+  assert.ok(!asCodes(DOC022_CLINICAL_ELIGIBILITY.atl).includes("V"))
+  assert.ok(!asCodes(DOC022_CLINICAL_ELIGIBILITY.atl).includes("T"))
+  assert.ok(!asCodes(DOC022_CLINICAL_ELIGIBILITY.atl).includes("G"))
   assert.ok(DOC022_FIXED_CLINICAL_SLOTS.length >= 5)
 
   const payload = toSolverClinicalRulesPayload()
-  assert.ok(payload.clinical_eligibility)
-  assert.deepEqual(payload.astreinte_allowed.sort(), ["CH", "M", "O", "W"].sort())
-  assert.ok(!payload.astreinte_allowed.includes("FV"))
-  assert.ok(payload.coro_allowed.includes("FV"), "FV reste éligible Coro")
+  // `clinical_eligibility` a été éclatée en clés séparées (*_allowed) :
+  // on vérifie désormais celles réellement envoyées au solveur.
+  assert.ok(Array.isArray(payload.reeduc_allowed))
+  assert.ok(Array.isArray(payload.rythmo_allowed))
+  assert.ok(Array.isArray(payload.nct_allowed))
+  assert.ok(Array.isArray(payload.half_days_off))
+  assert.deepEqual([...payload.astreinte_allowed].sort(), ["CH", "M", "O", "W"].sort())
+  assert.ok(!asCodes(payload.astreinte_allowed).includes("FV"))
+  assert.ok(asCodes(payload.coro_allowed).includes("FV"), "FV reste éligible Coro")
   assert.ok(Array.isArray(payload.doc022_fixed_slots))
   assert.ok(payload.doc022_fixed_slots.some((s) => s.doctor === "P"))
 
@@ -56,8 +64,18 @@ function main() {
     schedule["Apm - ETT salle 1"].MERCREDI.value.includes("S"),
     "Saint André écho enfants mercredi apm",
   )
-  assert.ok(schedule["Matin - EE2"].LUNDI.value.includes("V"), "Lefebvre EE2 lundi matin")
-  assert.ok(schedule["Matin - EE2"].VENDREDI.value.includes("O"), "Bros EE2 vendredi matin")
+  // EE2 matin n'a plus de créneau fixe : les réservations DOC022 « Lefebvre »
+  // (lundi) et « Bros » (vendredi) sont devenues des préférences souples
+  // (H / R / O — voir lib/vacation-preferences.ts).
+  assert.equal(
+    DOC022_FIXED_CLINICAL_SLOTS.some((slot) => slot.row === "Matin - EE2"),
+    false,
+    "plus aucun créneau fixe sur EE2 matin",
+  )
+  assert.deepEqual(schedule["Matin - EE2"].LUNDI.value, [])
+  assert.deepEqual(schedule["Matin - EE2"].VENDREDI.value, [])
+  // EE1 mercredi après-midi est en revanche réservé à T (consigne 26/08/2026)
+  assert.ok(schedule["Apm - EE1"].MERCREDI.value.includes("T"), "T sur EE1 mercredi apm")
   assert.ok(schedule["Hors site - Scinti"].LUNDI.value.includes("T"))
   assert.ok(schedule["Hors site - Scinti"].MARDI.value.includes("R"))
   assert.ok(schedule["Hors site - Scinti"].MERCREDI.value.includes("T"))

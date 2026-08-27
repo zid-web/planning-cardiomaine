@@ -172,6 +172,12 @@ export default function AdminRequestsPage() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
+  // Le client Supabase n'est pas typé (pas de types générés depuis le schéma) :
+  // les lignes remontent en `any`, d'où des paramètres de callback implicitement
+  // `any`. On annote localement les deux formes de lignes utilisées ici.
+  type RequesterIdRow = { requester_id: string | null };
+  type ProfileRow = { id: string | null; email: string | null };
+
   const loadRequesters = useCallback(async () => {
     const { data, error } = await supabase
       .from('change_requests')
@@ -183,10 +189,10 @@ export default function AdminRequestsPage() {
       return;
     }
 
-    const ids = Array.from(
-      new Set(
-        (data || [])
-          .map((row) => row.requester_id as string | null)
+    const ids: string[] = Array.from(
+      new Set<string>(
+        ((data || []) as RequesterIdRow[])
+          .map((row) => row.requester_id)
           .filter((id): id is string => Boolean(id)),
       ),
     );
@@ -207,10 +213,12 @@ export default function AdminRequestsPage() {
     }
 
     setRequesters(
-      (profiles || [])
-        .filter((p) => p.id && p.email)
+      ((profiles || []) as ProfileRow[])
+        .filter((p) => Boolean(p.id && p.email))
         .map((p) => ({ id: p.id as string, email: p.email as string }))
-        .sort((a, b) => a.email.localeCompare(b.email, 'fr')),
+        .sort((a: RequesterOption, b: RequesterOption) =>
+          a.email.localeCompare(b.email, 'fr'),
+        ),
     );
   }, [supabase]);
 
