@@ -30,7 +30,7 @@ import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
 import type { EquityCounts } from "@/lib/equity-tracking"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { applyStressAndDRules } from "@/lib/stress-rules"
-import { ensureNurseDoctorBinomeProposals } from "@/lib/nurse-rules"
+import { ensureNurseDoctorBinomeProposals, ensureValOnBothEeRooms } from "@/lib/nurse-rules"
 import { applyWeekendWomRules } from "@/lib/weekend-wom-rules"
 import {
   mergeVacancesIntoConges,
@@ -879,6 +879,9 @@ export function applyStructuralConstraints(
   // 12) Binômes infirmière-médecin (D+Véro le jeudi matin + couplage médecin systématique pour Véro/Val sur Stress/EE)
   if (weekKey) {
     next = ensureNurseDoctorBinomeProposals(next, weekKey, vacations)
+    // Val sur EE = les deux salles, avec le même médecin. Après le couplage
+    // binôme, pour que le médecin recopié soit celui réellement retenu.
+    next = ensureValOnBothEeRooms(next)
   }
 
   return next

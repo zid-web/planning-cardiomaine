@@ -241,6 +241,67 @@ export function veroFixedSlotsForWeek(weekKey: string, isFirstThursday: boolean)
  * Pour les autres vacations Stress/EE avec Véro ou Val : propose un médecin
  * disponible du pool correspondant (STRESS_PARTNER_POOL / EE_PARTNER_POOL).
  */
+/** Paires de salles EE d'un même créneau. */
+const EE_ROOM_PAIRS: ReadonlyArray<readonly [string, string]> = [
+  ["Matin - EE1", "Matin - EE2"],
+  ["Apm - EE1", "Apm - EE2"],
+]
+
+/**
+ * Val sur EE tient **les deux salles** du créneau, avec le **même médecin**
+ * (consigne utilisateur 27/08/2026). Elle n'était jusqu'ici placée que sur EE1.
+ *
+ * Le miroir est prudent :
+ * - jamais dans une salle déjà occupée par une autre infirmière (Val et Véro
+ *   ne sont jamais dans la même case) ;
+ * - le médecin n'est recopié que si la salle cible n'en a pas — une saisie
+ *   manuelle différente (ex. DAAS sur EE2 le lundi) est conservée ;
+ * - une case explicitement vidée par l'admin n'est jamais re-remplie.
+ */
+export function ensureValOnBothEeRooms(schedule: ScheduleData): ScheduleData {
+  const DAYS_LIST = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]
+  let next = schedule
+
+  for (const day of DAYS_LIST) {
+    for (const [roomA, roomB] of EE_ROOM_PAIRS) {
+      const inA = (next[roomA]?.[day]?.value || []).includes("Val")
+      const inB = (next[roomB]?.[day]?.value || []).includes("Val")
+      if (inA === inB) continue // absente des deux, ou déjà sur les deux
+
+      const source = inA ? roomA : roomB
+      const target = inA ? roomB : roomA
+      const targetCell = next[target]?.[day]
+      if (!targetCell || targetCell.manuallyCleared) continue
+
+      const targetValues = targetCell.value || []
+      // Une autre infirmière tient déjà cette salle : ne pas la doubler.
+      if (targetValues.some((d) => isNurse(d) && d !== "Val")) continue
+
+      const sourceValues = next[source]?.[day]?.value || []
+      const sourceDoctor = sourceValues.find((d) => !isNurse(d))
+      const targetHasDoctor = targetValues.some((d) => !isNurse(d))
+
+      const merged = [...targetValues, "Val"]
+      if (sourceDoctor && !targetHasDoctor) merged.push(sourceDoctor)
+
+      next = {
+        ...next,
+        [target]: {
+          ...next[target],
+          [day]: {
+            ...targetCell,
+            value: Array.from(new Set(merged)),
+            type: "doctor",
+            status: targetCell.status === "pending" ? "pending" : "validated",
+          },
+        },
+      }
+    }
+  }
+
+  return next
+}
+
 export function ensureNurseDoctorBinomeProposals(
   schedule: ScheduleData,
   weekKey: string,
