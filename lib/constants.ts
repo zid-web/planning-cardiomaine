@@ -6,8 +6,10 @@ export const DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"
 // CH: Centre Hospitalier externe — astreintes ATL uniquement (jamais de garde)
 // DAAS: uniquement EE (Apm - EE2) chaque lundi après-midi (hors vacances)
 // D: Echo PSS stress consultation externe (jeudi)
-// Val, Véro: infirmières - EE/Stress/ETT Tessé/ETT2 en binôme avec un médecin
-// (voir lib/nurse-rules.ts) - Val seule autorisée sur ETT Tessé/ETT2.
+// Val, Véro: infirmières - EE/Stress/ETT2 en binôme avec un médecin
+// (voir lib/nurse-rules.ts) - ETT Tessé : Val et personne d'autre, la case
+// est grisée dès qu'elle est prise ailleurs ou absente.
+// Cs Tessée : P, A, FV, Véro, D, R, DAAS n'en font jamais.
 // Laura: infirmière - repli ponctuel pour Véro (Stress vendredi matin uniquement).
 // IRM: uniquement S — lundi matin + vendredi après-midi (hors vacances)
 // Visite: uniquement U, A, B en rotation hebdomadaire
