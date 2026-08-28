@@ -2651,41 +2651,72 @@ export function ScheduleApp({
                     const fullyInCell =
                       occ >= 2 || (occ >= 1 && onSister) || (occ >= 1 && !canPromoteDoublon)
 
+                    // Ligne réellement visée par le clic : la case courante, ou la
+                    // **salle sœur** quand le clic promeut un doublon inter-salles.
+                    // Sans ça la pastille restait active, et le refus n'arrivait
+                    // qu'après le clic, sous forme de toast.
+                    const targetRow =
+                      canPromoteSister && sister ? sister : selectedCell?.row
+                    // Le doublon dans la même case ne revalide pas le créneau
+                    // (le médecin y est déjà) — rien à vérifier.
+                    const shouldValidate = occ === 0 || canPromoteSister
                     let blockReason: string | undefined
-                    if (occ === 0 && selectedCell && schedule) {
+                    if (shouldValidate && selectedCell && schedule && targetRow) {
                       const dateStr = dateStrForWeekDay(weekKey, selectedCell.day)
                       if (dateStr) {
-                        const v = canAssignDoctor(doc, dateStr, selectedCell.row, vacations, {
+                        const v = canAssignDoctor(doc, dateStr, targetRow, vacations, {
                           schedule,
                           day: selectedCell.day,
                         })
-                        if (!v.allowed) blockReason = v.reason
+                        if (!v.allowed) {
+                          blockReason =
+                            v.reason ||
+                            (targetRow === selectedCell.row
+                              ? "Assignation impossible sur cette case."
+                              : `Assignation impossible sur ${targetRow}.`)
+                        }
                       }
                     }
                     const blocked = Boolean(blockReason)
+                    const isBlocked = fullyInCell || blocked
+                    const tooltip =
+                      blockReason ||
+                      (occ >= 2 || (occ >= 1 && onSister)
+                        ? "Déjà en doublon"
+                        : canPromoteSameCell
+                          ? `Cliquer pour doublon ${doc}² (même case)`
+                          : canPromoteSister
+                            ? `Cliquer pour doublon ${doc}² (aussi sur ${sister})`
+                            : occ >= 1
+                              ? "Déjà dans la case"
+                              : undefined)
 
                     return (
                       <button
                         key={doc}
-                        onClick={() => addDoctorToCell(doc)}
-                        disabled={fullyInCell || blocked}
-                        title={
-                          blockReason ||
-                          (occ >= 2 || (occ >= 1 && onSister)
-                            ? "Déjà en doublon"
-                            : canPromoteSameCell
-                              ? `Cliquer pour doublon ${doc}² (même case)`
-                              : canPromoteSister
-                                ? `Cliquer pour doublon ${doc}² (aussi sur ${sister})`
-                                : occ >= 1
-                                  ? "Déjà dans la case"
-                                  : undefined)
-                        }
+                        type="button"
+                        // `aria-disabled` plutôt que `disabled` : un bouton
+                        // désactivé ne reçoit pas les événements de survol, et
+                        // son infobulle native ne s'affiche donc pas — or c'est
+                        // précisément là qu'il faut pouvoir lire le motif du
+                        // blocage. Le clic est neutralisé dans le handler.
+                        onClick={() => {
+                          if (isBlocked) {
+                            // Sur tablette il n'y a pas de survol : un appui sur
+                            // une pastille bloquée affiche le motif plutôt que
+                            // de ne rien faire.
+                            if (tooltip) toast.info(tooltip)
+                            return
+                          }
+                          addDoctorToCell(doc)
+                        }}
+                        aria-disabled={isBlocked}
+                        title={tooltip}
                         className={`
                       flex h-10 items-center justify-center rounded-lg font-bold transition-all
                       ${
-                        fullyInCell || blocked
-                          ? "opacity-30 cursor-not-allowed bg-slate-100 text-slate-400"
+                        isBlocked
+                          ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400"
                           : canPromoteDoublon
                             ? "bg-sky-50 border border-sky-300 text-sky-900 hover:bg-sky-100 shadow-sm active:scale-95"
                             : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"
