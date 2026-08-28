@@ -8,7 +8,7 @@ import {
   applyNurseFixedAssignments,
   dateStrForWeekDay,
 } from "@/lib/fixed-assignments"
-import { applyClosedSlotsClear, isSlotClosed } from "@/lib/closed-slots"
+import { applyClosedSlotsClear, closedSlotReason, isSlotClosed, STRUCTURAL_CLOSED_SLOTS } from "@/lib/closed-slots"
 import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
 import {
   canNurseTakeRow,
@@ -833,6 +833,57 @@ function main() {
     ensureValOnBothEeRooms(eeOnce)["Apm - EE2"].MARDI.value,
     eeOnce["Apm - EE2"].MARDI.value,
   )
+
+  // --- Fermetures structurelles : moteur et affichage sur la même table ---
+  // Avant, ces jours n'étaient grisés que dans l'UI : le moteur acceptait
+  // l'assignation, et un occupant invisible bloquait le médecin ailleurs.
+  const closedWeek = generateWeekSchedule("2026-W36", [])
+  for (const [row, days] of Object.entries(STRUCTURAL_CLOSED_SLOTS)) {
+    for (const day of days) {
+      assert.ok(isSlotClosed(row, day), `${row} ${day} doit être fermé`)
+      assert.ok(closedSlotReason(row, day), `${row} ${day} doit porter un motif`)
+      const res = canAssignDoctorToSlot("R", "2026-09-01", row, day, closedWeek, [])
+      assert.equal(res.allowed, false, `${row} ${day} doit refuser l'assignation`)
+    }
+  }
+
+  // Les jours d'ouverture le restent
+  for (const [row, day] of [
+    ["Apm - RÉEDUCATION", "MERCREDI"],
+    ["Matin - Rythmo", "MARDI"],
+    ["Hors site - LFB", "JEUDI"],
+    ["Hors site - PSSL", "JEUDI"],
+    ["Hors site - NCT", "JEUDI"],
+    ["Hors site - CDL", "MARDI"],
+    ["Hors site - Scinti", "MARDI"],
+    ["Hors site - IRM", "LUNDI"],
+    ["Hors site - IRM", "VENDREDI"],
+  ] as const) {
+    assert.equal(isSlotClosed(row, day), false, `${row} ${day} doit rester ouvert`)
+  }
+
+  // Non destructif : une case fermée déjà enregistrée n'est pas vidée
+  const legacy = generateWeekSchedule("2026-W36", [])
+  legacy["Apm - RÉEDUCATION"].MARDI = { value: ["R"], type: "doctor", status: "validated" }
+  assert.deepEqual(
+    applyClosedSlotsClear(legacy)["Apm - RÉEDUCATION"].MARDI.value,
+    ["R"],
+    "les fermetures structurelles ne vident pas l'existant",
+  )
+
+  // Aucune génération ne pose quelqu'un sur une case fermée
+  for (let w = 36; w <= 52; w++) {
+    const gen = generateWeekSchedule(`2026-W${w}`, [])
+    for (const [row, days] of Object.entries(STRUCTURAL_CLOSED_SLOTS)) {
+      for (const day of days) {
+        assert.equal(
+          (gen[row]?.[day]?.value || []).length,
+          0,
+          `2026-W${w} ${row} ${day} ne doit pas être rempli`,
+        )
+      }
+    }
+  }
 
   console.log("✅ vacation-preferences tests passed")
 }

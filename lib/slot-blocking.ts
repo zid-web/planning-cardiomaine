@@ -507,19 +507,13 @@ export function canAssignDoctorToSlot(
     }
   }
 
-  // Cases fermées : Stress Mer/Ven après-midi, EE1 matin hors jeudi
+  // Cases fermées : Stress Mer/Ven apm, EE1 matin hors jeudi, et les
+  // fermetures structurelles (rééducation mardi/jeudi, Rythmo lundi/jeudi
+  // matin, LFB/PSSL/NCT/CDL/Scinti/IRM hors de leurs jours).
   if (isSlotClosed(rowKey, day)) {
     return {
       allowed: false,
       reason: closedSlotReason(rowKey, day) || "Vacation fermée ce jour.",
-    }
-  }
-
-  // Rythmo : non disponible Lundi matin et Jeudi matin
-  if (rowKey.includes("Rythmo") && rowKey.includes("Matin") && (day === "LUNDI" || day === "JEUDI")) {
-    return {
-      allowed: false,
-      reason: "Rythmo non disponible le lundi matin et le jeudi matin.",
     }
   }
 
