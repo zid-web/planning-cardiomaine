@@ -10,7 +10,11 @@ import {
 } from "@/lib/fixed-assignments"
 import { applyClosedSlotsClear, isSlotClosed } from "@/lib/closed-slots"
 import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
-import { canNurseTakeRow, ensureNurseDoctorBinomeProposals } from "@/lib/nurse-rules"
+import {
+  canNurseTakeRow,
+  ensureNurseDoctorBinomeProposals,
+  ensureValOnBothEeRooms,
+} from "@/lib/nurse-rules"
 import {
   adjacentWeekdayNightGuard,
   applyOffSiteSlotRestriction,
@@ -40,7 +44,7 @@ import { STRESS_PARTNER_POOL } from "@/lib/nurse-rules"
 import { formatPersonLabel } from "@/lib/doctor-code"
 import { isOffSiteRow, offSiteSlotOf, setOffSiteSlot } from "@/lib/off-site-slots"
 import { spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
-import type { DoctorVacation } from "@/lib/types"
+import type { DoctorVacation, ScheduleData } from "@/lib/types"
 
 function main() {
   // --- K souvent au Stress mardi matin, rarement le mercredi ---
@@ -551,7 +555,7 @@ function main() {
   // --- Visite : un changement manuel se reporte du lundi au vendredi ---
   const visWeek = "2026-W40"
   const visRow = "Matin - Visite"
-  let vis = generateWeekSchedule(visWeek, [])
+  const vis = generateWeekSchedule(visWeek, [])
   const rotationDoctor = vis[visRow].LUNDI.value[0]
   assert.ok(rotationDoctor, "la semaine générée porte déjà un titulaire de visite")
 
@@ -733,6 +737,101 @@ function main() {
     canAssignDoctorToSlot("G", gThu, "Hors site - LFB", "JEUDI", gPrev, []).allowed,
     false,
     "pas de hors site au lendemain d'une garde de nuit",
+  )
+
+  // --- Visite : une exception sur un seul jour reste possible ---
+  // Le report hebdomadaire est le défaut, mais l'admin peut le désactiver
+  // (interrupteur dans la modale) pour ne toucher qu'une case. L'exception
+  // ainsi posée ne doit pas être écrasée par les contraintes structurelles.
+  const excWeek = "2026-W40"
+  const excBase = applyStructuralConstraints(
+    generateWeekSchedule(excWeek, []),
+    excWeek,
+    [],
+  )
+  const excSpread = spreadVisiteAcrossWeek(
+    {
+      ...excBase,
+      "Matin - Visite": {
+        ...excBase["Matin - Visite"],
+        MERCREDI: { value: ["B"], type: "doctor", status: "validated" },
+      },
+    },
+    excWeek,
+    "MERCREDI",
+    [],
+  )
+  for (const day of ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"]) {
+    assert.deepEqual(excSpread["Matin - Visite"][day].value, ["B"])
+  }
+
+  // Report désactivé : on pose U sur le seul jeudi, sans appeler le report
+  const excOverride: ScheduleData = {
+    ...excSpread,
+    "Matin - Visite": {
+      ...excSpread["Matin - Visite"],
+      JEUDI: { value: ["U"], type: "doctor", status: "validated" },
+    },
+  }
+  assert.deepEqual(excOverride["Matin - Visite"].JEUDI.value, ["U"])
+  assert.deepEqual(excOverride["Matin - Visite"].MERCREDI.value, ["B"], "les autres jours intacts")
+
+  const excAfter = applyStructuralConstraints(excOverride, excWeek, [])
+  assert.deepEqual(
+    excAfter["Matin - Visite"].JEUDI.value,
+    ["U"],
+    "l'exception d'un jour survit aux contraintes structurelles",
+  )
+  assert.deepEqual(excAfter["Matin - Visite"].LUNDI.value, ["B"])
+
+  // --- Val sur EE : les deux salles, avec le même médecin ---
+  const eeWeek = "2026-W36"
+  const eeBuilt = applyStructuralConstraints(generateWeekSchedule(eeWeek, []), eeWeek, [])
+  for (const day of ["MARDI", "JEUDI"]) {
+    const ee1 = eeBuilt["Apm - EE1"][day].value
+    const ee2 = eeBuilt["Apm - EE2"][day].value
+    assert.ok(ee1.includes("Val"), `Val sur EE1 ${day}`)
+    assert.ok(ee2.includes("Val"), `Val aussi sur EE2 ${day}`)
+    const doc1 = ee1.find((d) => d !== "Val")
+    const doc2 = ee2.find((d) => d !== "Val")
+    assert.ok(doc1, `un médecin sur EE1 ${day}`)
+    assert.equal(doc2, doc1, `même médecin sur les deux salles ${day}`)
+  }
+
+  // Miroir prudent : jamais dans une salle tenue par une autre infirmière
+  let eeGuard = generateWeekSchedule(eeWeek, [])
+  eeGuard["Apm - EE1"].LUNDI = { value: ["Val", "Z"], type: "doctor", status: "validated" }
+  eeGuard["Apm - EE2"].LUNDI = { value: ["Véro", "B"], type: "doctor", status: "validated" }
+  const eeGuarded = ensureValOnBothEeRooms(eeGuard)
+  assert.deepEqual(
+    eeGuarded["Apm - EE2"].LUNDI.value,
+    ["Véro", "B"],
+    "salle tenue par Véro : Val n'y est pas ajoutée",
+  )
+
+  // Médecin déjà présent dans la salle cible : il est conservé
+  eeGuard = generateWeekSchedule(eeWeek, [])
+  eeGuard["Apm - EE1"].LUNDI = { value: ["Val", "Z"], type: "doctor", status: "validated" }
+  eeGuard["Apm - EE2"].LUNDI = { value: ["DAAS"], type: "doctor", status: "validated" }
+  const eeKept = ensureValOnBothEeRooms(eeGuard)
+  assert.deepEqual(eeKept["Apm - EE2"].LUNDI.value, ["DAAS", "Val"], "DAAS conservé, Val ajoutée")
+
+  // Case explicitement vidée : jamais re-remplie
+  eeGuard = generateWeekSchedule(eeWeek, [])
+  eeGuard["Apm - EE1"].LUNDI = { value: ["Val", "Z"], type: "doctor", status: "validated" }
+  eeGuard["Apm - EE2"].LUNDI = {
+    value: [],
+    type: "empty",
+    status: "validated",
+    manuallyCleared: true,
+  }
+  assert.deepEqual(ensureValOnBothEeRooms(eeGuard)["Apm - EE2"].LUNDI.value, [])
+
+  // Idempotent
+  const eeOnce = ensureValOnBothEeRooms(eeBuilt)
+  assert.deepEqual(
+    ensureValOnBothEeRooms(eeOnce)["Apm - EE2"].MARDI.value,
+    eeOnce["Apm - EE2"].MARDI.value,
   )
 
   console.log("✅ vacation-preferences tests passed")
