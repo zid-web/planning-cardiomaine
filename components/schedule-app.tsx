@@ -76,6 +76,7 @@ import {
 } from "@/lib/doctor-code"
 import {
   countDoctorInCell,
+  isEttTesseSlotClosed,
   isIrmSlotClosed,
   formatDoctorWithDoublon,
   isDoublonEligibleRow,
@@ -1657,36 +1658,13 @@ export function ScheduleApp({
     // IRM réservée à S : rien à proposer s'il est en congés ce jour-là
     if (isIrmSlotClosed(row, dateStrForWeekDay(weekKey, day), vacations)) return true
 
-    // Rythmo : non disponible Lundi matin et Jeudi matin
-    if (row.includes("Rythmo") && row.includes("Matin") && (day === "LUNDI" || day === "JEUDI")) {
-      return true
-    }
+    // ETT Tessé : vacation de Val — grisée si Val est prise ailleurs ce créneau
+    if (isEttTesseSlotClosed(schedule, row, day)) return true
 
-    // Rééducation: Block Tuesday and Thursday
-    if (row.includes("RÉEDUCATION") && (day === "MARDI" || day === "JEUDI")) return true
-
-    // PSSL: B jeudi / Z mardi — bloquer Lun/Mar/Mer/Ven
-    if (row.includes("PSSL") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) return true
-
-    // LFB: Block Mon, Tue, Wed, Fri
-    if (row.includes("LFB") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) return true
-
-    // Scinti: Block Thu, Fri
-    if (row.includes("Scinti") && ["JEUDI", "VENDREDI"].includes(day)) return true
-
-    // IRM: uniquement Lundi (matin) + Vendredi (après-midi) — autres jours bloqués
-    if (
-      row.includes("IRM") &&
-      ["MARDI", "MERCREDI", "JEUDI", "SAMEDI", "DIMANCHE"].includes(day)
-    ) {
-      return true
-    }
-
-    // CDL: Block Mon, Wed, Thu, Fri
-    if (row.includes("CDL") && ["LUNDI", "MERCREDI", "JEUDI", "VENDREDI"].includes(day)) return true
-
-    // NCT: Block Mon, Tue, Wed, Fri
-    if (row.includes("NCT") && ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"].includes(day)) return true
+    // Rythmo lundi/jeudi matin, rééducation mardi/jeudi, LFB/PSSL/NCT hors
+    // jeudi, CDL hors mardi, Scinti jeudi/vendredi, IRM hors lundi/vendredi :
+    // toutes déclarées dans `STRUCTURAL_CLOSED_SLOTS` et déjà couvertes par
+    // `isSlotClosed` ci-dessus — le moteur et l'affichage lisent la même table.
 
     // Astreintes ATL Midi & Coro AM : fermées (non attribuables) de Lundi à Vendredi de S31 à S34 inclus — levée auto dès S35
     if (

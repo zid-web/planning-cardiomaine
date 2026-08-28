@@ -2,13 +2,14 @@
  * Run: bunx tsx lib/__tests__/vacation-preferences.test.ts
  */
 import assert from "node:assert/strict"
+import { DOCTORS } from "@/lib/constants"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
 import {
   applyFixedClinicalAssignments,
   applyNurseFixedAssignments,
   dateStrForWeekDay,
 } from "@/lib/fixed-assignments"
-import { applyClosedSlotsClear, isSlotClosed } from "@/lib/closed-slots"
+import { applyClosedSlotsClear, closedSlotReason, isSlotClosed, STRUCTURAL_CLOSED_SLOTS } from "@/lib/closed-slots"
 import { DOC022_FIXED_CLINICAL_SLOTS } from "@/lib/group-clinical-rules"
 import {
   canNurseTakeRow,
@@ -20,6 +21,8 @@ import {
   applyOffSiteSlotRestriction,
   applySlotBlockingStrips,
   canAssignDoctorToSlot,
+  isEttTesseSlotClosed,
+  CS_TESSE_EXCLUDED,
   isIrmSlotClosed,
   isNonBlockingRow,
   offSiteBlocksGardeSameDay,
@@ -833,6 +836,178 @@ function main() {
     ensureValOnBothEeRooms(eeOnce)["Apm - EE2"].MARDI.value,
     eeOnce["Apm - EE2"].MARDI.value,
   )
+
+  // --- Fermetures structurelles : moteur et affichage sur la même table ---
+  // Avant, ces jours n'étaient grisés que dans l'UI : le moteur acceptait
+  // l'assignation, et un occupant invisible bloquait le médecin ailleurs.
+  const closedWeek = generateWeekSchedule("2026-W36", [])
+  for (const [row, days] of Object.entries(STRUCTURAL_CLOSED_SLOTS)) {
+    for (const day of days) {
+      assert.ok(isSlotClosed(row, day), `${row} ${day} doit être fermé`)
+      assert.ok(closedSlotReason(row, day), `${row} ${day} doit porter un motif`)
+      const res = canAssignDoctorToSlot("R", "2026-09-01", row, day, closedWeek, [])
+      assert.equal(res.allowed, false, `${row} ${day} doit refuser l'assignation`)
+    }
+  }
+
+  // Les jours d'ouverture le restent
+  for (const [row, day] of [
+    ["Apm - RÉEDUCATION", "MERCREDI"],
+    ["Matin - Rythmo", "MARDI"],
+    ["Hors site - LFB", "JEUDI"],
+    ["Hors site - PSSL", "JEUDI"],
+    ["Hors site - NCT", "JEUDI"],
+    ["Hors site - CDL", "MARDI"],
+    ["Hors site - Scinti", "MARDI"],
+    ["Hors site - IRM", "LUNDI"],
+    ["Hors site - IRM", "VENDREDI"],
+  ] as const) {
+    assert.equal(isSlotClosed(row, day), false, `${row} ${day} doit rester ouvert`)
+  }
+
+  // Non destructif : une case fermée déjà enregistrée n'est pas vidée
+  const legacy = generateWeekSchedule("2026-W36", [])
+  legacy["Apm - RÉEDUCATION"].MARDI = { value: ["R"], type: "doctor", status: "validated" }
+  assert.deepEqual(
+    applyClosedSlotsClear(legacy)["Apm - RÉEDUCATION"].MARDI.value,
+    ["R"],
+    "les fermetures structurelles ne vident pas l'existant",
+  )
+
+  // Aucune génération ne pose quelqu'un sur une case fermée
+  for (let w = 36; w <= 52; w++) {
+    const gen = generateWeekSchedule(`2026-W${w}`, [])
+    for (const [row, days] of Object.entries(STRUCTURAL_CLOSED_SLOTS)) {
+      for (const day of days) {
+        assert.equal(
+          (gen[row]?.[day]?.value || []).length,
+          0,
+          `2026-W${w} ${row} ${day} ne doit pas être rempli`,
+        )
+      }
+    }
+  }
+
+  // --- ETT Tessé : vacation de Val, fermée si Val est prise ailleurs ---
+  const tesseFill = (sch: ScheduleData, row: string, day: string, v: string[]) => {
+    sch[row][day] = { value: v, type: v.length ? "doctor" : "empty", status: "validated" }
+  }
+
+  // Val ailleurs le matin : Tessé matin fermé pour tout le monde, apm intact
+  let tesse = generateWeekSchedule("2026-W36", [])
+  tesseFill(tesse, "Matin - ETT Tessé", "MARDI", [])
+  tesseFill(tesse, "Matin - Stress", "MARDI", ["Val", "K"])
+  assert.equal(isEttTesseSlotClosed(tesse, "Matin - ETT Tessé", "MARDI"), true)
+  assert.equal(isEttTesseSlotClosed(tesse, "Apm - ETT Tessé", "MARDI"), false)
+  for (const doc of ["S", "B", "Val"]) {
+    const res = canAssignDoctorToSlot(doc, "2026-09-01", "Matin - ETT Tessé", "MARDI", tesse, [])
+    assert.equal(res.allowed, false, `${doc} doit être refusé quand Val est ailleurs`)
+  }
+
+  // Val sur la case : la vacation a lieu — mais elle reste la seule titulaire
+  tesse = generateWeekSchedule("2026-W36", [])
+  tesseFill(tesse, "Matin - ETT Tessé", "MARDI", ["Val"])
+  tesseFill(tesse, "Matin - Stress", "MARDI", [])
+  assert.equal(isEttTesseSlotClosed(tesse, "Matin - ETT Tessé", "MARDI"), false)
+  assert.equal(
+    canAssignDoctorToSlot("B", "2026-09-01", "Matin - ETT Tessé", "MARDI", tesse, []).allowed,
+    false,
+    "B ne fait pas d'ETT Tessé, même quand la case est ouverte",
+  )
+
+  // Vacation non bloquante : ne ferme pas l'ETT Tessé
+  tesse = generateWeekSchedule("2026-W36", [])
+  tesseFill(tesse, "Matin - ETT Tessé", "MARDI", [])
+  tesseFill(tesse, "Entrées PSS", "MARDI", ["Val"])
+  assert.equal(isEttTesseSlotClosed(tesse, "Matin - ETT Tessé", "MARDI"), false)
+
+  // Hors site : « journée » ferme les deux demi-journées, « matin » que le matin
+  tesse = generateWeekSchedule("2026-W36", [])
+  tesseFill(tesse, "Matin - ETT Tessé", "MARDI", [])
+  tesseFill(tesse, "Apm - ETT Tessé", "MARDI", [])
+  tesseFill(tesse, "Hors site - CDL", "MARDI", ["Val"])
+  const tesseDay = setOffSiteSlot(tesse, "Hors site - CDL", "MARDI", "day")
+  assert.equal(isEttTesseSlotClosed(tesseDay, "Matin - ETT Tessé", "MARDI"), true)
+  assert.equal(isEttTesseSlotClosed(tesseDay, "Apm - ETT Tessé", "MARDI"), true)
+  const tesseMatin = setOffSiteSlot(tesse, "Hors site - CDL", "MARDI", "matin")
+  assert.equal(isEttTesseSlotClosed(tesseMatin, "Matin - ETT Tessé", "MARDI"), true)
+  assert.equal(isEttTesseSlotClosed(tesseMatin, "Apm - ETT Tessé", "MARDI"), false)
+
+  // Aucune semaine générée ne porte une case Tessé remplie ET fermée
+  for (let w = 36; w <= 52; w++) {
+    const gen = generateWeekSchedule(`2026-W${w}`, [])
+    for (const row of ["Matin - ETT Tessé", "Apm - ETT Tessé"]) {
+      for (const day of ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"]) {
+        if ((gen[row]?.[day]?.value || []).length === 0) continue
+        assert.equal(
+          isEttTesseSlotClosed(gen, row, day),
+          false,
+          `2026-W${w} ${row} ${day} remplie mais fermée`,
+        )
+      }
+    }
+  }
+
+  // --- ETT Tessé : Val et personne d'autre ---
+  const tesseSolo = applyStructuralConstraints(
+    generateWeekSchedule("2026-W36", []),
+    "2026-W36",
+    [],
+    { vacationsReady: true, isFreshWeek: true },
+  )
+  const acceptedOnEtt = DOCTORS.filter(
+    (d) =>
+      canAssignDoctorToSlot(d, "2026-09-02", "Matin - ETT Tessé", "MERCREDI", tesseSolo, [])
+        .allowed,
+  )
+  assert.deepEqual(acceptedOnEtt, ["Val"], "seule Val est assignable à l'ETT Tessé")
+  for (const doc of ["S", "B"]) {
+    assert.equal(
+      canAssignDoctorToSlot(doc, "2026-09-02", "Matin - ETT Tessé", "MERCREDI", tesseSolo, [])
+        .allowed,
+      false,
+      `${doc} ne fait plus d'ETT Tessé (remplace la règle du 31/07)`,
+    )
+  }
+
+  // Val absente : la case n'a plus de titulaire possible, donc grisée
+  const valOff = generateWeekSchedule("2026-W36", [])
+  valOff["Matin - ETT Tessé"].MERCREDI = { value: [], type: "empty", status: "validated" }
+  valOff["Congés"].MERCREDI = { value: ["Val"], type: "doctor", status: "validated" }
+  assert.equal(isEttTesseSlotClosed(valOff, "Matin - ETT Tessé", "MERCREDI"), true)
+
+  // La génération continue de poser Val sur ses créneaux habituels
+  for (const w of [36, 37, 38]) {
+    const gen = applyStructuralConstraints(
+      generateWeekSchedule(`2026-W${w}`, []),
+      `2026-W${w}`,
+      [],
+      { vacationsReady: true, isFreshWeek: true },
+    )
+    for (const day of ["MARDI", "MERCREDI"]) {
+      assert.deepEqual(
+        gen["Matin - ETT Tessé"][day]?.value,
+        ["Val"],
+        `2026-W${w} ${day} : Val doit rester à l'ETT Tessé`,
+      )
+    }
+  }
+
+  // --- Cs Tessée : praticiens jamais concernés ---
+  for (const doc of CS_TESSE_EXCLUDED) {
+    for (const row of ["Matin - Cs Tessée", "Apm - Cs Tessée"]) {
+      const res = canAssignDoctorToSlot(doc, "2026-09-03", row, "JEUDI", tesseSolo, [])
+      assert.equal(res.allowed, false, `${doc} ne doit pas être assignable en ${row}`)
+    }
+  }
+  // Le pool de propositions du solveur reste entièrement assignable
+  for (const doc of ["B", "S", "V", "U"]) {
+    assert.equal(
+      canAssignDoctorToSlot(doc, "2026-09-03", "Matin - Cs Tessée", "JEUDI", tesseSolo, []).allowed,
+      true,
+      `${doc} doit rester assignable en Cs Tessée`,
+    )
+  }
 
   console.log("✅ vacation-preferences tests passed")
 }

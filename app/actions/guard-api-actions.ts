@@ -786,7 +786,8 @@ function fillClinicalProposalsForEmptyRows(
     // Cs PSS : H, Z, G, B, A, K + M, O, W, P, U (hors Coro/Astreintes/Rythmo)
     { row: "Matin - Cs PSS", pool: ["H", "Z", "G", "B", "A", "M", "O", "W", "P", "U", "K"] },
     { row: "Apm - Cs PSS", pool: ["H", "Z", "G", "B", "A", "M", "O", "W", "P", "U", "K"] },
-    // Cs Tessée : B, S, V, U
+    // Cs Tessée : B, S, V, U (P, A, FV, Véro, D, R, DAAS n'en font jamais —
+    // exclusion dure dans CS_TESSE_EXCLUDED)
     { row: "Matin - Cs Tessée", pool: ["B", "S", "V", "U"] },
     { row: "Apm - Cs Tessée", pool: ["B", "S", "V", "U"] },
     // Pré-op
