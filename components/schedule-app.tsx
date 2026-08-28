@@ -76,6 +76,7 @@ import {
 } from "@/lib/doctor-code"
 import {
   countDoctorInCell,
+  isEttTesseSlotClosed,
   isIrmSlotClosed,
   formatDoctorWithDoublon,
   isDoublonEligibleRow,
@@ -1656,6 +1657,9 @@ export function ScheduleApp({
 
     // IRM réservée à S : rien à proposer s'il est en congés ce jour-là
     if (isIrmSlotClosed(row, dateStrForWeekDay(weekKey, day), vacations)) return true
+
+    // ETT Tessé : vacation de Val — grisée si Val est prise ailleurs ce créneau
+    if (isEttTesseSlotClosed(schedule, row, day)) return true
 
     // Rythmo lundi/jeudi matin, rééducation mardi/jeudi, LFB/PSSL/NCT hors
     // jeudi, CDL hors mardi, Scinti jeudi/vendredi, IRM hors lundi/vendredi :

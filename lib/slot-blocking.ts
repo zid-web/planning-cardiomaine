@@ -440,6 +440,62 @@ export function isIrmSlotClosed(
   return isDoctorUnavailable(IRM_DOCTOR, dateStr, vacations)
 }
 
+export const ETT_TESSE_ROWS = ["Matin - ETT Tessé", "Apm - ETT Tessé"] as const
+export const ETT_TESSE_NURSE = "Val"
+
+export function isEttTesseRow(rowKey: string): boolean {
+  return (ETT_TESSE_ROWS as readonly string[]).includes(rowKey)
+}
+
+/**
+ * Ligne du même créneau où Val est déjà prise ce jour-là, ou `null`.
+ * Réutilise la détection de conflit du moteur (`periodsConflict` +
+ * `areCompatibleSamePeriod`), donc les exceptions valent ici aussi : une
+ * vacation non bloquante (Entrées PSS, Pré-op, Visite) ne ferme pas l'ETT
+ * Tessé, un hors site « journée » le ferme sur les deux demi-journées.
+ */
+export function ettTesseBlockingRowForVal(
+  schedule: ScheduleData | undefined,
+  rowKey: string,
+  day: string,
+): string | null {
+  if (!schedule || !isEttTesseRow(rowKey)) return null
+  // Val déjà posée sur la case : la vacation a bien lieu.
+  if (doctorOnRow(schedule, rowKey, day, ETT_TESSE_NURSE)) return null
+
+  const targetPeriod = periodOfRow(rowKey, day, schedule)
+  if (targetPeriod === "meta") return null
+  const compatCtx: CompatibilityContext = {
+    schedule,
+    day,
+    doctorId: ETT_TESSE_NURSE,
+    targetRow: rowKey,
+  }
+  for (const otherRow of Object.keys(schedule)) {
+    if (otherRow === rowKey) continue
+    const otherPeriod = periodOfRow(otherRow, day, schedule)
+    if (otherPeriod === "meta") continue
+    if (!doctorOnRow(schedule, otherRow, day, ETT_TESSE_NURSE)) continue
+    if (!periodsConflict(targetPeriod, otherPeriod)) continue
+    if (areCompatibleSamePeriod(rowKey, otherRow, compatCtx)) continue
+    return otherRow
+  }
+  return null
+}
+
+/**
+ * L'ETT Tessé est une vacation de Val : si Val est prise ailleurs sur le même
+ * créneau, la case n'a pas lieu — elle est grisée et inassignable, y compris
+ * pour S et B (consigne utilisateur 28/08/2026).
+ */
+export function isEttTesseSlotClosed(
+  schedule: ScheduleData | undefined,
+  rowKey: string,
+  day: string,
+): boolean {
+  return ettTesseBlockingRowForVal(schedule, rowKey, day) !== null
+}
+
 /**
  * Jour adjacent (Lun-Ven) où le médecin est déjà sur Garde Nuit, ou null.
  * Le week-end est exclu des deux côtés : Ven Nuit → Sam Matin est un
@@ -584,11 +640,19 @@ export function canAssignDoctorToSlot(
   }
 
   // ETT Tessé : réservé à Val, S, B (confirmé utilisateur 31/07/2026)
-  if (rowKey === "Matin - ETT Tessé" || rowKey === "Apm - ETT Tessé") {
+  if (isEttTesseRow(rowKey)) {
     if (!["Val", "S", "B"].includes(doctorId)) {
       return {
         allowed: false,
         reason: "ETT Tessé réservé à Val, S et B.",
+      }
+    }
+    // Val prise ailleurs sur le créneau : la vacation n'a pas lieu.
+    const valOn = ettTesseBlockingRowForVal(schedule, rowKey, day)
+    if (valOn) {
+      return {
+        allowed: false,
+        reason: `${ETT_TESSE_NURSE} est sur « ${valOn} » ce créneau — pas d’ETT Tessé sans elle.`,
       }
     }
   }

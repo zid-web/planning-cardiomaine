@@ -20,6 +20,7 @@ import {
   applyOffSiteSlotRestriction,
   applySlotBlockingStrips,
   canAssignDoctorToSlot,
+  isEttTesseSlotClosed,
   isIrmSlotClosed,
   isNonBlockingRow,
   offSiteBlocksGardeSameDay,
@@ -880,6 +881,65 @@ function main() {
           (gen[row]?.[day]?.value || []).length,
           0,
           `2026-W${w} ${row} ${day} ne doit pas être rempli`,
+        )
+      }
+    }
+  }
+
+  // --- ETT Tessé : vacation de Val, fermée si Val est prise ailleurs ---
+  const tesseFill = (sch: ScheduleData, row: string, day: string, v: string[]) => {
+    sch[row][day] = { value: v, type: v.length ? "doctor" : "empty", status: "validated" }
+  }
+
+  // Val ailleurs le matin : Tessé matin fermé pour tout le monde, apm intact
+  let tesse = generateWeekSchedule("2026-W36", [])
+  tesseFill(tesse, "Matin - ETT Tessé", "MARDI", [])
+  tesseFill(tesse, "Matin - Stress", "MARDI", ["Val", "K"])
+  assert.equal(isEttTesseSlotClosed(tesse, "Matin - ETT Tessé", "MARDI"), true)
+  assert.equal(isEttTesseSlotClosed(tesse, "Apm - ETT Tessé", "MARDI"), false)
+  for (const doc of ["S", "B", "Val"]) {
+    const res = canAssignDoctorToSlot(doc, "2026-09-01", "Matin - ETT Tessé", "MARDI", tesse, [])
+    assert.equal(res.allowed, false, `${doc} doit être refusé quand Val est ailleurs`)
+  }
+
+  // Val sur la case : la vacation a lieu, S et B restent assignables
+  tesse = generateWeekSchedule("2026-W36", [])
+  tesseFill(tesse, "Matin - ETT Tessé", "MARDI", ["Val"])
+  tesseFill(tesse, "Matin - Stress", "MARDI", [])
+  assert.equal(isEttTesseSlotClosed(tesse, "Matin - ETT Tessé", "MARDI"), false)
+  assert.equal(
+    canAssignDoctorToSlot("B", "2026-09-01", "Matin - ETT Tessé", "MARDI", tesse, []).allowed,
+    true,
+  )
+
+  // Vacation non bloquante : ne ferme pas l'ETT Tessé
+  tesse = generateWeekSchedule("2026-W36", [])
+  tesseFill(tesse, "Matin - ETT Tessé", "MARDI", [])
+  tesseFill(tesse, "Entrées PSS", "MARDI", ["Val"])
+  assert.equal(isEttTesseSlotClosed(tesse, "Matin - ETT Tessé", "MARDI"), false)
+
+  // Hors site : « journée » ferme les deux demi-journées, « matin » que le matin
+  tesse = generateWeekSchedule("2026-W36", [])
+  tesseFill(tesse, "Matin - ETT Tessé", "MARDI", [])
+  tesseFill(tesse, "Apm - ETT Tessé", "MARDI", [])
+  tesseFill(tesse, "Hors site - CDL", "MARDI", ["Val"])
+  const tesseDay = setOffSiteSlot(tesse, "Hors site - CDL", "MARDI", "day")
+  assert.equal(isEttTesseSlotClosed(tesseDay, "Matin - ETT Tessé", "MARDI"), true)
+  assert.equal(isEttTesseSlotClosed(tesseDay, "Apm - ETT Tessé", "MARDI"), true)
+  const tesseMatin = setOffSiteSlot(tesse, "Hors site - CDL", "MARDI", "matin")
+  assert.equal(isEttTesseSlotClosed(tesseMatin, "Matin - ETT Tessé", "MARDI"), true)
+  assert.equal(isEttTesseSlotClosed(tesseMatin, "Apm - ETT Tessé", "MARDI"), false)
+
+  // Aucune semaine générée ne porte une case Tessé remplie ET fermée
+  for (let w = 36; w <= 52; w++) {
+    const gen = generateWeekSchedule(`2026-W${w}`, [])
+    for (const row of ["Matin - ETT Tessé", "Apm - ETT Tessé"]) {
+      for (const day of ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"]) {
+        if ((gen[row]?.[day]?.value || []).length === 0) continue
+        assert.equal(
+          isEttTesseSlotClosed(gen, row, day),
+          false,
+          `2026-W${w} ${row} ${day} remplie mais fermée`,
         )
       }
     }
