@@ -46,6 +46,22 @@ function displayMode(): string {
   return standalone ? "App installée (standalone)" : "Onglet de navigateur"
 }
 
+/**
+ * Empêche une étape muette de figer tout le relevé.
+ *
+ * `navigator.serviceWorker.getRegistration()` peut ne jamais se résoudre
+ * pendant l'installation d'un worker, et un appel réseau peut rester en
+ * suspens sur une connexion mobile dégradée. Sans garde-fou, `setRows` ne
+ * serait jamais appelé et la page resterait sur « Relevé en cours… » —
+ * précisément le défaut que ce diagnostic sert à débusquer ailleurs.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ])
+}
+
 function storageAvailable(kind: "localStorage" | "sessionStorage"): boolean {
   try {
     const store = window[kind]
@@ -59,11 +75,13 @@ function storageAvailable(kind: "localStorage" | "sessionStorage"): boolean {
 
 export default function DiagnosticPage() {
   const [rows, setRows] = useState<Row[] | null>(null)
+  const [connected, setConnected] = useState<boolean | null>(null)
   const [copied, setCopied] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshResult, setRefreshResult] = useState<Row | null>(null)
 
-  const collect = useCallback(async () => {
+  /** Relevé complet. Séparé de `collect` pour qu'un jet n'efface pas le reste. */
+  const gather = async (): Promise<Row[]> => {
     const out: Row[] = []
 
     out.push({ label: "Mode d'affichage", value: displayMode() })
@@ -80,11 +98,13 @@ export default function DiagnosticPage() {
       .map((c) => c.split("=")[0]?.trim())
       .filter(Boolean) as string[]
     const authCookies = cookieNames.filter((n) => SUPABASE_COOKIE.test(n))
-    out.push({
+    // L'absence de cookies est normale hors session : le caractère anormal ne
+    // se décide qu'après avoir lu la session, plus bas.
+    const cookieRow: Row = {
       label: "Cookies de session présents",
       value: authCookies.length > 0 ? `${authCookies.length} (${authCookies.join(", ")})` : "aucun",
-      warn: authCookies.length === 0,
-    })
+    }
+    out.push(cookieRow)
 
     out.push({ label: "localStorage", value: storageAvailable("localStorage") ? "accessible" : "bloqué" })
     out.push({
@@ -93,14 +113,26 @@ export default function DiagnosticPage() {
     })
 
     // ── Session Supabase ───────────────────────────────────────────────────
+    // Être déconnecté n'est PAS une anomalie : c'est l'état normal avant
+    // connexion. Le signaler en rouge noierait le vrai signal sous une alarme
+    // attendue. Les lignes qui n'ont pas de sens sans session sont donc
+    // marquées « non applicable » plutôt que « échec ».
+    let hasSession = false
     try {
       const supabase = createClient()
-      const { data, error } = await supabase.auth.getSession()
+      const { data, error } = await withTimeout(
+        supabase.auth.getSession(),
+        10_000,
+        { data: { session: null }, error: null } as Awaited<
+          ReturnType<typeof supabase.auth.getSession>
+        >,
+      )
       if (error) {
         out.push({ label: "Session", value: `erreur — ${error.message}`, warn: true })
       } else if (!data.session) {
-        out.push({ label: "Session", value: "aucune session (déconnecté)", warn: true })
+        out.push({ label: "Session", value: "aucune — vous n'êtes pas connecté" })
       } else {
+        hasSession = true
         const expiresAt = data.session.expires_at ? data.session.expires_at * 1000 : null
         out.push({ label: "Session", value: "présente" })
         if (expiresAt) {
@@ -117,12 +149,22 @@ export default function DiagnosticPage() {
         })
       }
 
-      const { error: userError } = await supabase.auth.getUser()
-      out.push({
-        label: "Vérification serveur du compte",
-        value: userError ? `échec — ${userError.message}` : "réussie",
-        warn: Boolean(userError),
-      })
+      if (!hasSession) {
+        out.push({ label: "Vérification serveur du compte", value: "non applicable (déconnecté)" })
+      } else {
+        const { error: userError } = await withTimeout(
+          supabase.auth.getUser(),
+          10_000,
+          { error: { message: "délai dépassé" } } as unknown as Awaited<
+            ReturnType<typeof supabase.auth.getUser>
+          >,
+        )
+        out.push({
+          label: "Vérification serveur du compte",
+          value: userError ? `échec — ${userError.message}` : "réussie",
+          warn: Boolean(userError),
+        })
+      }
     } catch (err) {
       out.push({
         label: "Service d'authentification",
@@ -130,14 +172,22 @@ export default function DiagnosticPage() {
         warn: true,
       })
     }
+    setConnected(hasSession)
+    // Une session vivante sans cookie pour la porter est le symptôme central
+    // recherché sur iPhone : c'est là, et seulement là, qu'il faut alerter.
+    if (hasSession && authCookies.length === 0) cookieRow.warn = true
 
     // ── Horloge de l'appareil ──────────────────────────────────────────────
     // Un décalage d'horloge de plus de quelques minutes fait rejeter les
     // jetons JWT comme « pas encore valides » ou « expirés », ce qui produit
     // exactement une impossibilité de se connecter, sans autre symptôme.
     try {
-      const res = await fetch("/api/version", { cache: "no-store" })
-      const serverDate = res.headers.get("date")
+      const res = await withTimeout(
+        fetch("/api/version", { cache: "no-store" }),
+        10_000,
+        null as unknown as Response,
+      )
+      const serverDate = res?.headers.get("date")
       if (serverDate) {
         const skew = (Date.now() - new Date(serverDate).getTime()) / 1000
         out.push({
@@ -152,7 +202,7 @@ export default function DiagnosticPage() {
 
     // ── Service worker ─────────────────────────────────────────────────────
     if ("serviceWorker" in navigator) {
-      const reg = await navigator.serviceWorker.getRegistration()
+      const reg = await withTimeout(navigator.serviceWorker.getRegistration(), 5_000, undefined)
       out.push({
         label: "Service worker",
         value: reg ? (reg.active ? "actif" : "enregistré, non actif") : "non enregistré",
@@ -162,6 +212,21 @@ export default function DiagnosticPage() {
     }
 
     out.push({ label: "Relevé effectué le", value: new Date().toLocaleString("fr-FR") })
+    return out
+  }
+
+  const collect = useCallback(async () => {
+    let out: Row[] = []
+    try {
+      out = await gather()
+    } catch (err) {
+      // Un relevé partiel reste exploitable ; un écran vide, non.
+      out.push({
+        label: "Relevé interrompu",
+        value: err instanceof Error ? err.message : "erreur inconnue",
+        warn: true,
+      })
+    }
     setRows(out)
   }, [])
 
@@ -227,6 +292,28 @@ export default function DiagnosticPage() {
           Elle n&apos;affiche aucun mot de passe, aucun identifiant et aucun jeton : le rapport peut
           être transmis sans risque.
         </p>
+
+        {/* Sans session, la moitié des lignes n'a rien à dire : on l'annonce
+            plutôt que de laisser croire à un relevé complet. */}
+        {connected === false && (
+          <div
+            style={{
+              marginTop: "1rem",
+              borderRadius: "0.5rem",
+              border: "1px solid #fcd34d",
+              backgroundColor: "#fffbeb",
+              padding: "0.75rem 0.875rem",
+              fontSize: "0.8125rem",
+              color: "#78350f",
+            }}
+          >
+            Vous n&apos;êtes pas connecté : ce relevé est incomplet. Pour le rendre utile,{" "}
+            <a href="/auth/login" style={{ color: "#78350f", fontWeight: 600 }}>
+              essayez de vous connecter
+            </a>
+            , puis revenez sur cette page — que la connexion ait réussi ou échoué.
+          </div>
+        )}
 
         {!rows && (
           <p style={{ marginTop: "2rem", fontSize: "0.875rem", color: "#64748b" }}>
