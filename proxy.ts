@@ -20,6 +20,10 @@ export async function proxy(request: NextRequest) {
     "/auth/error",
     "/auth/sign-up-success",
     "/auth/reset-password-confirm",
+    // Diagnostic de connexion : doit rester joignable SANS session, sinon il
+    // renverrait vers la connexion — le mur que la page sert justement à
+    // analyser. N'expose ni jeton, ni identifiant, ni clé.
+    "/diagnostic",
     "/api/ping-solver", // keep-alive cron (cron-job.org / Vercel Cron) — no login
     "/api/version", // version du déploiement (AppUpdateWatcher) — monté aussi sur la page de connexion
     "/api/test-s44",
@@ -59,12 +63,25 @@ export async function proxy(request: NextRequest) {
     },
   })
 
+  /**
+   * Une redirection est une réponse **neuve** : elle ne porte aucun des
+   * cookies que `getUser()` vient éventuellement de rafraîchir. Les renvoyer
+   * sans les recopier fait diverger le navigateur et le serveur, et coupe la
+   * session prématurément — c'est l'écueil que documente le commentaire de
+   * `lib/supabase/proxy.ts`. On recopie donc systématiquement.
+   */
+  const redirectTo = (path: string) => {
+    const redirect = NextResponse.redirect(new URL(path, request.url))
+    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie))
+    return redirect
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return NextResponse.redirect(new URL("/auth/login", request.url))
+    return redirectTo("/auth/login")
   }
 
   if (pathname === "/auth/setup-account") {
@@ -78,7 +95,7 @@ export async function proxy(request: NextRequest) {
     .single()
 
   if (profile?.must_change_password) {
-    return NextResponse.redirect(new URL("/auth/setup-account", request.url))
+    return redirectTo("/auth/setup-account")
   }
 
   return response

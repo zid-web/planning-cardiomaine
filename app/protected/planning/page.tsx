@@ -34,6 +34,7 @@ export default function PlanningPage() {
   const router = useRouter()
 
   const [authReady, setAuthReady] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
   const [currentUser, setCurrentUser] = useState("")
   const [doctorCode, setDoctorCode] = useState("")
   const [isAdmin, setIsAdmin] = useState(false)
@@ -59,8 +60,10 @@ export default function PlanningPage() {
   useEffect(() => {
     const loadAuth = async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser()
-        if (!userData?.user) {
+        setAuthError(null)
+        const { data: userData, error: userError } = await supabase.auth.getUser()
+        // Session absente ou expirée : on repart proprement sur la connexion.
+        if (userError || !userData?.user) {
           router.push("/auth/login")
           return
         }
@@ -82,7 +85,16 @@ export default function PlanningPage() {
         }
         setAuthReady(true)
       } catch (error) {
+        // Sans ce message, la page restait indéfiniment sur « Chargement du
+        // planning… » : `authReady` ne passait jamais à true et rien n'était
+        // affiché. Sur iPhone, où la console du navigateur est inaccessible,
+        // l'app paraissait simplement gelée au démarrage.
         console.error("[planning] Erreur de chargement auth:", error)
+        setAuthError(
+          error instanceof Error
+            ? error.message
+            : "Connexion au service d'authentification impossible.",
+        )
       }
     }
     void loadAuth()
@@ -129,6 +141,33 @@ export default function PlanningPage() {
 
   const handleChangePassword = () => {
     router.push("/profile")
+  }
+
+  if (authError) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-sm font-medium text-slate-700">
+          Impossible de vérifier votre session.
+        </p>
+        <p className="max-w-sm text-xs text-slate-500">{authError}</p>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+          >
+            Réessayer
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/auth/login")}
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+          >
+            Se reconnecter
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (!authReady || scheduleLoading) {
