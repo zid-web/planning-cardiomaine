@@ -216,6 +216,62 @@ function OpenInSafariBanner({ target }: { target: InstallTarget }) {
   )
 }
 
+// ─── Note « session isolée » (Safari/Chrome/app installée) ──────────────────
+// Chaque « app » iOS — Safari, Chrome, et l'app ajoutée à l'écran d'accueil —
+// a son propre bac à sable système avec son propre coffre de cookies : elles
+// NE PARTAGENT JAMAIS leur session, même sur le même compte, le même appareil.
+// Un utilisateur connecté depuis Chrome puis passé à l'app installée (ou à
+// Safari) se retrouve donc déconnecté — pas un bug, un comportement natif
+// d'iOS. Sans cette explication, on reçoit « je n'arrive pas à m'authentifier »
+// alors qu'il suffit de ressaisir ses identifiants ici.
+function IOSSessionIsolationNotice({ target, isInstalled }: { target: InstallTarget; isInstalled: boolean }) {
+  const [dismissed, setDismissed] = useState(false)
+
+  const isIOS = target === "ios-safari" || target === "ios-other"
+  if (!isIOS || !isInstalled || dismissed) return null
+
+  return (
+    <div
+      role="note"
+      style={{
+        marginBottom: "1rem",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "0.5rem",
+        borderRadius: "0.375rem",
+        border: "1px solid #bfdbfe",
+        backgroundColor: "#eff6ff",
+        padding: "0.75rem 1rem",
+        fontSize: "0.8125rem",
+        lineHeight: 1.5,
+        color: "#1e3a5f",
+      }}
+    >
+      <span style={{ flex: 1 }}>
+        Vous ouvrez l&apos;application installée sur votre écran d&apos;accueil : c&apos;est une
+        session indépendante de Safari ou Chrome. Reconnectez-vous simplement avec vos identifiants
+        habituels ci-dessous — ce n&apos;est pas une erreur.
+      </span>
+      <button
+        type="button"
+        onClick={() => setDismissed(true)}
+        aria-label="Fermer"
+        style={{
+          flexShrink: 0,
+          background: "none",
+          border: "none",
+          color: "#1e3a5f",
+          cursor: "pointer",
+          padding: "0.125rem",
+          display: "flex",
+        }}
+      >
+        <X style={{ width: "0.875rem", height: "0.875rem" }} />
+      </button>
+    </div>
+  )
+}
+
 function InstallPWAButton() {
   // Détection navigateur/OS : uniquement côté client (le rendu serveur part
   // toujours du même état neutre, pas de désynchronisation d'hydratation).
@@ -446,9 +502,11 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
   const [browserTarget, setBrowserTarget] = useState<InstallTarget | null>(null)
+  const [isStandalone, setIsStandalone] = useState(false)
 
   useEffect(() => {
     setBrowserTarget(detectInstallTarget().target)
+    setIsStandalone(isRunningStandalone())
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -482,7 +540,17 @@ export default function LoginPage() {
 
       if (authError) {
         if (authError.status === 400 || authError.status === 401) {
-          throw new Error("Email ou mot de passe incorrect.")
+          // Sur iOS, Safari/Chrome/l'app installée ont chacun leur propre
+          // session : un identifiant refusé après un changement de navigateur
+          // ou une installation récente n'est PAS un bug, juste une session
+          // différente à ressaisir. On l'indique explicitement pour éviter
+          // toute confusion avec un vrai mot de passe erroné.
+          const isIOSContext = browserTarget === "ios-safari" || browserTarget === "ios-other"
+          throw new Error(
+            isIOSContext
+              ? "Email ou mot de passe incorrect. Si vous venez de changer de navigateur (Safari/Chrome) ou d'installer l'app, ressaisissez vos identifiants habituels : chaque application a sa propre session sur iPhone."
+              : "Email ou mot de passe incorrect.",
+          )
         } else if (authError.status === 422) {
           throw new Error("Email introuvable. Vérifiez votre adresse ou créez un compte.")
         } else {
@@ -662,6 +730,10 @@ export default function LoginPage() {
                 Entrez votre email et votre mot de passe pour accéder au planning.
               </p>
             </div>
+
+            {browserTarget && (
+              <IOSSessionIsolationNotice target={browserTarget} isInstalled={isStandalone} />
+            )}
 
             {/* Message d'erreur */}
             {error && (
