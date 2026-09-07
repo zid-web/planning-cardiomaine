@@ -29,19 +29,25 @@ export default function ResetPasswordConfirmPage() {
     setError(null)
 
     try {
-      if (!password || !repeatPassword) {
+      // Voir app/auth/login/page.tsx : le clavier iOS ajoute souvent un
+      // espace en fin de champ. On normalise ici aussi, car ce mot de passe
+      // sera comparé (déjà normalisé) au moment de la connexion.
+      const cleanPassword = password.trim()
+      const cleanRepeatPassword = repeatPassword.trim()
+
+      if (!cleanPassword || !cleanRepeatPassword) {
         throw new Error('Both password fields are required')
       }
 
-      if (password !== repeatPassword) {
+      if (cleanPassword !== cleanRepeatPassword) {
         throw new Error('Passwords do not match')
       }
 
-      if (password.length < 6) {
+      if (cleanPassword.length < 6) {
         throw new Error('Password must be at least 6 characters long')
       }
 
-      const result = await updatePassword(password)
+      const result = await updatePassword(cleanPassword)
 
       if (result.error) {
         console.error('[auth/reset-password] Password update error:', result.error)
