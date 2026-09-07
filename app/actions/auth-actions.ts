@@ -87,11 +87,24 @@ export async function getCurrentUser() {
   return user
 }
 
-export async function resetPassword(email: string) {
+export async function resetPassword(email: string, origin?: string) {
   const supabase = await createClient()
 
+  const siteUrl =
+    origin ||
+    process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
+    (process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : null) ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+    'http://localhost:3000'
+
+  // Le lien envoyé par Supabase contient un `code` à usage unique (flux
+  // PKCE) : il faut l'échanger contre une session AVANT de pouvoir changer
+  // le mot de passe, sinon `updatePassword` échoue faute de session active.
+  // On fait donc transiter le lien par `/auth/callback` (qui fait déjà cet
+  // échange pour la confirmation d'inscription) avant d'arriver sur le
+  // formulaire de saisie du nouveau mot de passe.
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? 'http://localhost:3000'}/auth/reset-password-confirm`,
+    redirectTo: `${siteUrl}/auth/callback?next=/auth/reset-password-confirm`,
   })
 
   if (error) {
