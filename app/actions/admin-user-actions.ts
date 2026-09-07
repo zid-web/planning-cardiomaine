@@ -237,7 +237,11 @@ export async function updateUserProfile(
   }
 }
 
-export async function resetUserPassword(id: string, newPassword: string) {
+export async function resetUserPassword(
+  id: string,
+  newPassword: string,
+  options: { confirmAdminTarget?: boolean } = {},
+) {
   try {
     const actor = await assertAdmin()
 
@@ -254,6 +258,30 @@ export async function resetUserPassword(id: string, newPassword: string) {
 
     const admin = createAdminClient()
 
+    // Viser un autre administrateur, c'est pouvoir prendre la main sur un
+    // compte qui peut lui-meme reinitialiser tous les autres (point souleve
+    // en revue). L'operation reste possible — un administrateur peut tres
+    // bien etre l'utilisateur bloque — mais elle doit etre deliberee : sans
+    // confirmation explicite, elle est refusee. Se reinitialiser soi-meme ne
+    // demande rien : on ne s'attaque pas a son propre compte.
+    const { data: target } = await admin
+      .from("profiles")
+      .select("role, email")
+      .eq("id", id)
+      .single()
+
+    const targetIsAdmin = target?.role === "admin"
+    const targetIsSelf = id === actor.id
+    if (targetIsAdmin && !targetIsSelf && !options.confirmAdminTarget) {
+      return {
+        success: false as const,
+        needsAdminConfirmation: true as const,
+        error:
+          `${target?.email || "Ce compte"} est administrateur : le reinitialiser donne acces ` +
+          "a toute la gestion des comptes. Confirmez explicitement pour continuer.",
+      }
+    }
+
     // Trace de l'operation (point souleve en revue). Changer le mot de passe
     // d'autrui est une prise de controle de compte : sans trace, rien ne
     // permet de savoir qui l'a fait ni quand, sur une application ou le
@@ -266,7 +294,13 @@ export async function resetUserPassword(id: string, newPassword: string) {
     // a decider separement.
     //
     // Ne journalise jamais le mot de passe, evidemment, ni celui de l'auteur.
-    const audit = { actorId: actor.id, actorEmail: actor.email, targetId: id }
+    const audit = {
+      actorId: actor.id,
+      actorEmail: actor.email,
+      targetId: id,
+      targetRole: target?.role ?? null,
+      targetIsAdmin,
+    }
 
     const { error: authError } = await admin.auth.admin.updateUserById(id, {
       password: newPassword,
