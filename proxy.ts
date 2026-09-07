@@ -20,6 +20,10 @@ export async function proxy(request: NextRequest) {
     "/auth/error",
     "/auth/sign-up-success",
     "/auth/reset-password-confirm",
+    // Diagnostic de connexion : doit rester joignable SANS session, sinon il
+    // renverrait vers la connexion — le mur que la page sert justement à
+    // analyser. N'expose ni jeton, ni identifiant, ni clé.
+    "/diagnostic",
     "/api/ping-solver", // keep-alive cron (cron-job.org / Vercel Cron) — no login
     "/api/version", // version du déploiement (AppUpdateWatcher) — monté aussi sur la page de connexion
     "/api/test-s44",

@@ -755,6 +755,13 @@ export default function LoginPage() {
                 {isLoading ? "Connexion en cours…" : "Se connecter"}
               </button>
 
+              <p style={{ textAlign: "center", fontSize: "0.75rem", color: "#94a3b8" }}>
+                Un problème pour vous connecter ?{" "}
+                <Link href="/diagnostic" style={{ color: "#64748b", textDecoration: "underline" }}>
+                  Diagnostic
+                </Link>
+              </p>
+
               <p style={{ textAlign: "center", fontSize: "0.875rem", color: "#475569" }}>
                 Pas encore de compte ?{" "}
                 <Link
