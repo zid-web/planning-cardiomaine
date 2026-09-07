@@ -163,6 +163,19 @@ export default function AdminUsersPage() {
       // espace collé en fin de mot de passe temporaire reproduirait le même
       // blocage de connexion que l'on cherche à corriger.
       const res = await resetUserPassword(resetUser.id, resetPasswordValue.trim())
+
+      // Échec partiel : le mot de passe est bien changé, seule l'obligation de
+      // le modifier manque. Le présenter comme un échec sec laisserait l'admin
+      // croire que rien n'a bougé, alors que l'ancien mot de passe ne marche
+      // déjà plus — l'utilisateur serait plus bloqué qu'avant.
+      if (!res.success && "passwordChanged" in res && res.passwordChanged) {
+        toast.warning(res.error, { duration: 15000 })
+        setResetUser(null)
+        setResetPasswordValue("")
+        await refresh()
+        return
+      }
+
       if (!res.success) {
         toast.error(res.error || "Réinitialisation échouée")
         return

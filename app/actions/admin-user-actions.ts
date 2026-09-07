@@ -258,14 +258,30 @@ export async function resetUserPassword(id: string, newPassword: string) {
     })
     if (authError) return { success: false as const, error: authError.message }
 
+    // À partir d'ici le mot de passe EST modifié : l'ancien ne fonctionne plus.
+    // Signaler un simple « échec » si l'écriture suivante rate serait
+    // trompeur — l'admin en conclurait que rien ne s'est passé, ne
+    // communiquerait pas le nouveau mot de passe, et l'utilisateur se
+    // retrouverait plus bloqué qu'avant. On distingue donc ce cas, et
+    // `passwordChanged` permet à l'appelant de l'annoncer correctement.
     const { error: profileError } = await admin
       .from("profiles")
       .update({ must_change_password: true })
       .eq("id", id)
-    if (profileError) return { success: false as const, error: profileError.message }
+    if (profileError) {
+      revalidatePath("/protected/admin/users")
+      return {
+        success: false as const,
+        passwordChanged: true as const,
+        error:
+          "Le mot de passe a bien été modifié — communiquez-le à l'utilisateur. " +
+          "En revanche, l'obligation de le changer à la prochaine connexion n'a pas pu " +
+          `être enregistrée (${profileError.message}). Relancez l'opération pour la poser.`,
+      }
+    }
 
     revalidatePath("/protected/admin/users")
-    return { success: true as const }
+    return { success: true as const, passwordChanged: true as const }
   } catch (err) {
     return {
       success: false as const,
