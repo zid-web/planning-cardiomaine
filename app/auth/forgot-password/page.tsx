@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
         throw new Error('Email is required')
       }
 
-      const result = await resetPassword(cleanEmail)
+      const result = await resetPassword(cleanEmail, window.location.origin)
 
       if (result.error) {
         console.error('[auth/forgot-password] Password reset error:', result.error)
