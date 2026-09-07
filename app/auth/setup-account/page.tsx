@@ -47,21 +47,29 @@ export default function SetupAccountPage() {
     setError(null)
 
     try {
+      // Sur iOS, le clavier ajoute très souvent un espace invisible en fin de
+      // champ (QuickType, correction automatique). Si ce mot de passe initial
+      // est enregistré tel quel, TOUTES les connexions suivantes échoueront
+      // avec "identifiants incorrects" puisque login.tsx normalise l'email et
+      // le mot de passe saisis. On normalise donc aussi ici, à la source.
+      const cleanPassword = password.trim()
+      const cleanConfirmPassword = confirmPassword.trim()
+
       // Validate inputs
-      if (!password || !confirmPassword) {
+      if (!cleanPassword || !cleanConfirmPassword) {
         throw new Error('Please fill in all fields')
       }
 
-      if (password.length < 8) {
+      if (cleanPassword.length < 8) {
         throw new Error('Password must be at least 8 characters')
       }
 
-      if (password !== confirmPassword) {
+      if (cleanPassword !== cleanConfirmPassword) {
         throw new Error('Passwords do not match')
       }
 
       // Setup initial password
-      const result = await setupInitialPassword(password)
+      const result = await setupInitialPassword(cleanPassword)
       if (result.error) {
         throw new Error(result.error)
       }
