@@ -55,6 +55,10 @@ export default function AdminUsersPage() {
   const [deleteUser, setDeleteUser] = useState<AdminUserRow | null>(null)
   const [resetUser, setResetUser] = useState<AdminUserRow | null>(null)
   const [resetPasswordValue, setResetPasswordValue] = useState("")
+  /** Coche exigee avant de reinitialiser le compte d'un autre administrateur. */
+  const [resetAdminConfirmed, setResetAdminConfirmed] = useState(false)
+  /** Identifiant de l'admin connecte : se reinitialiser soi-meme n'exige pas de confirmation. */
+  const [meId, setMeId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const [form, setForm] = useState({
@@ -85,6 +89,7 @@ export default function AdminUsersPage() {
         router.replace("/auth/login")
         return
       }
+      setMeId(userData.user.id)
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
@@ -162,7 +167,30 @@ export default function AdminUsersPage() {
       // On retire les espaces éventuels (clavier iOS) avant l'envoi : un
       // espace collé en fin de mot de passe temporaire reproduirait le même
       // blocage de connexion que l'on cherche à corriger.
-      const res = await resetUserPassword(resetUser.id, resetPasswordValue.trim())
+      const res = await resetUserPassword(resetUser.id, resetPasswordValue.trim(), {
+        confirmAdminTarget: resetAdminConfirmed,
+      })
+
+      // Échec partiel : le mot de passe est bien changé, seule l'obligation de
+      // le modifier manque. Le présenter comme un échec sec laisserait l'admin
+      // croire que rien n'a bougé, alors que l'ancien mot de passe ne marche
+      // déjà plus — l'utilisateur serait plus bloqué qu'avant.
+      if (!res.success && "passwordChanged" in res && res.passwordChanged) {
+        toast.warning(res.error, { duration: 15000 })
+        setResetUser(null)
+        setResetPasswordValue("")
+        setResetAdminConfirmed(false)
+        await refresh()
+        return
+      }
+
+      // Cible administrateur non confirmee : ce n'est pas une erreur, c'est une
+      // etape. On laisse la boite ouverte pour que la coche soit accessible.
+      if (!res.success && "needsAdminConfirmation" in res && res.needsAdminConfirmation) {
+        toast.warning(res.error, { duration: 10000 })
+        return
+      }
+
       if (!res.success) {
         toast.error(res.error || "Réinitialisation échouée")
         return
@@ -172,6 +200,7 @@ export default function AdminUsersPage() {
       )
       setResetUser(null)
       setResetPasswordValue("")
+      setResetAdminConfirmed(false)
       await refresh()
     } finally {
       setBusy(false)
@@ -275,6 +304,7 @@ export default function AdminUsersPage() {
                     variant="outline"
                     onClick={() => {
                       setResetPasswordValue("")
+                      setResetAdminConfirmed(false)
                       setResetUser(u)
                     }}
                   >
@@ -480,6 +510,25 @@ export default function AdminUsersPage() {
                 connexion.
               </p>
             </div>
+
+            {/* Cible administrateur : prendre la main sur un tel compte donne
+                acces a toute la gestion des comptes. Le serveur refuse sans
+                cette confirmation ; la coche la rend deliberee, pas
+                accidentelle. Se reinitialiser soi-meme n'exige rien. */}
+            {resetUser?.role === "admin" && resetUser.id !== meId && (
+              <label className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <input
+                  type="checkbox"
+                  checked={resetAdminConfirmed}
+                  onChange={(e) => setResetAdminConfirmed(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <strong>{resetUser.email} est administrateur.</strong> Réinitialiser son mot de
+                  passe donne accès à toute la gestion des comptes. Je confirme vouloir le faire.
+                </span>
+              </label>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setResetUser(null)}>
