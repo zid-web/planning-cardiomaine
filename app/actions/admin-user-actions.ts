@@ -8,6 +8,7 @@ import {
   isNonSchedulingStaffAdminCode,
 } from "@/lib/staff-admin"
 import { revalidatePath } from "next/cache"
+import { perfLog, perfWarn } from "@/lib/perf-log"
 
 export type AdminUserRow = {
   id: string
@@ -238,7 +239,7 @@ export async function updateUserProfile(
 
 export async function resetUserPassword(id: string, newPassword: string) {
   try {
-    await assertAdmin()
+    const actor = await assertAdmin()
 
     // Supabase exige un minimum de 6 caractères (configuration du projet) ;
     // l'appli exige déjà ≥ 8 caractères ailleurs (création de compte, saisie
@@ -253,10 +254,28 @@ export async function resetUserPassword(id: string, newPassword: string) {
 
     const admin = createAdminClient()
 
+    // Trace de l'operation (point souleve en revue). Changer le mot de passe
+    // d'autrui est une prise de controle de compte : sans trace, rien ne
+    // permet de savoir qui l'a fait ni quand, sur une application ou le
+    // planning fait foi sur les gardes assurees.
+    //
+    // La trace part dans les journaux du serveur (recuperes par Vercel), et
+    // NON dans une table : cela demanderait une migration, et un fichier
+    // dormant dans `supabase/migrations/` n'est pas neutre — `supabase db
+    // push` l'appliquerait. Une table durable reste la solution plus solide,
+    // a decider separement.
+    //
+    // Ne journalise jamais le mot de passe, evidemment, ni celui de l'auteur.
+    const audit = { actorId: actor.id, actorEmail: actor.email, targetId: id }
+
     const { error: authError } = await admin.auth.admin.updateUserById(id, {
       password: newPassword,
     })
-    if (authError) return { success: false as const, error: authError.message }
+    if (authError) {
+      perfWarn("admin-users", "password_reset_failed", { ...audit, error: authError.message })
+      return { success: false as const, error: authError.message }
+    }
+    perfLog("admin-users", "password_reset", audit)
 
     // À partir d'ici le mot de passe EST modifié : l'ancien ne fonctionne plus.
     // Signaler un simple « échec » si l'écriture suivante rate serait
@@ -269,6 +288,10 @@ export async function resetUserPassword(id: string, newPassword: string) {
       .update({ must_change_password: true })
       .eq("id", id)
     if (profileError) {
+      perfWarn("admin-users", "password_reset_flag_failed", {
+        ...audit,
+        error: profileError.message,
+      })
       revalidatePath("/protected/admin/users")
       return {
         success: false as const,
