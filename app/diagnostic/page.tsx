@@ -323,6 +323,32 @@ export default function DiagnosticPage() {
 
         {rows && (
           <>
+            {/* Action principale AVANT la liste : placee sous les onze lignes,
+                elle tombait hors ecran sur telephone, et le rapport finissait
+                recopie a la main — donc tronque (constate deux fois). */}
+            <button
+              type="button"
+              onClick={copyReport}
+              style={{
+                marginTop: "1.25rem",
+                width: "100%",
+                borderRadius: "0.375rem",
+                border: "none",
+                backgroundColor: copied ? "#15803d" : "#B23A48",
+                color: "#fff",
+                padding: "0.875rem",
+                fontSize: "0.9375rem",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {copied ? "Rapport copié ✓ — collez-le dans votre message" : "Copier le rapport complet"}
+            </button>
+            <p style={{ margin: "0.5rem 0 0", fontSize: "0.75rem", color: "#64748b" }}>
+              Utilisez ce bouton plutôt que de recopier les lignes ci-dessous : le rapport contient
+              des informations qui n&apos;apparaissent qu&apos;en bas de page.
+            </p>
+
             <div
               style={{
                 marginTop: "1.5rem",
@@ -363,6 +389,7 @@ export default function DiagnosticPage() {
               <button
                 type="button"
                 onClick={copyReport}
+                data-copy="bottom"
                 style={{
                   flex: "1 1 10rem",
                   borderRadius: "0.375rem",
