@@ -28,14 +28,25 @@ export async function setupInitialPassword(newPassword: string) {
       return { error: passwordError.message }
     }
 
-    // Update must_change_password in profiles table
+    // À partir d'ici le mot de passe EST change. Si la levee du drapeau
+    // echoue, `proxy.ts` continue de renvoyer l'utilisateur ici a chaque
+    // requete : il tourne en boucle sur cet ecran, sans comprendre que son
+    // nouveau mot de passe fonctionne deja. Un simple message d'erreur brut
+    // le laisserait croire que rien n'a marche et qu'il doit recommencer.
     const { error: profileError } = await supabase
       .from('profiles')
       .update({ must_change_password: false })
       .eq('id', user.id)
 
     if (profileError) {
-      return { error: profileError.message }
+      return {
+        passwordChanged: true,
+        error:
+          'Votre mot de passe a bien été enregistré et fonctionne dès maintenant. ' +
+          "En revanche l'application n'a pas pu lever l'obligation de le changer " +
+          `(${profileError.message}), et va continuer à vous ramener sur cet écran. ` +
+          'Signalez-le à un administrateur.',
+      }
     }
 
     revalidatePath('/', 'layout')
