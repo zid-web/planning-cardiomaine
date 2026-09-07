@@ -236,6 +236,44 @@ export async function updateUserProfile(
   }
 }
 
+export async function resetUserPassword(id: string, newPassword: string) {
+  try {
+    await assertAdmin()
+
+    // Supabase exige un minimum de 6 caractères (configuration du projet) ;
+    // l'appli exige déjà ≥ 8 caractères ailleurs (création de compte, saisie
+    // du mot de passe par l'utilisateur). En dessous de ce seuil, l'appel
+    // `updateUserById` échoue côté Supabase et le mot de passe n'est JAMAIS
+    // réellement modifié — l'utilisateur reste bloqué avec « email ou mot de
+    // passe incorrect » sans que l'admin s'en rende compte. On bloque donc
+    // ici tout mot de passe trop court (ex. "1234") avant l'appel Supabase.
+    if (!newPassword || newPassword.length < 8) {
+      return { success: false as const, error: "Le mot de passe doit contenir au moins 8 caractères" }
+    }
+
+    const admin = createAdminClient()
+
+    const { error: authError } = await admin.auth.admin.updateUserById(id, {
+      password: newPassword,
+    })
+    if (authError) return { success: false as const, error: authError.message }
+
+    const { error: profileError } = await admin
+      .from("profiles")
+      .update({ must_change_password: true })
+      .eq("id", id)
+    if (profileError) return { success: false as const, error: profileError.message }
+
+    revalidatePath("/protected/admin/users")
+    return { success: true as const }
+  } catch (err) {
+    return {
+      success: false as const,
+      error: err instanceof Error ? err.message : "Erreur",
+    }
+  }
+}
+
 export async function deleteUserAccount(id: string) {
   try {
     const me = await assertAdmin()
