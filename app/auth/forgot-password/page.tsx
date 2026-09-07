@@ -26,11 +26,15 @@ export default function ForgotPasswordPage() {
     setError(null)
 
     try {
-      if (!email) {
+      // Voir app/auth/login/page.tsx : le clavier iOS ajoute souvent un
+      // espace en fin de champ, on normalise donc l'email avant envoi.
+      const cleanEmail = email.trim().toLowerCase()
+
+      if (!cleanEmail) {
         throw new Error('Email is required')
       }
 
-      const result = await resetPassword(email)
+      const result = await resetPassword(cleanEmail)
 
       if (result.error) {
         console.error('[auth/forgot-password] Password reset error:', result.error)
@@ -91,8 +95,12 @@ export default function ForgotPasswordPage() {
                     <Input
                       id="email"
                       type="email"
+                      inputMode="email"
                       placeholder="m@example.com"
                       required
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                     />
