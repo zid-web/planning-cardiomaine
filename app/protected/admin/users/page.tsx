@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Trash2, UserCog, ArrowLeft } from "lucide-react"
+import { Plus, Trash2, UserCog, ArrowLeft, KeyRound } from "lucide-react"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import {
   createUserAccount,
   deleteUserAccount,
   listUsers,
+  resetUserPassword,
   updateUserProfile,
   type AdminUserRow,
 } from "@/app/actions/admin-user-actions"
@@ -52,6 +53,8 @@ export default function AdminUsersPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [editUser, setEditUser] = useState<AdminUserRow | null>(null)
   const [deleteUser, setDeleteUser] = useState<AdminUserRow | null>(null)
+  const [resetUser, setResetUser] = useState<AdminUserRow | null>(null)
+  const [resetPasswordValue, setResetPasswordValue] = useState("")
   const [busy, setBusy] = useState(false)
 
   const [form, setForm] = useState({
@@ -148,6 +151,33 @@ export default function AdminUsersPage() {
     }
   }
 
+  const handleResetPassword = async () => {
+    if (!resetUser) return
+    if (resetPasswordValue.trim().length < 8) {
+      toast.error("Le mot de passe doit contenir au moins 8 caractères")
+      return
+    }
+    setBusy(true)
+    try {
+      // On retire les espaces éventuels (clavier iOS) avant l'envoi : un
+      // espace collé en fin de mot de passe temporaire reproduirait le même
+      // blocage de connexion que l'on cherche à corriger.
+      const res = await resetUserPassword(resetUser.id, resetPasswordValue.trim())
+      if (!res.success) {
+        toast.error(res.error || "Réinitialisation échouée")
+        return
+      }
+      toast.success(
+        `Mot de passe réinitialisé pour ${resetUser.email}. Communiquez-le à l'utilisateur : il devra le changer à sa prochaine connexion.`,
+      )
+      setResetUser(null)
+      setResetPasswordValue("")
+      await refresh()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (!deleteUser) return
     setBusy(true)
@@ -236,9 +266,20 @@ export default function AdminUsersPage() {
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setEditUser({ ...u })}>
                     Modifier
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setResetPasswordValue("")
+                      setResetUser(u)
+                    }}
+                  >
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    Réinitialiser le mot de passe
                   </Button>
                   <Button
                     size="sm"
@@ -280,6 +321,14 @@ export default function AdminUsersPage() {
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                 type="password"
               />
+              <p
+                className={`text-xs ${
+                  form.password && form.password.length < 8 ? "text-red-600" : "text-slate-500"
+                }`}
+              >
+                Minimum 8 caractères — un mot de passe plus court (ex. « 1234 ») est refusé par
+                Supabase et le compte reste inaccessible.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -398,6 +447,49 @@ export default function AdminUsersPage() {
             </Button>
             <Button onClick={() => void handleUpdate()} disabled={busy}>
               Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset password */}
+      <Dialog open={!!resetUser} onOpenChange={(o) => !o && setResetUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="break-all">
+              Réinitialiser le mot de passe de {resetUser?.email}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Nouveau mot de passe temporaire</Label>
+              <Input
+                value={resetPasswordValue}
+                onChange={(e) => setResetPasswordValue(e.target.value)}
+                type="text"
+                autoComplete="off"
+              />
+              <p
+                className={`text-xs ${
+                  resetPasswordValue && resetPasswordValue.length < 8
+                    ? "text-red-600"
+                    : "text-slate-500"
+                }`}
+              >
+                Minimum 8 caractères. L&apos;utilisateur devra le changer dès sa prochaine
+                connexion.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetUser(null)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={() => void handleResetPassword()}
+              disabled={busy || resetPasswordValue.trim().length < 8}
+            >
+              Réinitialiser
             </Button>
           </DialogFooter>
         </DialogContent>
