@@ -35,8 +35,13 @@ export default function Page() {
     }
 
     try {
+      // Voir app/auth/login/page.tsx : le clavier iOS ajoute souvent un
+      // espace en fin de champ, on normalise donc les identifiants.
+      const cleanEmail = email.trim().toLowerCase()
+      const cleanPassword = password.trim()
+
       // Validate inputs
-      if (!email || !password) {
+      if (!cleanEmail || !cleanPassword) {
         throw new Error('Email and password are required')
       }
 
@@ -46,8 +51,8 @@ export default function Page() {
       }
 
       const { error } = await supabase.auth.signUp({
-        email,
-        password,
+        email: cleanEmail,
+        password: cleanPassword,
         options: {
           emailRedirectTo:
             process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
@@ -87,8 +92,12 @@ export default function Page() {
                     <Input
                       id="email"
                       type="email"
+                      inputMode="email"
                       placeholder="m@example.com"
                       required
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                     />
