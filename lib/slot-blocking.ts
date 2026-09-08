@@ -19,7 +19,7 @@
 import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
 import { isAtlEligibleForCell, isCoroEligibleDoctor } from "@/lib/group-clinical-rules"
-import { HALF_DAY_OFF_APM_ROW, HALF_DAY_OFF_MATIN_ROW } from "@/lib/half-day-off"
+import { HALF_DAY_OFF_APM_ROW, HALF_DAY_OFF_MATIN_ROW, hasHabitualAfternoonOff } from "@/lib/half-day-off"
 import {
   appendSpecialDoctorLabel,
   isEttPedWithGardeOrAtlMidi,
@@ -806,8 +806,20 @@ export function canAssignDoctorToSlot(
       day === "MERCREDI" &&
       (doctorId === "M" || doctorId === "W") &&
       (rowKey === "Apm - Coro" || rowKey === "Astreintes ATL Midi")
+    // Exception Z (demande utilisateur) : la ½ off apm affichée le lendemain
+    // d'une garde de nuit reste un simple repère visuel modifiable pour Z —
+    // elle ne bloque plus ses affectations, contrairement aux autres
+    // médecins. Ne s'applique PAS à l'off habituel du mercredi de Z (un
+    // vrai jour de repos, pas une récupération de garde) : on ne bypass que
+    // lorsque ce n'est pas déjà son off habituel ce jour-là.
+    const isZRecoveryBypass = doctorId === "Z" && !hasHabitualAfternoonOff("Z", day)
 
-    if (!isAstreinteOrGarde && !isWednesdayCoroApmBypass && (targetPeriod === "apm" || targetPeriod === "day")) {
+    if (
+      !isAstreinteOrGarde &&
+      !isWednesdayCoroApmBypass &&
+      !isZRecoveryBypass &&
+      (targetPeriod === "apm" || targetPeriod === "day")
+    ) {
       return {
         allowed: false,
         reason: `${doctorId} est en ½ journée off Après-midi — pas d’activité l’après-midi.`,
@@ -1026,12 +1038,19 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
       }
 
       if (doctorOnRow(next, HALF_DAY_OFF_APM_ROW, day, doctorId)) {
-        for (const row of Object.keys(next)) {
-          const p = periodOfRow(row, day, next)
-          if (p === "apm" || p === "day") {
-            const isAstreinteOrGarde = row.includes("Astreintes ATL") || isGardeRow(row)
-            if (isAstreinteOrGarde) continue
-            next = stripDoctorFromRow(next, row, day, doctorId)
+        // Exception Z (demande utilisateur) : ne pas retirer Z des autres
+        // cases l'après-midi quand cette ½ off vient de la récupération
+        // post-garde (pas son off habituel du mercredi) — voir la même
+        // exception dans isSlotAllowed ci-dessus.
+        const isZRecoveryBypass = doctorId === "Z" && !hasHabitualAfternoonOff("Z", day)
+        if (!isZRecoveryBypass) {
+          for (const row of Object.keys(next)) {
+            const p = periodOfRow(row, day, next)
+            if (p === "apm" || p === "day") {
+              const isAstreinteOrGarde = row.includes("Astreintes ATL") || isGardeRow(row)
+              if (isAstreinteOrGarde) continue
+              next = stripDoctorFromRow(next, row, day, doctorId)
+            }
           }
         }
       }
