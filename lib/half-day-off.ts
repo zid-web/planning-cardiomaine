@@ -186,6 +186,12 @@ export function rebuildHalfDayOffsForDay(
 
   for (const doc of recoveryDoctors) {
     if (!doc || doc === "CH" || !isListedDoctor(doc)) continue
+    // Exception Z (demande utilisateur) : Z ne reçoit plus la ½ off de
+    // récupération après une garde de nuit — seul Z reste assignable le
+    // lendemain après-midi d'une garde. Les autres médecins gardent la
+    // règle habituelle (½ off générée automatiquement, qui bloque ensuite
+    // toute affectation ce créneau-là via lib/slot-blocking.ts).
+    if (doc === "Z") continue
     const slot = targetOffSlotAfterNightGuard(doc, dayName)
     if (slot === "matin") {
       if (!matin.includes(doc)) matin.push(doc)
