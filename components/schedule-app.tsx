@@ -210,6 +210,24 @@ export function ScheduleApp({
   const [currentDate, setCurrentDate] = useState(new Date()) // Track current date
   const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null)
   const [noteModalOpen, setNoteModalOpen] = useState(false)
+  // Hauteur réellement visible (hors clavier virtuel) pour la fenêtre "Notes du
+  // jour" : sur iPhone/Android, `fixed inset-0` ne se redimensionne pas
+  // toujours correctement quand le clavier s'ouvre, ce qui pousse le bouton
+  // "Valider" hors de l'écran visible (confirmé utilisateur, tél. iOS + Android).
+  const [noteModalViewportHeight, setNoteModalViewportHeight] = useState<number | null>(null)
+  useEffect(() => {
+    if (!noteModalOpen) return
+    const vv = typeof window !== "undefined" ? window.visualViewport : null
+    if (!vv) return
+    const update = () => setNoteModalViewportHeight(vv.height)
+    update()
+    vv.addEventListener("resize", update)
+    vv.addEventListener("scroll", update)
+    return () => {
+      vv.removeEventListener("resize", update)
+      vv.removeEventListener("scroll", update)
+    }
+  }, [noteModalOpen])
   const [currentNote, setCurrentNote] = useState("")
   const [noteDay, setNoteDay] = useState("")
   const [learnMoreOpen, setLearnMoreOpen] = useState(false)
@@ -3572,11 +3590,12 @@ export function ScheduleApp({
       {/* Note Modal — footer sticky pour garder Valider visible (clavier mobile) */}
       {noteModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          className="fixed inset-x-0 top-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          style={{ height: noteModalViewportHeight ? `${noteModalViewportHeight}px` : "100dvh" }}
           onClick={() => setNoteModalOpen(false)}
         >
           <Card
-            className="relative flex max-h-[min(92dvh,640px)] w-full max-w-md flex-col gap-0 overflow-hidden rounded-t-3xl border border-slate-200 bg-white py-0 text-slate-900 shadow-2xl sm:rounded-2xl"
+            className="relative flex max-h-full w-full max-w-md flex-col gap-0 overflow-hidden rounded-t-3xl border border-slate-200 bg-white py-0 text-slate-900 shadow-2xl sm:max-h-[min(92dvh,640px)] sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="shrink-0 border-b border-slate-200 bg-gradient-to-r from-sky-50 to-white px-5 py-4 pr-12">
