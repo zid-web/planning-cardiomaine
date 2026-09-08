@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
+import { ADMIN_RECIPIENT_CODES, type AdminRecipientCode } from '@/lib/admin-recipients';
 
 export type DoctorMessage = {
   id: string;
@@ -14,10 +15,6 @@ export type DoctorMessage = {
   read_at: string | null;
   read_by: string | null;
 };
-
-/** Administrateurs pouvant être destinataires d'un message privé (M, Z, Lucie). */
-export const ADMIN_RECIPIENT_CODES = ['M', 'Z', 'L'] as const;
-export type AdminRecipientCode = (typeof ADMIN_RECIPIENT_CODES)[number];
 
 /**
  * Messages médecin -> admin, ciblés (rubrique "Note privée pour vous" /
