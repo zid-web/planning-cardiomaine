@@ -125,6 +125,7 @@ import {
 import type { ScheduleSaveSource } from "@/lib/schedule-diff"
 import { getLastSundayGuardDoctor, recordLastComboGardeFromSchedule } from "@/app/actions/guard-api-actions"
 import { getMyPrivateNote, getAllPrivateNotesForDate, upsertPrivateNote, deletePrivateNote } from "@/app/actions/private-notes-actions"
+import { sendDoctorMessage, getMyDoctorMessages, getAllDoctorMessages, markDoctorMessagesRead, deleteDoctorMessage, type DoctorMessage } from "@/app/actions/doctor-messages-actions"
 import { getChangeRequestsHistory } from "@/app/actions/change-request-actions"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { getAllVacations } from "@/app/actions/vacation-actions"
@@ -255,6 +256,11 @@ export function ScheduleApp({
   const [connectedUsers, setConnectedUsers] = useState<string[]>([])
   // Note privée admin -> médecin (confirmé utilisateur 01/08/2026).
   const [myPrivateNote, setMyPrivateNote] = useState("")
+  // Discussion médecin -> admin (rubrique Messagerie & Demandes, onglet Messages)
+  const [doctorMessages, setDoctorMessages] = useState<DoctorMessage[]>([])
+  const [allDoctorMessages, setAllDoctorMessages] = useState<DoctorMessage[]>([])
+  const [newDoctorMessageText, setNewDoctorMessageText] = useState("")
+  const [sendingDoctorMessage, setSendingDoctorMessage] = useState(false)
   // UUID auth de l'utilisateur courant (distinct de currentUser = code
   // médecin) - nécessaire pour filtrer "mes demandes" par requester_id.
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -770,6 +776,63 @@ export function ScheduleApp({
       cancelled = true
     }
   }, [isAdmin, showRequests, weekKey, currentDayIndex])
+
+  // Discussion médecin -> admin : chargement à l'ouverture du panneau Messagerie
+  useEffect(() => {
+    if (!showRequests || requestsTab !== "messages") return
+    let cancelled = false
+    if (isAdmin) {
+      getAllDoctorMessages()
+        .then((msgs) => {
+          if (!cancelled) setAllDoctorMessages(msgs || [])
+        })
+        .catch(console.error)
+      void markDoctorMessagesRead()
+    } else {
+      getMyDoctorMessages()
+        .then((msgs) => {
+          if (!cancelled) setDoctorMessages(msgs || [])
+        })
+        .catch(console.error)
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin, showRequests, requestsTab])
+
+  const sendNewDoctorMessage = async () => {
+    const text = newDoctorMessageText.trim()
+    if (!text || sendingDoctorMessage) return
+    setSendingDoctorMessage(true)
+    try {
+      const result = await sendDoctorMessage(text)
+      if (result.success) {
+        setNewDoctorMessageText("")
+        const msgs = await getMyDoctorMessages()
+        setDoctorMessages(msgs || [])
+        toast.success("Message envoyé à l'administration")
+      } else {
+        toast.error(result.error || "Échec de l'envoi du message")
+      }
+    } finally {
+      setSendingDoctorMessage(false)
+    }
+  }
+
+  const removeDoctorMessageItem = async (id: string) => {
+    const result = await deleteDoctorMessage(id)
+    if (!result.success) {
+      toast.error("Échec de la suppression du message")
+      return
+    }
+    if (isAdmin) {
+      const msgs = await getAllDoctorMessages()
+      setAllDoctorMessages(msgs || [])
+    } else {
+      const msgs = await getMyDoctorMessages()
+      setDoctorMessages(msgs || [])
+    }
+  }
 
   const getTaskSortOrder = (activity: string) => {
     if (activity.includes("Matin")) return 1
@@ -3107,7 +3170,10 @@ export function ScheduleApp({
                     : "border-transparent text-slate-500 hover:text-slate-700"
                 )}
               >
-                Messages {(!isAdmin && myPrivateNote) && <span className="ml-1 inline-block h-2 w-2 rounded-full bg-red-500" />}
+                Messages{" "}
+                {((!isAdmin && myPrivateNote) || (isAdmin && allDoctorMessages.some((m) => !m.read_at))) && (
+                  <span className="ml-1 inline-block h-2 w-2 rounded-full bg-red-500" />
+                )}
               </button>
               <button
                 type="button"
@@ -3178,6 +3244,45 @@ export function ScheduleApp({
                       ))}
                     </div>
                   )}
+
+                  {/* Messages reçus des médecins (tous, toutes dates confondues) */}
+                  <div className="pt-3 border-t border-slate-200">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      Messages reçus des médecins
+                    </p>
+                    {allDoctorMessages.length === 0 ? (
+                      <p className="text-center py-6 text-sm text-slate-400">Aucun message reçu pour le moment.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                        {allDoctorMessages.map((m) => (
+                          <div key={m.id} className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs relative">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="font-extrabold text-slate-900">
+                                {formatPersonLabel(m.sender_doctor_code)}
+                                <span className="ml-2 font-normal text-slate-500">
+                                  {new Date(m.created_at).toLocaleString("fr-FR", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void removeDoctorMessageItem(m.id)}
+                                className="text-slate-400 hover:text-red-600 p-1 rounded transition"
+                                title="Supprimer ce message"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                            <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{m.message_text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -3205,6 +3310,60 @@ export function ScheduleApp({
                   ) : (
                     <p className="text-center py-8 text-sm text-slate-400">Aucun message de l'administrateur aujourd'hui ({dateStrForWeekDay(weekKey, DAYS[currentDayIndex])}).</p>
                   )}
+
+                  {/* Discussion médecin -> admin */}
+                  <div className="pt-3 border-t border-slate-200">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      Écrire à l'administration
+                    </p>
+                    {doctorMessages.length > 0 && (
+                      <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 mb-3">
+                        {doctorMessages.map((m) => (
+                          <div
+                            key={m.id}
+                            className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs relative"
+                          >
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="font-extrabold text-slate-900">
+                                {new Date(m.created_at).toLocaleString("fr-FR", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void removeDoctorMessageItem(m.id)}
+                                className="text-slate-400 hover:text-red-600 p-1 rounded transition"
+                                title="Supprimer ce message"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                            <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{m.message_text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <textarea
+                        placeholder="Votre message pour l'administration…"
+                        className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+                        rows={2}
+                        value={newDoctorMessageText}
+                        onChange={(e) => setNewDoctorMessageText(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void sendNewDoctorMessage()}
+                        disabled={!newDoctorMessageText.trim() || sendingDoctorMessage}
+                        className="shrink-0 self-end rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        {sendingDoctorMessage ? "Envoi…" : "Envoyer"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )
             ) : (
