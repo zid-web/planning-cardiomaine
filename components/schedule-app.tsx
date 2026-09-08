@@ -125,7 +125,7 @@ import {
 import type { ScheduleSaveSource } from "@/lib/schedule-diff"
 import { getLastSundayGuardDoctor, recordLastComboGardeFromSchedule } from "@/app/actions/guard-api-actions"
 import { getMyPrivateNote, getAllPrivateNotesForDate, upsertPrivateNote, deletePrivateNote } from "@/app/actions/private-notes-actions"
-import { sendDoctorMessage, getMyDoctorMessages, getAllDoctorMessages, markDoctorMessagesRead, deleteDoctorMessage, type DoctorMessage } from "@/app/actions/doctor-messages-actions"
+import { sendDoctorMessage, getMyDoctorMessages, getMyReceivedDoctorMessages, markDoctorMessagesRead, deleteDoctorMessage, ADMIN_RECIPIENT_CODES, type DoctorMessage } from "@/app/actions/doctor-messages-actions"
 import { getChangeRequestsHistory } from "@/app/actions/change-request-actions"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { getAllVacations } from "@/app/actions/vacation-actions"
@@ -260,6 +260,7 @@ export function ScheduleApp({
   const [doctorMessages, setDoctorMessages] = useState<DoctorMessage[]>([])
   const [allDoctorMessages, setAllDoctorMessages] = useState<DoctorMessage[]>([])
   const [newDoctorMessageText, setNewDoctorMessageText] = useState("")
+  const [newDoctorMessageTarget, setNewDoctorMessageTarget] = useState("")
   const [sendingDoctorMessage, setSendingDoctorMessage] = useState(false)
   // UUID auth de l'utilisateur courant (distinct de currentUser = code
   // médecin) - nécessaire pour filtrer "mes demandes" par requester_id.
@@ -782,7 +783,7 @@ export function ScheduleApp({
     if (!showRequests || requestsTab !== "messages") return
     let cancelled = false
     if (isAdmin) {
-      getAllDoctorMessages()
+      getMyReceivedDoctorMessages()
         .then((msgs) => {
           if (!cancelled) setAllDoctorMessages(msgs || [])
         })
@@ -802,15 +803,15 @@ export function ScheduleApp({
 
   const sendNewDoctorMessage = async () => {
     const text = newDoctorMessageText.trim()
-    if (!text || sendingDoctorMessage) return
+    if (!text || !newDoctorMessageTarget || sendingDoctorMessage) return
     setSendingDoctorMessage(true)
     try {
-      const result = await sendDoctorMessage(text)
+      const result = await sendDoctorMessage(text, newDoctorMessageTarget)
       if (result.success) {
         setNewDoctorMessageText("")
         const msgs = await getMyDoctorMessages()
         setDoctorMessages(msgs || [])
-        toast.success("Message envoyé à l'administration")
+        toast.success(`Message privé envoyé à ${formatPersonLabel(newDoctorMessageTarget)}`)
       } else {
         toast.error(result.error || "Échec de l'envoi du message")
       }
@@ -826,7 +827,7 @@ export function ScheduleApp({
       return
     }
     if (isAdmin) {
-      const msgs = await getAllDoctorMessages()
+      const msgs = await getMyReceivedDoctorMessages()
       setAllDoctorMessages(msgs || [])
     } else {
       const msgs = await getMyDoctorMessages()
@@ -3248,7 +3249,7 @@ export function ScheduleApp({
                   {/* Messages reçus des médecins (tous, toutes dates confondues) */}
                   <div className="pt-3 border-t border-slate-200">
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Messages reçus des médecins
+                      Messages privés reçus (adressés à vous)
                     </p>
                     {allDoctorMessages.length === 0 ? (
                       <p className="text-center py-6 text-sm text-slate-400">Aucun message reçu pour le moment.</p>
@@ -3311,10 +3312,10 @@ export function ScheduleApp({
                     <p className="text-center py-8 text-sm text-slate-400">Aucun message de l'administrateur aujourd'hui ({dateStrForWeekDay(weekKey, DAYS[currentDayIndex])}).</p>
                   )}
 
-                  {/* Discussion médecin -> admin */}
+                  {/* Discussion médecin -> admin : message privé à un destinataire choisi */}
                   <div className="pt-3 border-t border-slate-200">
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Écrire à l'administration
+                      Envoyer un message privé à un administrateur
                     </p>
                     {doctorMessages.length > 0 && (
                       <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 mb-3">
@@ -3325,12 +3326,15 @@ export function ScheduleApp({
                           >
                             <div className="flex justify-between items-center mb-1">
                               <span className="font-extrabold text-slate-900">
-                                {new Date(m.created_at).toLocaleString("fr-FR", {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                À {m.target_admin_code === "L" ? "Lucie" : formatPersonLabel(m.target_admin_code)}
+                                <span className="ml-2 font-normal text-slate-500">
+                                  {new Date(m.created_at).toLocaleString("fr-FR", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
                               </span>
                               <button
                                 type="button"
@@ -3346,22 +3350,36 @@ export function ScheduleApp({
                         ))}
                       </div>
                     )}
-                    <div className="flex gap-2">
-                      <textarea
-                        placeholder="Votre message pour l'administration…"
-                        className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
-                        rows={2}
-                        value={newDoctorMessageText}
-                        onChange={(e) => setNewDoctorMessageText(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void sendNewDoctorMessage()}
-                        disabled={!newDoctorMessageText.trim() || sendingDoctorMessage}
-                        className="shrink-0 self-end rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    <div className="space-y-2">
+                      <select
+                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                        value={newDoctorMessageTarget}
+                        onChange={(e) => setNewDoctorMessageTarget(e.target.value)}
                       >
-                        {sendingDoctorMessage ? "Envoi…" : "Envoyer"}
-                      </button>
+                        <option value="">Choisir un destinataire…</option>
+                        {ADMIN_RECIPIENT_CODES.map((code) => (
+                          <option key={code} value={code}>
+                            {code === "L" ? "Lucie" : formatPersonLabel(code)}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex gap-2">
+                        <textarea
+                          placeholder="Votre message privé…"
+                          className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+                          rows={2}
+                          value={newDoctorMessageText}
+                          onChange={(e) => setNewDoctorMessageText(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void sendNewDoctorMessage()}
+                          disabled={!newDoctorMessageText.trim() || !newDoctorMessageTarget || sendingDoctorMessage}
+                          className="shrink-0 self-end rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        >
+                          {sendingDoctorMessage ? "Envoi…" : "Envoyer"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
