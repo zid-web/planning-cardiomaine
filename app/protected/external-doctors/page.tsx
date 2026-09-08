@@ -117,8 +117,13 @@ export default function ExternalDoctorsPage() {
               <li>Jeudi: Coro Après-midi (unique)</li>
             </ul>
             <p className="text-sm text-gray-500 mt-3">
-              FV est un médecin externe avec un compte spécifique. Il peut avoir des vacances 
-              et est inclus dans les propositions du solveur selon ses contraintes métier.
+              FV est rattaché à l&apos;extérieur du cabinet. Il peut avoir des vacances et est
+              inclus dans les propositions du solveur selon ses contraintes métier.
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              « Externe » décrit son rattachement, pas un droit d&apos;accès : un compte peut lui
+              être créé comme à n&apos;importe quel médecin, depuis Administration → Utilisateurs.
+              Les règles ci-dessus continuent alors de s&apos;appliquer à son planning.
             </p>
           </div>
         </CardContent>
