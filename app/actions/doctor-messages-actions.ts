@@ -9,16 +9,21 @@ export type DoctorMessage = {
   sender_doctor_code: string;
   sender_email: string | null;
   message_text: string;
+  target_admin_code: string | null;
   created_at: string;
   read_at: string | null;
   read_by: string | null;
 };
 
+/** Administrateurs pouvant être destinataires d'un message privé (M, Z, Lucie). */
+export const ADMIN_RECIPIENT_CODES = ['M', 'Z', 'L'] as const;
+export type AdminRecipientCode = (typeof ADMIN_RECIPIENT_CODES)[number];
+
 /**
- * Messages médecin -> admin (rubrique "Messagerie & Demandes", onglet
- * Messages) : sens inverse des notes privées admin -> médecin. Tout
- * utilisateur authentifié (admin ou non) peut envoyer un message ; seuls les
- * administrateurs (M, Z, Lucie) peuvent voir l'ensemble des messages reçus.
+ * Messages médecin -> admin, ciblés (rubrique "Note privée pour vous" /
+ * "Messagerie & Demandes") : symétrique des notes privées admin -> médecin.
+ * Chaque message est adressé à UN administrateur précis (M, Z ou L) et n'est
+ * visible que par son auteur et ce destinataire — pas par les autres admins.
  * Discussion (plusieurs messages successifs), pas une note unique remplacée.
  */
 
@@ -48,13 +53,21 @@ async function getCallerProfile() {
   return { user, doctorCode, userEmail, isAdmin };
 }
 
-/** Envoie un nouveau message vers les administrateurs (tout utilisateur connecté). */
-export async function sendDoctorMessage(messageText: string): Promise<{ success: boolean; error?: string }> {
+/** Envoie un nouveau message privé à un administrateur précis (M, Z ou L). */
+export async function sendDoctorMessage(
+  messageText: string,
+  targetAdminCode: string,
+): Promise<{ success: boolean; error?: string }> {
   const caller = await getCallerProfile();
   if (!caller) return { success: false, error: 'Non authentifié' };
 
   const text = messageText.trim();
   if (!text) return { success: false, error: 'Message vide' };
+
+  const target = targetAdminCode.trim().toUpperCase();
+  if (!ADMIN_RECIPIENT_CODES.includes(target as AdminRecipientCode)) {
+    return { success: false, error: 'Destinataire invalide (choisir M, Z ou L)' };
+  }
 
   const senderCode = caller.doctorCode || caller.userEmail.split('@')[0]?.toUpperCase() || 'INCONNU';
 
@@ -63,6 +76,7 @@ export async function sendDoctorMessage(messageText: string): Promise<{ success:
     sender_doctor_code: senderCode,
     sender_email: caller.user.email,
     message_text: text,
+    target_admin_code: target,
   });
 
   if (error) return { success: false, error: error.message };
@@ -71,7 +85,7 @@ export async function sendDoctorMessage(messageText: string): Promise<{ success:
   return { success: true };
 }
 
-/** Mes propres messages envoyés (utilisateur non-admin, sa propre discussion). */
+/** Mes propres messages envoyés (utilisateur non-admin, sa propre discussion, tous destinataires confondus). */
 export async function getMyDoctorMessages(): Promise<DoctorMessage[]> {
   const caller = await getCallerProfile();
   if (!caller || !caller.doctorCode) return [];
@@ -86,35 +100,37 @@ export async function getMyDoctorMessages(): Promise<DoctorMessage[]> {
   return (data as DoctorMessage[]) || [];
 }
 
-/** Tous les messages reçus, tous médecins confondus (admin uniquement). */
-export async function getAllDoctorMessages(): Promise<DoctorMessage[]> {
+/** Messages reçus PAR MOI en tant qu'administrateur (privé : uniquement ceux qui me sont adressés). */
+export async function getMyReceivedDoctorMessages(): Promise<DoctorMessage[]> {
   const caller = await getCallerProfile();
-  if (!caller || !caller.isAdmin) return [];
+  if (!caller || !caller.isAdmin || !caller.doctorCode) return [];
 
   const adminDb = createAdminClient();
   const { data } = await adminDb
     .from('doctor_messages')
     .select('*')
+    .eq('target_admin_code', caller.doctorCode)
     .order('created_at', { ascending: false });
 
   return (data as DoctorMessage[]) || [];
 }
 
-/** Marque comme lus tous les messages (admin uniquement) — appelé à l'ouverture de l'onglet. */
+/** Marque comme lus les messages qui me sont adressés (admin uniquement) — appelé à l'ouverture de l'onglet. */
 export async function markDoctorMessagesRead(): Promise<{ success: boolean }> {
   const caller = await getCallerProfile();
-  if (!caller || !caller.isAdmin) return { success: false };
+  if (!caller || !caller.isAdmin || !caller.doctorCode) return { success: false };
 
   const adminDb = createAdminClient();
   await adminDb
     .from('doctor_messages')
-    .update({ read_at: new Date().toISOString(), read_by: caller.doctorCode || caller.userEmail })
+    .update({ read_at: new Date().toISOString(), read_by: caller.doctorCode })
+    .eq('target_admin_code', caller.doctorCode)
     .is('read_at', null);
 
   return { success: true };
 }
 
-/** Supprime un message (admin, ou l'auteur du message lui-même). */
+/** Supprime un message (l'administrateur destinataire, ou l'auteur du message lui-même). */
 export async function deleteDoctorMessage(id: string): Promise<{ success: boolean; error?: string }> {
   const caller = await getCallerProfile();
   if (!caller) return { success: false, error: 'Non authentifié' };
@@ -122,12 +138,15 @@ export async function deleteDoctorMessage(id: string): Promise<{ success: boolea
   const adminDb = createAdminClient();
   const { data: existing } = await adminDb
     .from('doctor_messages')
-    .select('sender_doctor_code')
+    .select('sender_doctor_code, target_admin_code')
     .eq('id', id)
     .maybeSingle();
 
   const isOwn = Boolean(caller.doctorCode && existing?.sender_doctor_code === caller.doctorCode);
-  if (!caller.isAdmin && !isOwn) {
+  const isRecipient = Boolean(
+    caller.isAdmin && caller.doctorCode && existing?.target_admin_code === caller.doctorCode,
+  );
+  if (!isOwn && !isRecipient) {
     return { success: false, error: 'Droits insuffisants pour supprimer ce message' };
   }
 
