@@ -2247,6 +2247,10 @@ export function ScheduleApp({
                 myPrivateNote={myPrivateNote}
                 isAdmin={isAdmin}
                 onEditPrivateNote={() => void openPrivateNoteModal()}
+                onOpenMessages={() => {
+                  setRequestsTab("messages")
+                  setShowRequests(true)
+                }}
               />
             )}
 
