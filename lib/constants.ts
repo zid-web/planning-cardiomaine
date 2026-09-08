@@ -1,7 +1,18 @@
 export const DAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]
 
-// DOCTORS list includes both internal (with login accounts) and external doctors (no login)
-// External doctors: FV, CH (Centre Hospitalier), DAAS, D (no Supabase account, no authentication)
+// DOCTORS liste les codes qui apparaissent dans le PLANNING. Rien ici ne
+// concerne le droit d'accès à l'application : ces deux notions sont
+// indépendantes, et aucune règle du code ne les relie.
+//
+// Médecins externes au cabinet : FV, CH (Centre Hospitalier), DAAS, D.
+// « Externe » décrit leur rattachement, pas une interdiction de se connecter :
+// un compte peut leur être créé comme à n'importe qui (`createUserAccount` ne
+// les refuse pas — vérifié le 08/09/2026). Les seules restrictions qui les
+// visent sont des règles de planning, listées ci-dessous.
+//
+// (L'ancienne mention « no Supabase account, no authentication » décrivait un
+// état de fait — personne ne leur avait créé de compte — et se lisait à tort
+// comme une règle appliquée par le programme.)
 // FV: Garde Nuit chaque lundi + Coro chaque jeudi après-midi (hors vacances)
 // CH: Centre Hospitalier externe — astreintes ATL uniquement (jamais de garde)
 // DAAS: uniquement EE (Apm - EE2) chaque lundi après-midi (hors vacances)
