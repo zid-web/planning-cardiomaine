@@ -308,6 +308,32 @@ function main() {
   assert.deepEqual(afterCdl["Astreintes ATL Midi"].MARDI.value, ["O"])
   assert.deepEqual(afterCdl["Apm - Coro"].MARDI.value, ["O"])
 
+  // Exception Z : ½ off apm de récupération (mardi, pas son off habituel du
+  // mercredi) reste un simple repère — n'empêche pas l'affectation de Z, et
+  // applySlotBlockingStrips ne le retire pas des autres cases.
+  schedule = generateWeekSchedule("2026-W40", [])
+  schedule["1/2 journée off Après-midi"].MARDI = { value: ["Z"], type: "doctor", status: "validated" }
+  r = canAssignDoctorToSlot("Z", "2026-09-29", "Apm - EE1", "MARDI", schedule, [])
+  assert.equal(r.allowed, true, "½ off apm de récupération n'empêche pas Z d'être affecté")
+  schedule["Apm - EE1"].MARDI = { value: ["Z"], type: "doctor", status: "validated" }
+  const afterZRecovery = applySlotBlockingStrips(schedule)
+  assert.deepEqual(
+    afterZRecovery["Apm - EE1"].MARDI.value,
+    ["Z"],
+    "Z n'est pas retiré de ses affectations par le nettoyage automatique",
+  )
+  assert.deepEqual(
+    afterZRecovery["1/2 journée off Après-midi"].MARDI.value,
+    ["Z"],
+    "l'affichage de la ½ off reste visible pour Z",
+  )
+
+  // Mais le mercredi (off HABITUEL de Z, pas une récupération), la règle
+  // normale s'applique toujours : Z reste bloqué comme n'importe qui.
+  schedule = generateWeekSchedule("2026-W40", [])
+  r = canAssignDoctorToSlot("Z", "2026-10-01", "Apm - EE1", "MERCREDI", schedule, [])
+  assert.equal(r.allowed, false, "off habituel du mercredi de Z reste bloquant")
+
   console.log("✅ slot-blocking tests passed")
 }
 
