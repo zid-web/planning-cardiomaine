@@ -505,12 +505,21 @@ export default function LoginPage() {
       style={{
         display: "flex",
         flexDirection: "column",
-        minHeight: "100dvh",
+        // `height` (pas `minHeight`) est essentiel ici : `html`/`body`/`#root`
+        // sont volontairement verrouillés en `overflow: hidden` pour toute
+        // l'application (voir app/layout.tsx). Avec seulement `minHeight`,
+        // ce conteneur grandissait au-delà de l'écran sans jamais pouvoir
+        // défiler — le bas de la page (bouton "Se connecter", liens…) était
+        // alors purement et simplement coupé, sans recours possible, en
+        // particulier sur petit écran (iPhone). En fixant `height: 100dvh`,
+        // ce conteneur défile désormais lui-même correctement en interne.
+        height: "100dvh",
         width: "100%",
         backgroundColor: "#FAFBFC",
         color: "#0f172a",
         position: "relative",
         overflow: "auto",
+        WebkitOverflowScrolling: "touch",
       }}
     >
       {browserTarget && <OpenInSafariBanner target={browserTarget} />}
@@ -754,13 +763,6 @@ export default function LoginPage() {
               >
                 {isLoading ? "Connexion en cours…" : "Se connecter"}
               </button>
-
-              <p style={{ textAlign: "center", fontSize: "0.75rem", color: "#94a3b8" }}>
-                Un problème pour vous connecter ?{" "}
-                <Link href="/diagnostic" style={{ color: "#64748b", textDecoration: "underline" }}>
-                  Diagnostic
-                </Link>
-              </p>
 
               <p style={{ textAlign: "center", fontSize: "0.875rem", color: "#475569" }}>
                 Pas encore de compte ?{" "}
