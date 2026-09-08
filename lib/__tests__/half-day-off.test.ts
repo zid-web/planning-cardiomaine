@@ -82,13 +82,13 @@ function main() {
   assert.ok(schedule["1/2 journée off Matin"].MERCREDI.value.includes("W"))
   assert.ok(schedule["1/2 journée off Après-midi"].MERCREDI.value.includes("W"))
 
-  // Exception Z (demande utilisateur) : garde nuit lundi Z → PAS de ½ off
-  // mardi (ni matin ni apm), contrairement aux autres médecins ci-dessus.
-  // Seul Z reste assignable le lendemain après-midi d'une garde.
+  // Garde nuit lundi Z → off mardi apm affiché comme les autres médecins
+  // (voir slot-blocking.test.ts : Z n'est en revanche plus bloqué par cette
+  // case, contrairement aux autres médecins).
   schedule = generateWeekSchedule(weekKey)
   schedule["Garde Nuit"].LUNDI.value = ["Z"]
   schedule = applyNightGuardRecoveryOffs(schedule)
-  assert.ok(!schedule["1/2 journée off Après-midi"].MARDI.value.includes("Z"))
+  assert.ok(schedule["1/2 journée off Après-midi"].MARDI.value.includes("Z"))
   assert.ok(!schedule["1/2 journée off Matin"].MARDI.value.includes("Z"))
 
   // Samedi : pas de récupération
@@ -110,11 +110,12 @@ function main() {
   assert.ok(!schedule["1/2 journée off Après-midi"].SAMEDI.value.includes("B"))
   assert.ok(!schedule["1/2 journée off Matin"].SAMEDI.value.includes("B"))
 
-  // Dimanche précédent → lundi apm (exception Z, demande utilisateur : Z ne
-  // reçoit plus la ½ off de récupération, reste assignable le lendemain)
+  // Dimanche précédent → lundi apm (Z n’a plus d’off habituel lundi ; reste
+  // affiché comme récupération, mais n'est plus bloquant pour Z — voir
+  // slot-blocking.test.ts pour la vérification de non-blocage)
   schedule = generateWeekSchedule(weekKey)
   schedule = applyNightGuardRecoveryOffs(schedule, { previousSundayGuardDoctor: "Z" })
-  assert.ok(!schedule["1/2 journée off Après-midi"].LUNDI.value.includes("Z"))
+  assert.ok(schedule["1/2 journée off Après-midi"].LUNDI.value.includes("Z"))
   assert.ok(!schedule["1/2 journée off Matin"].LUNDI.value.includes("Z"))
   assert.ok(schedule["1/2 journée off Matin"].LUNDI.value.includes("R"))
 
