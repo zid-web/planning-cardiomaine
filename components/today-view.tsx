@@ -31,6 +31,8 @@ type TodayViewProps = {
   myPrivateNote?: string
   isAdmin?: boolean
   onEditPrivateNote?: () => void
+  /** Ouvre le panneau Messagerie & Demandes (onglet Messages), pour écrire à un admin. */
+  onOpenMessages?: () => void
 }
 
 function periodMeta(activity: string): { label: string; Icon: typeof Sun; accent: string; chip: string } {
@@ -98,6 +100,7 @@ export function TodayView({
   myPrivateNote,
   isAdmin,
   onEditPrivateNote,
+  onOpenMessages,
 }: TodayViewProps) {
   const myTasks = tasks.filter((task) => task.doctors.includes(doctorCode))
   const hasNote = Boolean(dayNote?.trim())
@@ -245,22 +248,31 @@ export function TodayView({
 
       {/* Note privée */}
       {!isAdmin && (
-        <div
+        <button
+          type="button"
+          onClick={onOpenMessages}
           className={cn(
-            "w-full rounded-2xl border p-4 shadow-sm",
+            "group w-full rounded-2xl border p-4 text-left shadow-sm transition-all duration-200",
+            "hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500",
             myPrivateNote?.trim()
               ? "border-amber-200 bg-gradient-to-br from-amber-50/80 to-white"
-              : "border-dashed border-slate-300 bg-white",
+              : "border-dashed border-slate-300 bg-white hover:border-amber-300",
           )}
         >
-          <div className="mb-2 flex items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
-              <Lock className="size-4" />
-            </span>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Note privée pour vous</h4>
-              <p className="text-[11px] text-slate-500">Visible uniquement par vous et l’administrateur</p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+                <Lock className="size-4" />
+              </span>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Note privée pour vous</h4>
+                <p className="text-[11px] text-slate-500">Visible uniquement par vous et l’administrateur · appuyez pour écrire</p>
+              </div>
             </div>
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white transition group-hover:bg-slate-800">
+              <Edit3 className="size-3.5" />
+              Écrire
+            </span>
           </div>
           <div
             className={cn(
@@ -268,9 +280,9 @@ export function TodayView({
               myPrivateNote?.trim() ? "bg-white/80 font-medium text-slate-700" : "bg-slate-50 text-slate-400 italic",
             )}
           >
-            {myPrivateNote?.trim() || "Aucune note privée pour l’instant."}
+            {myPrivateNote?.trim() || "Aucune note privée pour l’instant. Appuyez pour écrire à un administrateur."}
           </div>
-        </div>
+        </button>
       )}
       {isAdmin && onEditPrivateNote && (
         <button
