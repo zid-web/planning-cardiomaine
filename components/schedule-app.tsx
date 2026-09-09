@@ -127,6 +127,15 @@ import { getLastSundayGuardDoctor, recordLastComboGardeFromSchedule } from "@/ap
 import { getMyPrivateNote, getAllPrivateNotesForDate, upsertPrivateNote, deletePrivateNote } from "@/app/actions/private-notes-actions"
 import { sendDoctorMessage, getMyDoctorMessages, getMyReceivedDoctorMessages, markDoctorMessagesRead, deleteDoctorMessage, type DoctorMessage } from "@/app/actions/doctor-messages-actions"
 import { ADMIN_RECIPIENT_CODES } from "@/lib/admin-recipients"
+import {
+  submitVacationRequest,
+  getMyVacationRequests,
+  getAllVacationRequests,
+  decideVacationRequest,
+  cancelVacationRequest,
+  type VacationRequest,
+} from "@/app/actions/vacation-request-actions"
+import { VacationRequestsPanel } from "@/components/vacation-requests-panel"
 import { getChangeRequestsHistory } from "@/app/actions/change-request-actions"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { getAllVacations } from "@/app/actions/vacation-actions"
@@ -251,7 +260,7 @@ export function ScheduleApp({
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([])
   const [showRequests, setShowRequests] = useState(false)
-  const [requestsTab, setRequestsTab] = useState<"messages" | "demandes">("messages")
+  const [requestsTab, setRequestsTab] = useState<"messages" | "demandes" | "conges">("messages")
   const [privateNotesList, setPrivateNotesList] = useState<any[]>([])
   // Historique des demandes archivées (confirmé utilisateur 01/08/2026).
   const [showRequestsHistory, setShowRequestsHistory] = useState(false)
@@ -281,6 +290,9 @@ export function ScheduleApp({
   const [newDoctorMessageText, setNewDoctorMessageText] = useState("")
   const [newDoctorMessageTarget, setNewDoctorMessageTarget] = useState("")
   const [sendingDoctorMessage, setSendingDoctorMessage] = useState(false)
+  // Demandes de congés médecin -> admin (même panneau, onglet Congés)
+  const [myVacationRequests, setMyVacationRequests] = useState<VacationRequest[]>([])
+  const [allVacationRequests, setAllVacationRequests] = useState<VacationRequest[]>([])
   // UUID auth de l'utilisateur courant (distinct de currentUser = code
   // médecin) - nécessaire pour filtrer "mes demandes" par requester_id.
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -851,6 +863,81 @@ export function ScheduleApp({
     } else {
       const msgs = await getMyDoctorMessages()
       setDoctorMessages(msgs || [])
+    }
+  }
+
+  // Demandes de congés : chargement à l'ouverture du panneau Messagerie
+  useEffect(() => {
+    if (!showRequests || requestsTab !== "conges") return
+    let cancelled = false
+    if (isAdmin) {
+      getAllVacationRequests()
+        .then((reqs) => {
+          if (!cancelled) setAllVacationRequests(reqs || [])
+        })
+        .catch(console.error)
+    } else {
+      getMyVacationRequests()
+        .then((reqs) => {
+          if (!cancelled) setMyVacationRequests(reqs || [])
+        })
+        .catch(console.error)
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin, showRequests, requestsTab])
+
+  // Chargement léger du compteur admin (pastille) dès l'ouverture du panneau,
+  // même si l'onglet Congés n'est pas encore sélectionné.
+  useEffect(() => {
+    if (!isAdmin || !showRequests) return
+    let cancelled = false
+    getAllVacationRequests()
+      .then((reqs) => {
+        if (!cancelled) setAllVacationRequests(reqs || [])
+      })
+      .catch(console.error)
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin, showRequests])
+
+  const submitNewVacationRequest = async (startDate: string, endDate: string, reason: string) => {
+    const result = await submitVacationRequest(startDate, endDate, reason)
+    if (result.success) {
+      const reqs = await getMyVacationRequests()
+      setMyVacationRequests(reqs || [])
+      toast.success("Demande de congé envoyée à l'administration")
+    } else {
+      toast.error(result.error || "Échec de l'envoi de la demande")
+    }
+  }
+
+  const cancelMyVacationRequest = async (id: string) => {
+    const result = await cancelVacationRequest(id)
+    if (!result.success) {
+      toast.error(result.error || "Échec de l'annulation")
+      return
+    }
+    const reqs = await getMyVacationRequests()
+    setMyVacationRequests(reqs || [])
+  }
+
+  const decideOnVacationRequest = async (id: string, decision: "approved" | "rejected") => {
+    const result = await decideVacationRequest(id, decision)
+    if (!result.success) {
+      toast.error(result.error || "Échec du traitement de la demande")
+      return
+    }
+    const reqs = await getAllVacationRequests()
+    setAllVacationRequests(reqs || [])
+    if (decision === "approved") {
+      toast.success("Congé validé et appliqué au planning")
+      // Le planning affiché doit refléter le nouveau congé immédiatement.
+      window.location.reload()
+    } else {
+      toast.success("Demande refusée")
     }
   }
 
@@ -3215,9 +3302,35 @@ export function ScheduleApp({
                   </span>
                 )}
               </button>
+              <button
+                type="button"
+                onClick={() => setRequestsTab("conges")}
+                className={cn(
+                  "flex-1 pb-2 text-sm font-semibold text-center border-b-2 transition-all",
+                  requestsTab === "conges"
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-700"
+                )}
+              >
+                Congés{" "}
+                {isAdmin && allVacationRequests.some((r) => r.status === "pending") && (
+                  <span className="ml-1 inline-block rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                    {allVacationRequests.filter((r) => r.status === "pending").length}
+                  </span>
+                )}
+              </button>
             </div>
 
-            {requestsTab === "messages" ? (
+            {requestsTab === "conges" ? (
+              <VacationRequestsPanel
+                isAdmin={isAdmin}
+                myRequests={myVacationRequests}
+                allRequests={allVacationRequests}
+                onSubmit={submitNewVacationRequest}
+                onCancel={cancelMyVacationRequest}
+                onDecide={decideOnVacationRequest}
+              />
+            ) : requestsTab === "messages" ? (
               isAdmin ? (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center mb-1">
