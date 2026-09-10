@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Cardiomaine">
+      <clipPath id="heart-clip-4c">
+        <path d="M32 54c-2-4-24-15.5-24-28.5C8 17.8 13.8 12 21 12c5.2 0 9 3 11 7 2-4 5.8-7 11-7 7.2 0 13 5.8 13 13.5C56 38.5 34 50 32 54z"/>
+      </clipPath>
+      <g clip-path="url(#heart-clip-4c)">
+        <rect x="0"    y="0"    width="30.7" height="29.7" fill="#0F2A47"/>
+        <rect x="33.3" y="0"    width="30.7" height="29.7" fill="#B23A48"/>
+        <rect x="0"    y="32.3" width="30.7" height="31.7" fill="#0F2A47"/>
+        <rect x="33.3" y="32.3" width="30.7" height="31.7" fill="#9BB0C4"/>
+      </g>
+</svg>
