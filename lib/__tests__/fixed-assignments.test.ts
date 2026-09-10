@@ -55,6 +55,31 @@ function main() {
   assert.equal(visite, "U")
   assert.deepEqual(schedule["Matin - Visite"].LUNDI.value, [visite])
 
+  // Cs Tessée fixe U Lundi+Mardi (demande utilisateur) — W30 = semaine de
+  // visite U : après-midi uniquement (matin pris par la Visite).
+  assert.deepEqual(schedule["Apm - Cs Tessée"].LUNDI.value, ["U"])
+  assert.deepEqual(schedule["Apm - Cs Tessée"].MARDI.value, ["U"])
+  assert.deepEqual(schedule["Matin - Cs Tessée"].LUNDI.value, [])
+  assert.deepEqual(schedule["Matin - Cs Tessée"].MARDI.value, [])
+
+  // W31 (U n'est pas de visite cette semaine) : matin ET après-midi
+  const notVisiteWeek = applyFixedClinicalAssignments(generateWeekSchedule("2026-W31"), "2026-W31")
+  assert.equal(VISITE_ROTATION[31 % 3], "A", "W31 : visite = A, pas U")
+  assert.deepEqual(notVisiteWeek["Matin - Cs Tessée"].LUNDI.value, ["U"])
+  assert.deepEqual(notVisiteWeek["Apm - Cs Tessée"].LUNDI.value, ["U"])
+  assert.deepEqual(notVisiteWeek["Matin - Cs Tessée"].MARDI.value, ["U"])
+  assert.deepEqual(notVisiteWeek["Apm - Cs Tessée"].MARDI.value, ["U"])
+
+  // Exception garde : si U est de garde le lundi, pas de Cs Tessée du tout ce jour-là
+  const gardeWeek = generateWeekSchedule("2026-W31")
+  gardeWeek["Garde Matin"].LUNDI.value = ["U"]
+  const afterGarde = applyFixedClinicalAssignments(gardeWeek, "2026-W31")
+  assert.deepEqual(afterGarde["Matin - Cs Tessée"].LUNDI.value, [], "U de garde lundi matin → pas de Cs Tessée lundi")
+  assert.deepEqual(afterGarde["Apm - Cs Tessée"].LUNDI.value, [], "U de garde lundi → pas de Cs Tessée lundi apm non plus")
+  // Mardi non concerné par la garde du lundi → règle normale
+  assert.deepEqual(afterGarde["Matin - Cs Tessée"].MARDI.value, ["U"])
+  assert.deepEqual(afterGarde["Apm - Cs Tessée"].MARDI.value, ["U"])
+
   // Vacances S + FV le lundi → IRM / Garde Nuit lundi vides
   const vacations: DoctorVacation[] = [
     {
