@@ -37,7 +37,7 @@ Ne pas utiliser ces fichiers sous 24 px : le favicon 16 px a son propre dessin
   recadre au pire en cercle inscrit, et le dessin étant plus large que haut, un
   cadrage serré coupait la queue de la pulsation
 - l'écran de connexion, en réserve sur le panneau `#0F2A47`
-- l'en-tête du planning et `components/navbar.tsx`
+- l'en-tête du planning
 
 Pour régénérer les PNG après une modification de la géométrie :
 

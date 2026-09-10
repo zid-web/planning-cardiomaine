@@ -153,7 +153,6 @@ CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users
                 <ul className="ml-4 text-gray-600 space-y-1">
                   <li>• <code className="bg-gray-200 px-1">components/logout-button.tsx</code></li>
                   <li>• <code className="bg-gray-200 px-1">components/profile-form.tsx</code></li>
-                  <li>• <code className="bg-gray-200 px-1">components/navbar.tsx</code></li>
                 </ul>
               </div>
 
