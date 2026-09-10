@@ -3,7 +3,6 @@
 import React, { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import {
-  Activity,
   AlertTriangle,
   BarChart3,
   Bell,
@@ -53,6 +52,7 @@ import { Card, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { CardiomaineMark } from "@/components/brand/cardiomaine-mark"
 import { LiveClock } from "@/components/live-clock"
 import { LearnMoreModal } from "@/components/learn-more-modal"
 import type { CellData, FullSchedule, ScheduleData } from "@/lib/types"
@@ -1879,10 +1879,12 @@ export function ScheduleApp({
             >
               {/* Left: Branding & Role Badge */}
               <div className="flex items-center gap-2">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-slate-900 text-white shadow-sm ring-1 ring-white/20">
-                  <Activity className="size-4" />
-                </div>
-                <div className="hidden sm:flex flex-col min-w-0">
+                <CardiomaineMark size={30} tight className="shrink-0" />
+                {/*
+                  Le nom reste dans l'arbre d'accessibilité sous `sm`, où il est
+                  masqué visuellement : la marque seule ne l'énonce pas.
+                */}
+                <div className="sr-only sm:not-sr-only sm:flex flex-col min-w-0">
                   <h1 className="text-sm font-black tracking-tight text-slate-900 leading-none">Cardiomaine</h1>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
                     {isAdmin ? "Administration" : "Espace Praticien"}

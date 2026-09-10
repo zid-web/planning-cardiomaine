@@ -49,7 +49,10 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#0f766e",
+  // La barre d'état borde le haut de l'application, qui est clair
+  // (`--background`) : un aplat coloré y dessinait un bandeau flottant. Le
+  // teal ne correspondait plus à rien depuis le passage au grenat.
+  themeColor: "#FAFBFC",
   width: "device-width",
   initialScale: 1,
   // Pas de `maximumScale: 1` : bloquer le zoom pincé casse l'accessibilité

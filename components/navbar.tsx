@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { LogoutButton } from './logout-button'
 import { MessageSquare } from 'lucide-react'
+import { CardiomaineMark } from '@/components/brand/cardiomaine-mark'
 
 export async function Navbar() {
   const supabase = await createClient()
@@ -11,7 +12,11 @@ export async function Navbar() {
   return (
     <nav className="border-b bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-        <Link href={data?.user ? '/protected' : '/home'} className="text-2xl font-bold text-gray-900 hover:text-blue-600 transition">
+        <Link
+          href={data?.user ? '/protected' : '/home'}
+          className="flex items-center gap-2.5 text-2xl font-bold text-gray-900 hover:text-blue-600 transition"
+        >
+          <CardiomaineMark size={32} tight className="shrink-0" />
           Cardiomaine Planning
         </Link>
 

@@ -9,6 +9,11 @@ import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { Smartphone, Share, X, Download, MoreVertical, MonitorDown } from "lucide-react"
 import { toast } from "sonner"
+import {
+  CardiomaineMark,
+  MARK_INK_REVERSED,
+  MARK_PULSE_REVERSED,
+} from "@/components/brand/cardiomaine-mark"
 
 // ─── SVG ECG inline (évite la dépendance au composant EcgTrace) ──────────────
 const ECG_PATH =
@@ -579,6 +584,14 @@ export default function LoginPage() {
 
           {/* Logo */}
           <div style={{ position: "relative", zIndex: 10 }}>
+            {/* Marque en réserve — le nom est porté par le h1 juste dessous. */}
+            <CardiomaineMark
+              size={52}
+              tight
+              ink={MARK_INK_REVERSED}
+              pulse={MARK_PULSE_REVERSED}
+              className="mb-5"
+            />
             <p
               style={{
                 fontSize: "0.6875rem",
