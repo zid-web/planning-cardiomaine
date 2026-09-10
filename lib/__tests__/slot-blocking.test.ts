@@ -334,6 +334,16 @@ function main() {
   r = canAssignDoctorToSlot("Z", "2026-10-01", "Apm - EE1", "MERCREDI", schedule, [])
   assert.equal(r.allowed, false, "off habituel du mercredi de Z reste bloquant")
 
+  // FV : activité strictement limitée à garde nuit lundi + coro/ATL jeudi
+  // apm (demande utilisateur). Coro un autre jour ou le matin = refusé.
+  schedule = generateWeekSchedule("2026-W40", [])
+  r = canAssignDoctorToSlot("FV", "2026-10-01", "Apm - Coro", "JEUDI", schedule, [])
+  assert.equal(r.allowed, true, "FV autorisé sur Coro jeudi après-midi")
+  r = canAssignDoctorToSlot("FV", "2026-09-28", "Apm - Coro", "LUNDI", schedule, [])
+  assert.equal(r.allowed, false, "FV refusé sur Coro un autre jour que jeudi")
+  r = canAssignDoctorToSlot("FV", "2026-10-01", "Matin - Coro", "JEUDI", schedule, [])
+  assert.equal(r.allowed, false, "FV refusé sur Coro le jeudi MATIN (seul l'apm est autorisé)")
+
   console.log("✅ slot-blocking tests passed")
 }
 
