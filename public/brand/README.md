@@ -41,7 +41,9 @@ Ne pas utiliser ces fichiers sous 24 px : le favicon 16 px a son propre dessin
 - `lib/planning-pdf.ts` — l'export PDF, où les tracés sont redessinés en
   `drawSvgPath` (pdf-lib) plutôt qu'en PNG embarqué, pour rester nets à
   l'impression. Les valeurs y sont recopiées : à reporter en cas de
-  modification de la géométrie
+  modification de la géométrie. Le PDF embarque aussi Geist
+  (voir `lib/fonts/README.md`), pour que le document imprimé partage la
+  typographie de l'écran et non l'Helvetica standard des PDF
 
 Pour régénérer les PNG après une modification de la géométrie :
 

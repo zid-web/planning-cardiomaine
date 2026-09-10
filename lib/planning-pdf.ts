@@ -1,8 +1,8 @@
+import fontkit from "@pdf-lib/fontkit"
 import {
   LineCapStyle,
   LineJoinStyle,
   PDFDocument,
-  StandardFonts,
   popGraphicsState,
   pushGraphicsState,
   rgb,
@@ -90,6 +90,73 @@ function drawBrandMark(page: PDFPage, x: number, centerY: number, size: number) 
   page.pushOperators(popGraphicsState())
 }
 
+/**
+ * Couverture de la police embarquée, à garder synchronisée avec la commande de
+ * sous-ensemble documentée dans lib/fonts/README.md.
+ *
+ * Ce n'est pas une précaution cosmétique : `drawText` **lève une exception**
+ * sur un caractère que la police ne peut pas encoder — l'export échouait donc
+ * déjà, avant l'embarquement de Geist, sur une note contenant par exemple une
+ * flèche, que le WinAnsi de l'Helvetica standard ne couvre pas non plus. Les
+ * notes et les libellés d'activité étant du texte libre saisi par l'équipe, le
+ * risque est réel.
+ */
+const PDF_TEXT_RANGES: ReadonlyArray<readonly [number, number]> = [
+  [0x20, 0x7e], // latin de base
+  [0xa0, 0xff], // supplément Latin-1 : accents français, °, ±, «, »
+  [0x152, 0x153], // Œ œ
+  [0x178, 0x178], // Ÿ
+  [0x2013, 0x2014], // – —
+  [0x2018, 0x201e], // guillemets et apostrophes courbes
+  [0x2022, 0x2022], // •
+  [0x2026, 0x2026], // …
+  [0x2030, 0x2030], // ‰
+  [0x2039, 0x203a], // ‹ ›
+  [0x20ac, 0x20ac], // €
+]
+
+/**
+ * Équivalents pour les caractères hors couverture les plus plausibles dans une
+ * note de service, plutôt que de les perdre en silence.
+ */
+const PDF_TEXT_SUBSTITUTIONS: Record<string, string> = {
+  "\u2192": "->",
+  "\u2190": "<-",
+  "\u2194": "<->",
+  "\u21d2": "=>",
+  "\u2011": "-", // trait d'union insécable
+  "\u2212": "-", // signe moins
+  "\u2265": ">=",
+  "\u2264": "<=",
+  "\u2260": "!=",
+  "\u00a0": " ", // espace insécable : encodable, mais uniformisée
+  "\u202f": " ", // espace fine insécable
+  "\u2009": " ",
+  "\u2044": "/",
+}
+
+const isEncodable = (cp: number) => PDF_TEXT_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi)
+
+/**
+ * Rend une chaîne sûre à dessiner : normalisation en formes composées (pour que
+ * « é » saisi en e + accent combinant devienne le glyphe unique que la police
+ * possède), substitution des caractères courants hors couverture, puis retrait
+ * du reste. Mieux vaut une note amputée d'un émoji qu'un export qui échoue.
+ */
+function safeText(input: string): string {
+  let out = ""
+  for (const ch of input.normalize("NFC")) {
+    const sub = PDF_TEXT_SUBSTITUTIONS[ch]
+    if (sub !== undefined) {
+      out += sub
+      continue
+    }
+    const cp = ch.codePointAt(0)
+    if (cp !== undefined && isEncodable(cp)) out += ch
+  }
+  return out
+}
+
 /** Côté de la marque dans l'en-tête, et retrait du titre pour la dégager. */
 const HEADER_MARK_SIZE = 19
 const HEADER_TEXT_X = 36 + HEADER_MARK_SIZE + 9
@@ -106,8 +173,17 @@ function shortLabel(rowKey: string) {
 /** Génère un PDF paysage A4 de la grille hebdomadaire sous forme de tableau quadrillé. */
 export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) {
   const doc = await PDFDocument.create()
-  const font = await doc.embedFont(StandardFonts.Helvetica)
-  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
+
+  // Geist, la police de l'application, à la place de l'Helvetica standard des
+  // PDF. Le module est importé dynamiquement pour que ses ~41 Ko forment un
+  // segment à part, téléchargé au premier export seulement et non au chargement
+  // de l'application.
+  doc.registerFontkit(fontkit)
+  const { GEIST_REGULAR_BASE64, GEIST_SEMIBOLD_BASE64 } = await import("@/lib/planning-pdf-fonts")
+  // `subset: true` : seuls les glyphes réellement tracés partent dans le
+  // fichier, ce qui garde le PDF léger malgré la police embarquée.
+  const font = await doc.embedFont(GEIST_REGULAR_BASE64, { subset: true })
+  const fontBold = await doc.embedFont(GEIST_SEMIBOLD_BASE64, { subset: true })
 
   const pageWidth = 842
   const pageHeight = 595
@@ -163,7 +239,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
 
     // Texte des jours de la semaine
     DAYS.forEach((d, i) => {
-      page.drawText(d, {
+      page.drawText(safeText(d), {
         x: 176 + i * colW + 6,
         y: startY - 12,
         size: 8,
@@ -179,7 +255,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
   // la hauteur de capitale du titre (~0,72 × corps) et non sur sa ligne de base.
   const titleSize = 13
   drawBrandMark(page, 36, pageHeight - 28 + (titleSize * 0.72) / 2, HEADER_MARK_SIZE)
-  page.drawText(`Planning Cardiomaine — Semaine ${weekKey}`, {
+  page.drawText(safeText(`Planning Cardiomaine — Semaine ${weekKey}`), {
     x: HEADER_TEXT_X,
     y: pageHeight - 28,
     size: titleSize,
@@ -227,7 +303,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
       
       const contSize = 11
       drawBrandMark(page, 36, pageHeight - 28 + (contSize * 0.72) / 2, HEADER_MARK_SIZE)
-      page.drawText(`Planning Cardiomaine — Semaine ${weekKey} (suite)`, {
+      page.drawText(safeText(`Planning Cardiomaine — Semaine ${weekKey} (suite)`), {
         x: HEADER_TEXT_X,
         y: pageHeight - 28,
         size: contSize,
@@ -265,7 +341,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
     }
 
     // Nom de l'activité (première colonne)
-    page.drawText(shortLabel(rowKey), {
+    page.drawText(safeText(shortLabel(rowKey)), {
       x: 42,
       y: currentY - rowHeight + 5,
       size: 7,
@@ -277,7 +353,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
     DAYS.forEach((day, i) => {
       const docs = (schedule[rowKey]?.[day]?.value || []).join(", ")
       if (!docs) return
-      page.drawText(docs.slice(0, 20), {
+      page.drawText(safeText(docs).slice(0, 20), {
         x: 176 + i * colW + 6,
         y: currentY - rowHeight + 5,
         size: 7,
@@ -331,14 +407,14 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
     currentY -= 14
 
     notesToShow.forEach((n) => {
-      page.drawText(`${n.day} :`, {
+      page.drawText(safeText(`${n.day} :`), {
         x: 36,
         y: currentY,
         size: 7.5,
         font: fontBold,
         color: TEXT_MUTED,
       })
-      page.drawText(n.note.slice(0, 150), {
+      page.drawText(safeText(n.note).slice(0, 150), {
         x: 85,
         y: currentY,
         size: 7.5,
