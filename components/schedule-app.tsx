@@ -125,6 +125,7 @@ import {
 import type { ScheduleSaveSource } from "@/lib/schedule-diff"
 import { getLastSundayGuardDoctor, recordLastComboGardeFromSchedule } from "@/app/actions/guard-api-actions"
 import { getMyPrivateNote, getAllPrivateNotesForDate, upsertPrivateNote, deletePrivateNote } from "@/app/actions/private-notes-actions"
+import { applyClinicalRotationRules } from "@/lib/clinical-rotation-diversity"
 import { sendDoctorMessage, getMyDoctorMessages, getMyReceivedDoctorMessages, markDoctorMessagesRead, deleteDoctorMessage, type DoctorMessage } from "@/app/actions/doctor-messages-actions"
 import { ADMIN_RECIPIENT_CODES } from "@/lib/admin-recipients"
 import {
@@ -555,6 +556,11 @@ export function ScheduleApp({
         previousSundayGuardDoctor,
       },
     )
+    // Diversité Stress/Rééducation + priorité Cs PSS (demande utilisateur) :
+    // corrige localement les propositions du solveur externe, qui ne
+    // connaît pas ces règles fines. Ne touche jamais une case déjà remplie
+    // manuellement (voir lib/clinical-rotation-diversity.ts).
+    mergedWeekSchedule = applyClinicalRotationRules(mergedWeekSchedule, currentWeekKey, vacations)
 
     const updatedFullSchedule = { ...fullSchedule, [currentWeekKey]: mergedWeekSchedule }
     setFullSchedule(updatedFullSchedule)
