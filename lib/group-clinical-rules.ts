@@ -201,6 +201,19 @@ export function isCoroEligibleDoctor(doctorId: string): boolean {
   return (DOC022_CLINICAL_ELIGIBILITY.coro as readonly string[]).includes(doctorId)
 }
 
+/**
+ * Éligibilité Coro par case (miroir de `isAtlEligibleForCell`) : FV n'est
+ * éligible qu'au jeudi après-midi (demande utilisateur — activité FV
+ * strictement limitée à garde nuit lundi + coro/ATL jeudi apm). Les autres
+ * coronarographistes (M, O, W) restent éligibles matin/après-midi tous jours.
+ */
+export function isCoroEligibleForCell(doctorId: string, rowKey: string, day: string): boolean {
+  if (doctorId === "FV") {
+    return rowKey === "Apm - Coro" && day === "JEUDI"
+  }
+  return isCoroEligibleDoctor(doctorId)
+}
+
 import { isDoctorOnVacationForFixed, dateStrForWeekDay } from "./fixed-assignments"
 import type { DoctorVacation } from "./types"
 
