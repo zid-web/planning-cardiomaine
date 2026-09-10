@@ -350,6 +350,7 @@ export function applyFixedClinicalAssignments(
   }
 
   // --- Visite : U → A → B (ou désignation admin) ---
+  let uIsVisiteThisWeek = false
   if (schedule["Matin - Visite"]) {
     const override =
       opts?.visiteDoctor === "U" ||
@@ -358,6 +359,7 @@ export function applyFixedClinicalAssignments(
         ? opts.visiteDoctor
         : null
     const visiteUser = override || VISITE_ROTATION[((weekNum % 3) + 3) % 3]
+    uIsVisiteThisWeek = visiteUser === "U"
     // VISITE est un concept de semaine uniquement (lundi-vendredi) - jamais
     // le weekend, sinon le médecin de visite se retrouve à tort "occupé"
     // samedi/dimanche et bloque toute autre affectation (ex: Garde) via la
@@ -366,6 +368,37 @@ export function applyFixedClinicalAssignments(
     for (const day of visiteDays) {
       assignIfAvailable(schedule, "Matin - Visite", day, visiteUser, weekKey, vacations, assignOpts)
     }
+  }
+
+  // --- Cs Tessée fixe pour U, Lundi + Mardi (demande utilisateur) ---
+  // En dehors des semaines de visite : matin ET après-midi.
+  // Semaine où U est de visite : après-midi uniquement (le matin est déjà
+  // pris par la Visite ce jour-là) — le matin est activement retiré, pas
+  // seulement laissé de côté, sinon une valeur d'un précédent calcul (avant
+  // l'ajout d'une garde, par ex.) pourrait rester bloquée par erreur.
+  // Exception : si U est de garde ce jour-là (Garde Matin/Midi/Nuit), la
+  // règle ne s'applique pas du tout ce jour (ni matin ni apm) — retiré
+  // activement là aussi.
+  const GARDE_ROWS_FOR_U = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
+  const clearU = (row: string, day: string) => {
+    const current = schedule[row]?.[day]?.value || []
+    if (current.includes("U")) {
+      setDoctors(schedule, row, day, current.filter((d) => d !== "U"))
+    }
+  }
+  for (const day of ["LUNDI", "MARDI"] as const) {
+    const uOnGardeThisDay = GARDE_ROWS_FOR_U.some((row) => (schedule[row]?.[day]?.value || []).includes("U"))
+    if (uOnGardeThisDay) {
+      clearU("Matin - Cs Tessée", day)
+      clearU("Apm - Cs Tessée", day)
+      continue
+    }
+    if (uIsVisiteThisWeek) {
+      clearU("Matin - Cs Tessée", day)
+    } else {
+      assignIfAvailable(schedule, "Matin - Cs Tessée", day, "U", weekKey, vacations, assignOpts)
+    }
+    assignIfAvailable(schedule, "Apm - Cs Tessée", day, "U", weekKey, vacations, assignOpts)
   }
 
   // --- FV ---
@@ -401,6 +434,10 @@ export function clearFixedAssigneesOnVacation(
     { row: "Garde Nuit", day: "LUNDI", doctor: "FV" },
     { row: "Apm - Coro", day: "JEUDI", doctor: "FV" },
     { row: "Apm - EE2", day: "LUNDI", doctor: "DAAS" },
+    { row: "Matin - Cs Tessée", day: "LUNDI", doctor: "U" },
+    { row: "Apm - Cs Tessée", day: "LUNDI", doctor: "U" },
+    { row: "Matin - Cs Tessée", day: "MARDI", doctor: "U" },
+    { row: "Apm - Cs Tessée", day: "MARDI", doctor: "U" },
     ...rythmoFixedSlotsForWeek(weekKey).map((s) => ({
       row: s.row,
       day: s.day,
