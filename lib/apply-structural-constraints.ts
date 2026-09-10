@@ -19,6 +19,7 @@ import {
   isAtlEligibleForCell,
   isCoroEligibleDoctor,
   isCoroEligibleForCell,
+  isCsPssEligibleDoctor,
 } from "@/lib/group-clinical-rules"
 import {
   applyHabitualHalfDaysOff,
@@ -313,6 +314,24 @@ export function applyAtlCoronarographisteEligibility(schedule: ScheduleData): Sc
       const values = Array.isArray(cell.value) ? cell.value : []
       if (!values.length) continue
       const filtered = values.filter((d) => !isListedDoctor(d) || isCoroEligibleForCell(d, row, day))
+      if (filtered.length !== values.length) {
+        next = setCellDoctors(
+          next,
+          row,
+          day,
+          filtered,
+          (cell.status || "validated") as "validated" | "pending",
+        )
+      }
+    }
+    // Cs PSS : U/B/S en sont exclus (demande utilisateur — exclusivement Cs
+    // Tessée pour eux). Même mécanique de nettoyage que Coro/ATL ci-dessus.
+    for (const row of ["Matin - Cs PSS", "Apm - Cs PSS"] as const) {
+      const cell = next[row]?.[day]
+      if (!cell) continue
+      const values = Array.isArray(cell.value) ? cell.value : []
+      if (!values.length) continue
+      const filtered = values.filter((d) => !isListedDoctor(d) || isCsPssEligibleDoctor(d))
       if (filtered.length !== values.length) {
         next = setCellDoctors(
           next,
