@@ -103,7 +103,7 @@ export const NCT_DATES_2026 = [
   { date: "2026-07-09", user: "M" },
   // Aligné guard-api/solver.py NCT_FIXED_SCHEDULE
   { date: "2026-07-23", user: "M" },
-  { date: "2026-09-10", user: "M" },
+  { date: "2026-09-10", user: "W" }, // Corrigé (demande utilisateur, S37 = W)
   { date: "2026-09-17", user: "W" },
   { date: "2026-09-24", user: "M" },
   { date: "2026-10-01", user: "W" },
