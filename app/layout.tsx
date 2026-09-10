@@ -49,7 +49,15 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: "#0f766e",
+  // Ardoise de la marque, choix assumé : la barre d'état borde une application
+  // claire, donc elle se lit comme un bandeau et non comme un prolongement de
+  // la page. Remplace un teal (#0f766e) qui, lui, ne correspondait plus à rien
+  // depuis le passage au grenat.
+  //
+  // N'a d'effet que sur Android et Chrome pour ordinateur : iOS ignore
+  // `theme_color` en mode standalone et suit `appleWebApp.statusBarStyle`
+  // (« default », donc texte sombre sur fond clair — cohérent avec la page).
+  themeColor: "#0F2A47",
   width: "device-width",
   initialScale: 1,
   // Pas de `maximumScale: 1` : bloquer le zoom pincé casse l'accessibilité
