@@ -68,8 +68,12 @@ export const DOC022_CLINICAL_ELIGIBILITY = {
   scinti: ["T", "R"],
   /** Cs cabinet Tessé (préférence) */
   cs_tesse: ["B", "S", "V", "U"],
-  /** Cs PSS (cabinet PSS) — H, Z, G, B, A, K + M, O, W, P, U (hors Coro/Astreintes/Rythmo) */
-  cs_pss: ["H", "Z", "G", "B", "A", "K", "M", "O", "W", "P", "U"],
+  /**
+   * Cs PSS (cabinet PSS) — H, Z, G, A, K + M, O, W, P (hors Coro/Astreintes/
+   * Rythmo). U, B et S en sont EXCLUS (demande utilisateur) : ils sont
+   * exclusivement en Cs Tessée, jamais en Cs PSS.
+   */
+  cs_pss: ["H", "Z", "G", "A", "K", "M", "O", "W", "P"],
 } as const
 
 /**
@@ -199,6 +203,10 @@ export function isAtlEligibleForCell(
 
 export function isCoroEligibleDoctor(doctorId: string): boolean {
   return (DOC022_CLINICAL_ELIGIBILITY.coro as readonly string[]).includes(doctorId)
+}
+
+export function isCsPssEligibleDoctor(doctorId: string): boolean {
+  return (DOC022_CLINICAL_ELIGIBILITY.cs_pss as readonly string[]).includes(doctorId)
 }
 
 /**
