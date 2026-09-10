@@ -38,6 +38,10 @@ Ne pas utiliser ces fichiers sous 24 px : le favicon 16 px a son propre dessin
   cadrage serré coupait la queue de la pulsation
 - l'écran de connexion, en réserve sur le panneau `#0F2A47`
 - l'en-tête du planning
+- `lib/planning-pdf.ts` — l'export PDF, où les tracés sont redessinés en
+  `drawSvgPath` (pdf-lib) plutôt qu'en PNG embarqué, pour rester nets à
+  l'impression. Les valeurs y sont recopiées : à reporter en cas de
+  modification de la géométrie
 
 Pour régénérer les PNG après une modification de la géométrie :
 
