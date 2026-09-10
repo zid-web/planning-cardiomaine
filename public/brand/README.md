@@ -1,34 +1,28 @@
-# Pistes d'identité — Cardiomaine
+# Marque Cardiomaine — « Le C battant »
 
-Six pistes de marque proposées pour l'application de planning. **La piste 03,
-« Le C battant », a été retenue** et est désormais celle de l'application.
+Un C ouvert, l'initiale, dont l'ouverture laisse sortir la pulsation. Retenue
+parmi six pistes proposées ; les cinq écartées (Systole, Rotation, Quatre
+cavités, Tracé P·QRS·T, Diastole) ont été supprimées.
 
-La géométrie de référence vit dans `components/brand/cardiomaine-mark.tsx`, et les
-icônes (favicons, tuiles iOS et Android) sont produites par
-`scripts/build-brand-icons.mjs`. Les cinq autres pistes restent ici comme trace de
-la proposition : elles ne sont référencées par aucun code et peuvent être
-supprimées.
+Ce dossier contient la marque **hors application** : en-tête de courrier, PDF,
+diaporama, impression. Pour l'écran, on ne prend pas ces fichiers mais le
+composant `components/brand/cardiomaine-mark.tsx`, qui est la géométrie de
+référence.
 
-| Piste | Nom | Idée |
-|---|---|---|
-| 01 | Systole | Sept barres (les sept jours) dont la hauteur dessine un complexe QRS |
-| 02 | Rotation | Anneau de garde en quatre segments, un seul en grenat, tracé au centre |
-| 03 | **Le C battant** | **Retenue.** Monogramme C ouvert, la pulsation sort par l'ouverture |
-| 04 | Quatre cavités | Le cœur découpé aux gouttières de la grille du planning |
-| 05 | Tracé P·QRS·T | Le complexe juste, sans stylisation |
-| 06 | Diastole | Cœur en réserve dans une tuile pleine, traversé par la ligne isoélectrique |
+| Fichier | Usage |
+|---|---|
+| `03-c-battant.svg` | couleur, sur fond clair |
+| `03-c-battant-reserve.svg` | en réserve sur le panneau sombre `#0F2A47` |
+| `03-c-battant-mono.svg` | une seule encre — impression, tampon, photocopie |
 
-Trois déclinaisons par piste :
+Grille de 64 × 64, sans texte et sans police embarquée : le nom se compose à
+côté, il n'est pas vectorisé dans la marque. Palette — grenat `#B23A48`, ardoise
+`#0F2A47`, celle que porte déjà l'écran de connexion.
 
-- `NN-nom.svg` — couleur, sur fond clair
-- `NN-nom-reserve.svg` — en réserve sur le panneau sombre `#0F2A47`
-- `NN-nom-mono.svg` — une seule encre (impression, tampon, fax)
+Ne pas utiliser ces fichiers sous 24 px : le favicon 16 px a son propre dessin
+(voir plus bas).
 
-Toutes sont sur une grille de 64 × 64, sans texte et sans police embarquée.
-Palette : grenat `#B23A48`, ardoise `#0F2A47`, atone `#9BB0C4` — celle que porte
-déjà l'écran de connexion.
-
-## Où la marque retenue est utilisée
+## Où la marque est utilisée
 
 - `components/brand/cardiomaine-mark.tsx` — géométrie de référence, `CardiomaineMark`
   et `CardiomaineLockup` ; c'est le seul endroit où le tracé est défini pour l'écran
