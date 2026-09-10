@@ -550,11 +550,14 @@ export function mergeSolverWeekIntoExisting(
         const existingListed = existingVals.filter(
           (d) => Boolean(d) && isListedDoctor(d) && !NURSES.has(d),
         );
-        // Saisie manuelle / validée (médecin listé, hors infirmière seule -
-        // une infirmière seule n'est pas une affectation complète, le
-        // partenaire doit pouvoir être proposé - corrigé le 31/07/2026)
-        // prime sur les propositions Générer
-        if (existingCell?.status === "validated" && existingListed.length > 0) {
+        // Saisie manuelle / déjà remplie (médecin listé, hors infirmière
+        // seule - une infirmière seule n'est pas une affectation complète,
+        // le partenaire doit pouvoir être proposé - corrigé le 31/07/2026)
+        // prime TOUJOURS sur les propositions Générer, quel que soit son
+        // statut (validated/pending) : le générateur ne doit jamais prendre
+        // le dessus sur ce qui est déjà rempli, seulement proposer sur les
+        // cases vides (demande utilisateur, règle renforcée).
+        if (existingListed.length > 0) {
           continue;
         }
         // Demande de changement en cours : ne pas écraser
