@@ -167,6 +167,21 @@ function main() {
   assert.equal(after["Matin - Coro"].LUNDI.status, "validated")
   assert.deepEqual(after["Apm - Coro"].LUNDI.value, ["M"])
 
+  // Bug corrigé (demande utilisateur) : une case manuelle restée en statut
+  // "pending" (pas "validated") devait AUSSI être protégée — le générateur
+  // ne doit jamais écraser une case déjà remplie, quel que soit son statut,
+  // seulement proposer sur les cases vides.
+  const existingPending: ScheduleData = generateWeekSchedule("2026-W30")
+  existingPending["Apm - Coro"].MARDI = { value: ["O"], type: "doctor", status: "pending" }
+  const generatedForPending: ScheduleData = generateWeekSchedule("2026-W30")
+  generatedForPending["Apm - Coro"].MARDI = { value: ["W"], type: "doctor", status: "pending" }
+  const afterPending = mergeSolverWeekIntoExisting(existingPending, generatedForPending)
+  assert.deepEqual(
+    afterPending["Apm - Coro"].MARDI.value,
+    ["O"],
+    "case manuelle en statut pending protégée elle aussi (pas seulement validated)",
+  )
+
   // ETT ped validé manuel : Générer ne remplace pas
   existing["Apm - ETT salle 1"].MERCREDI = {
     value: ["P"],
