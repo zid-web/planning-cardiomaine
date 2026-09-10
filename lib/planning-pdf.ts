@@ -30,8 +30,27 @@ const MARK_ORIGIN_X = 6.7
 const MARK_ORIGIN_Y = 5.8
 const MARK_EXTENT = 52.4
 
-const BRAND_INK = rgb(15 / 255, 42 / 255, 71 / 255) // #0F2A47
-const BRAND_PULSE = rgb(178 / 255, 58 / 255, 72 / 255) // #B23A48
+/**
+ * Palette du document, alignée sur celle de la marque.
+ *
+ * Le document utilisait auparavant deux bleus foncés distincts et approchants,
+ * l'un pour la structure du tableau, l'autre pour les libellés d'activité, qui
+ * visaient tous deux l'ardoise sans l'atteindre. Les deux sont maintenant
+ * `INK`, la valeur exacte de la marque.
+ */
+const INK = rgb(15 / 255, 42 / 255, 71 / 255) // #0F2A47, ardoise de la marque
+const PULSE = rgb(178 / 255, 58 / 255, 72 / 255) // #B23A48, grenat de la marque
+const PAPER = rgb(1, 1, 1)
+/** Filets du quadrillage : séparation des jours à l'intérieur du tableau. */
+const RULE_DAY = rgb(0.75, 0.78, 0.82)
+/** Filets du quadrillage : séparation entre deux lignes d'activité. */
+const RULE_ROW = rgb(0.8, 0.82, 0.85)
+/** Fond des lignes paires du tableau. */
+const ZEBRA = rgb(0.96, 0.97, 0.99)
+/** Texte courant : noms de médecins, corps des notes. */
+const TEXT = rgb(0.15, 0.15, 0.2)
+/** Texte secondaire, un cran plus clair qu'`INK` : jour d'une note. */
+const TEXT_MUTED = rgb(0.2, 0.3, 0.4)
 
 /**
  * Dessine la marque sur `page`, calée à gauche sur `x` et centrée
@@ -56,7 +75,7 @@ function drawBrandMark(page: PDFPage, x: number, centerY: number, size: number) 
     y: originY,
     scale,
     borderWidth: MARK_C_WIDTH * scale,
-    borderColor: BRAND_INK,
+    borderColor: INK,
     borderLineCap: LineCapStyle.Round,
   })
   page.drawSvgPath(MARK_PULSE, {
@@ -64,7 +83,7 @@ function drawBrandMark(page: PDFPage, x: number, centerY: number, size: number) 
     y: originY,
     scale,
     borderWidth: MARK_PULSE_WIDTH * scale,
-    borderColor: BRAND_PULSE,
+    borderColor: PULSE,
     borderLineCap: LineCapStyle.Round,
   })
 
@@ -102,14 +121,14 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
       start: { x: 36, y: topY },
       end: { x: 36, y: bottomY },
       thickness: 0.8,
-      color: rgb(0.08, 0.18, 0.3),
+      color: INK,
     })
     // Ligne verticale de séparation après "Activité"
     page.drawLine({
       start: { x: 176, y: topY },
       end: { x: 176, y: bottomY },
       thickness: 0.8,
-      color: rgb(0.08, 0.18, 0.3),
+      color: INK,
     })
     // Lignes verticales de séparation pour chaque jour
     for (let i = 0; i < DAYS.length; i++) {
@@ -118,7 +137,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
         start: { x, y: topY },
         end: { x, y: bottomY },
         thickness: i === DAYS.length - 1 ? 0.8 : 0.5,
-        color: i === DAYS.length - 1 ? rgb(0.08, 0.18, 0.3) : rgb(0.75, 0.78, 0.82),
+        color: i === DAYS.length - 1 ? INK : RULE_DAY,
       })
     }
   }
@@ -130,7 +149,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
       y: startY - 18,
       width: pageWidth - 72,
       height: 18,
-      color: rgb(0.08, 0.18, 0.3),
+      color: INK,
     })
 
     // Texte de la colonne Activité
@@ -139,7 +158,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
       y: startY - 12,
       size: 8,
       font: fontBold,
-      color: rgb(1, 1, 1),
+      color: PAPER,
     })
 
     // Texte des jours de la semaine
@@ -149,7 +168,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
         y: startY - 12,
         size: 8,
         font: fontBold,
-        color: rgb(1, 1, 1),
+        color: PAPER,
       })
     })
 
@@ -165,7 +184,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
     y: pageHeight - 28,
     size: titleSize,
     font: fontBold,
-    color: rgb(0.08, 0.18, 0.3),
+    color: INK,
   })
 
   let currentY = pageHeight - 48
@@ -179,13 +198,13 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
     start: { x: 36, y: tableTopY },
     end: { x: pageWidth - 36, y: tableTopY },
     thickness: 0.8,
-    color: rgb(0.08, 0.18, 0.3),
+    color: INK,
   })
   page.drawLine({
     start: { x: 36, y: currentY },
     end: { x: pageWidth - 36, y: currentY },
     thickness: 0.8,
-    color: rgb(0.08, 0.18, 0.3),
+    color: INK,
   })
 
   const rowKeys = Object.keys(schedule).filter((k) => k !== "Notes du jour")
@@ -201,7 +220,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
         start: { x: 36, y: currentY },
         end: { x: pageWidth - 36, y: currentY },
         thickness: 0.8,
-        color: rgb(0.08, 0.18, 0.3),
+        color: INK,
       })
 
       page = doc.addPage([pageWidth, pageHeight])
@@ -213,7 +232,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
         y: pageHeight - 28,
         size: contSize,
         font: fontBold,
-        color: rgb(0.08, 0.18, 0.3),
+        color: INK,
       })
 
       tableTopY = pageHeight - 48
@@ -223,13 +242,13 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
         start: { x: 36, y: tableTopY },
         end: { x: pageWidth - 36, y: tableTopY },
         thickness: 0.8,
-        color: rgb(0.08, 0.18, 0.3),
+        color: INK,
       })
       page.drawLine({
         start: { x: 36, y: currentY },
         end: { x: pageWidth - 36, y: currentY },
         thickness: 0.8,
-        color: rgb(0.08, 0.18, 0.3),
+        color: INK,
       })
       rowIndex = 0
     }
@@ -241,7 +260,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
         y: currentY - rowHeight,
         width: pageWidth - 72,
         height: rowHeight,
-        color: rgb(0.96, 0.97, 0.99),
+        color: ZEBRA,
       })
     }
 
@@ -251,7 +270,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
       y: currentY - rowHeight + 5,
       size: 7,
       font: fontBold,
-      color: rgb(0.1, 0.15, 0.25),
+      color: INK,
     })
 
     // Contenu des cellules pour chaque jour
@@ -263,7 +282,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
         y: currentY - rowHeight + 5,
         size: 7,
         font,
-        color: rgb(0.15, 0.15, 0.2),
+        color: TEXT,
       })
     })
 
@@ -275,7 +294,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
       start: { x: 36, y: currentY },
       end: { x: pageWidth - 36, y: currentY },
       thickness: 0.5,
-      color: rgb(0.8, 0.82, 0.85),
+      color: RULE_ROW,
     })
   }
 
@@ -285,7 +304,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
     start: { x: 36, y: currentY },
     end: { x: pageWidth - 36, y: currentY },
     thickness: 0.8,
-    color: rgb(0.08, 0.18, 0.3),
+    color: INK,
   })
 
   // Affichage structuré et propre des Notes du jour à la fin du document
@@ -307,7 +326,7 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
       y: currentY,
       size: 9,
       font: fontBold,
-      color: rgb(0.08, 0.18, 0.3),
+      color: INK,
     })
     currentY -= 14
 
@@ -317,14 +336,14 @@ export async function buildPlanningPdf(weekKey: string, schedule: ScheduleData) 
         y: currentY,
         size: 7.5,
         font: fontBold,
-        color: rgb(0.2, 0.3, 0.4),
+        color: TEXT_MUTED,
       })
       page.drawText(n.note.slice(0, 150), {
         x: 85,
         y: currentY,
         size: 7.5,
         font,
-        color: rgb(0.15, 0.15, 0.2),
+        color: TEXT,
       })
       currentY -= 12
     })
