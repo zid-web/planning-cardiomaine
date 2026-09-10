@@ -18,7 +18,7 @@
 
 import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
-import { isAtlEligibleForCell, isCoroEligibleDoctor } from "@/lib/group-clinical-rules"
+import { isAtlEligibleForCell, isCoroEligibleDoctor, isCoroEligibleForCell } from "@/lib/group-clinical-rules"
 import { HALF_DAY_OFF_APM_ROW, HALF_DAY_OFF_MATIN_ROW, hasHabitualAfternoonOff } from "@/lib/half-day-off"
 import {
   appendSpecialDoctorLabel,
@@ -735,6 +735,15 @@ export function canAssignDoctorToSlot(
       return {
         allowed: false,
         reason: "Coro réservé aux coronarographistes (M, O, W, FV).",
+      }
+    }
+    // FV n'a droit qu'à la Coro du jeudi après-midi — jamais le matin, ni
+    // les autres jours (demande utilisateur : activité FV strictement
+    // limitée à garde nuit lundi + coro/ATL jeudi apm).
+    if (!isCoroEligibleForCell(doctorId, rowKey, day)) {
+      return {
+        allowed: false,
+        reason: "FV n'est éligible qu'à la Coro du jeudi après-midi.",
       }
     }
     // Salle de coro en maintenance sur cette période (bug corrigé le
