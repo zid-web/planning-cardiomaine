@@ -18,6 +18,7 @@ import {
 import {
   isAtlEligibleForCell,
   isCoroEligibleDoctor,
+  isCoroEligibleForCell,
 } from "@/lib/group-clinical-rules"
 import {
   applyHabitualHalfDaysOff,
@@ -311,7 +312,7 @@ export function applyAtlCoronarographisteEligibility(schedule: ScheduleData): Sc
       if (!cell) continue
       const values = Array.isArray(cell.value) ? cell.value : []
       if (!values.length) continue
-      const filtered = values.filter((d) => !isListedDoctor(d) || isCoroEligibleDoctor(d))
+      const filtered = values.filter((d) => !isListedDoctor(d) || isCoroEligibleForCell(d, row, day))
       if (filtered.length !== values.length) {
         next = setCellDoctors(
           next,
@@ -405,7 +406,7 @@ function syncAtlCoroPair(
   const atlVals = atl?.value || []
 
   const keepFreeText = (v: string) => Boolean(v) && !isListedDoctor(v)
-  const coroEligible = (v: string) => keepFreeText(v) || isCoroEligibleDoctor(v)
+  const coroEligible = (v: string) => keepFreeText(v) || isCoroEligibleForCell(v, coroRow, day)
   const atlEligible = (v: string) => keepFreeText(v) || isAtlEligibleForCell(v, atlRow, day)
 
   // --- Coro ---
