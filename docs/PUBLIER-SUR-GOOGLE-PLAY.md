@@ -97,16 +97,21 @@ mkdir -p ~/cardiomaine-android && cd ~/cardiomaine-android
 bubblewrap init --manifest https://<domaine-de-production>/manifest.webmanifest
 ```
 
+Si la keystore du projet précédent a pu être récupérée, la copier dans ce
+dossier **avant** de lancer la commande et l'indiquer à l'invite : l'empreinte
+déjà déclarée dans `assetlinks.json` reste alors valable. Sinon, une clé neuve
+est créée et il faudra remplacer l'empreinte dans ce fichier.
+
 Les réponses qui comptent :
 
 | Question | Réponse | Pourquoi |
 |---|---|---|
-| Application ID / package name | par ex. `fr.cardiomaine.planning` | **Définitif.** Identifie l'application sur le Play Store ; ne peut plus changer après la première publication. Format en domaine inversé. |
+| Application ID / package name | `com.cardiomaine.planning` | Celui déjà déclaré dans `public/.well-known/assetlinks.json`. **Définitif** : identifie l'application sur le Play Store et ne peut plus changer après la première publication. Toute autre valeur casserait la vérification de domaine. |
 | App name | `Planning Cardiomaine` | Nom complet, dans la fiche. |
 | Short name | `Cardiomaine` | Sous l'icône de l'écran d'accueil : 12 caractères maximum, sinon Android tronque. |
 | Display mode | `standalone` | Comme le manifeste. |
 | Status bar color | `#0F2A47` | L'ardoise de la marque, comme `theme_color`. |
-| Key store location | `./android.keystore` | Créée à cette étape. |
+| Key store location | `./android.keystore` | Créée à cette étape — ou réutiliser celle du projet précédent, si elle a pu être récupérée, pour conserver la même empreinte que celle déjà déclarée. |
 | Key alias | par ex. `cardiomaine` | À noter, il faudra le ressaisir. |
 
 L'outil produit `twa-manifest.json` (la configuration, à versionner ou à
