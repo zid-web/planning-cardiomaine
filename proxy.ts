@@ -23,6 +23,10 @@ export async function proxy(request: NextRequest) {
     "/api/ping-solver", // keep-alive cron (cron-job.org / Vercel Cron) — no login
     "/api/version", // version du déploiement (AppUpdateWatcher) — monté aussi sur la page de connexion
     "/api/test-s44",
+    // Politique de confidentialité : Google Play exige une URL accessible sans
+    // connexion et refuse la fiche sans elle. Derrière l'authentification, elle
+    // renverrait une redirection vers /auth/login.
+    "/confidentialite",
   ]
 
   // Public routes: skip auth entirely (needed for external keep-alive cron)
