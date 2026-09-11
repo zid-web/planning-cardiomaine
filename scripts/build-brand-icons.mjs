@@ -24,6 +24,13 @@ const INK = "#0F2A47"
 const PULSE = "#B23A48"
 const INK_REVERSED = "#FFFFFF"
 const PULSE_REVERSED = "#EE8894"
+/**
+ * Fond des tuiles installables. Blanc et non ardoise : la tuile d'écran
+ * d'accueil doit montrer le logo tel qu'on le connaît — C ardoise, pulsation
+ * grenat — et non son négatif. Le fond doit rester opaque : iOS ne gère pas la
+ * transparence des icônes d'accueil et compose sur du noir.
+ */
+const TILE_GROUND = "#FFFFFF"
 
 /** Boîte serrée sur le dessin — doit rester égale à MARK_VIEWBOX_TIGHT. */
 const TIGHT = "6.7 5.8 52.4 52.4"
@@ -85,11 +92,11 @@ const TARGETS = [
   { file: "icon-dark-32x32.png", size: 32, art: FULL, ground: null, ink: INK_REVERSED, pulse: PULSE_REVERSED, inset: 0 },
   // iOS ne gère pas la transparence des icônes d'accueil et applique lui-même
   // l'arrondi : fond plein, à fond perdu, sans coins arrondis dans le fichier.
-  { file: "apple-icon.png", size: 180, art: FULL, ground: INK, ink: INK_REVERSED, pulse: PULSE_REVERSED, inset: 0.19 },
-  { file: "icon-192x192.png", size: 192, art: FULL, ground: INK, ink: INK_REVERSED, pulse: PULSE_REVERSED, inset: 0.19 },
-  { file: "icon-512x512.png", size: 512, art: FULL, ground: INK, ink: INK_REVERSED, pulse: PULSE_REVERSED, inset: 0.19 },
-  { file: "icon-maskable-192x192.png", size: 192, art: FULL, ground: INK, ink: INK_REVERSED, pulse: PULSE_REVERSED, inset: 0.29 },
-  { file: "icon-maskable-512x512.png", size: 512, art: FULL, ground: INK, ink: INK_REVERSED, pulse: PULSE_REVERSED, inset: 0.29 },
+  { file: "apple-icon.png", size: 180, art: FULL, ground: TILE_GROUND, ink: INK, pulse: PULSE, inset: 0.19 },
+  { file: "icon-192x192.png", size: 192, art: FULL, ground: TILE_GROUND, ink: INK, pulse: PULSE, inset: 0.19 },
+  { file: "icon-512x512.png", size: 512, art: FULL, ground: TILE_GROUND, ink: INK, pulse: PULSE, inset: 0.19 },
+  { file: "icon-maskable-192x192.png", size: 192, art: FULL, ground: TILE_GROUND, ink: INK, pulse: PULSE, inset: 0.29 },
+  { file: "icon-maskable-512x512.png", size: 512, art: FULL, ground: TILE_GROUND, ink: INK, pulse: PULSE, inset: 0.29 },
 ]
 
 const browser = await chromium.launch()

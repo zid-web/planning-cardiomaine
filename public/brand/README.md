@@ -30,8 +30,10 @@ Ne pas utiliser ces fichiers sous 24 px : le favicon 16 px a son propre dessin
 - `public/favicon-16x16.png` — **dessin simplifié** : à 16 px la ligne isoélectrique
   croise le pic R et forme une croix, donc seul le pic est conservé
 - `public/favicon-32x32.png`, `icon-light-32x32.png`, `icon-dark-32x32.png`
-- `public/apple-icon.png` (180) — fond plein, à fond perdu : iOS applique son propre
-  arrondi et ne gère pas la transparence
+- `public/apple-icon.png` (180) — fond blanc plein, à fond perdu : iOS applique son
+  propre arrondi et ne gère pas la transparence. Le fond est blanc et non ardoise
+  pour que la tuile d'écran d'accueil montre le logo dans sa forme principale, C
+  ardoise et pulsation grenat, et non son négatif
 - `public/icon-192x192.png`, `icon-512x512.png` — usage `any`
 - `public/icon-maskable-{192,512}.png` — usage `maskable`, cadrés large : Android
   recadre au pire en cercle inscrit, et le dessin étant plus large que haut, un
