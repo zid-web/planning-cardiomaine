@@ -20,10 +20,6 @@ export async function proxy(request: NextRequest) {
     "/auth/error",
     "/auth/sign-up-success",
     "/auth/reset-password-confirm",
-    // Diagnostic de connexion : doit rester joignable SANS session, sinon il
-    // renverrait vers la connexion — le mur que la page sert justement à
-    // analyser. N'expose ni jeton, ni identifiant, ni clé.
-    "/diagnostic",
     "/api/ping-solver", // keep-alive cron (cron-job.org / Vercel Cron) — no login
     "/api/version", // version du déploiement (AppUpdateWatcher) — monté aussi sur la page de connexion
     "/api/test-s44",
@@ -63,25 +59,12 @@ export async function proxy(request: NextRequest) {
     },
   })
 
-  /**
-   * Une redirection est une réponse **neuve** : elle ne porte aucun des
-   * cookies que `getUser()` vient éventuellement de rafraîchir. Les renvoyer
-   * sans les recopier fait diverger le navigateur et le serveur, et coupe la
-   * session prématurément — c'est l'écueil que documente le commentaire de
-   * `lib/supabase/proxy.ts`. On recopie donc systématiquement.
-   */
-  const redirectTo = (path: string) => {
-    const redirect = NextResponse.redirect(new URL(path, request.url))
-    response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie))
-    return redirect
-  }
-
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return redirectTo("/auth/login")
+    return NextResponse.redirect(new URL("/auth/login", request.url))
   }
 
   if (pathname === "/auth/setup-account") {
@@ -95,7 +78,7 @@ export async function proxy(request: NextRequest) {
     .single()
 
   if (profile?.must_change_password) {
-    return redirectTo("/auth/setup-account")
+    return NextResponse.redirect(new URL("/auth/setup-account", request.url))
   }
 
   return response
@@ -111,6 +94,10 @@ export const config = {
   // servis par la plateforme Vercel et n'exposent aucune donnée applicative :
   // les soustraire au contrôle d'authentification est sans effet de bord.
   matcher: [
-    "/((?!_next/static|_next/image|_vercel|favicon.ico|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // .well-known/ exclu explicitement : Google (vérification TWA/Play
+    // Store via assetlinks.json) et d'autres services y accèdent sans
+    // authentification — une redirection vers /auth/login casserait cette
+    // vérification (renvoie du HTML au lieu du JSON attendu).
+    "/((?!_next/static|_next/image|_vercel|favicon.ico|sw.js|manifest.webmanifest|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }
