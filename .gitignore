@@ -11,3 +11,7 @@ node_modules
 __pycache__/
 *.pyc
 tsconfig.tsbuildinfo
+
+# Clé de signature Android — ne jamais versionner, même en dépôt privé.
+*.keystore
+*.jks
