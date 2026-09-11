@@ -201,7 +201,10 @@ bubblewrap install          # installe l'APK sur le téléphone connecté
 Éléments à préparer, tous obligatoires :
 
 - **Icône** 512 × 512 (dans l'archive d'icônes Android, `play-store/icon-512.png`)
-- **Image de présentation** 1024 × 500
+- **Image de présentation** 1024 × 500 — prête dans
+  `docs/android/play-feature-graphic-1024x500.png` : marque en réserve sur
+  l'ardoise, typographie Geist, tracé ECG de l'écran de connexion en filigrane.
+  Composition centrée, car Play recadre selon les surfaces
 - **Captures d'écran** : au moins 2 pour téléphone, en 16:9 ou 9:16
 - **Description courte** (80 caractères) et **complète** (4000)
 - **URL de politique de confidentialité** (voir plus haut)
