@@ -13,7 +13,9 @@ l'erreur la plus fréquente sur ce type de projet.
 ## État
 
 `public/.well-known/assetlinks.json` est en place, pour le paquet
-`com.cardiomaine.planning` et l'empreinte de la **clé d'envoi** locale. Next.js
+`com.cardiomaine.planning` et l'empreinte de la **clé d'envoi** — celle de la
+keystore générée par bubblewrap sur le Mac, alias `cardiomaine`, sauvegardée
+dans `~/Documents/cardiomaine-keystore.keystore`. Next.js
 sert `public/` à la racine du domaine, dossiers commençant par un point
 compris.
 
