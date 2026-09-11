@@ -63,7 +63,7 @@ l'initialisation**. Si le projet Android est généré avant que les bonnes icô
 soient déployées, l'application portera les anciennes.
 
 Donc, dans cet ordre : fusionner la PR qui installe les icônes → attendre le
-déploiement → vérifier que `https://<domaine>/icon-512x512.png` renvoie bien le
+déploiement → vérifier que `https://planning-cardiomaine.vercel.app/icon-512x512.png` renvoie bien le
 logo attendu → seulement ensuite générer le projet Android.
 
 ---
@@ -94,7 +94,7 @@ vie) :
 
 ```sh
 mkdir -p ~/cardiomaine-android && cd ~/cardiomaine-android
-bubblewrap init --manifest https://<domaine-de-production>/manifest.webmanifest
+bubblewrap init --manifest https://planning-cardiomaine.vercel.app/manifest.webmanifest
 ```
 
 Si la keystore du projet précédent a pu être récupérée, la copier dans ce
@@ -157,7 +157,7 @@ application.
    distinct, un hébergeur peut ignorer les dossiers commençant par un point :
 
    ```sh
-   node scripts/check-assetlinks.mjs https://<domaine>
+   node scripts/check-assetlinks.mjs https://planning-cardiomaine.vercel.app
    ```
 
 3. **Après le premier envoi sur Play**, récupérer l'empreinte de la clé de
