@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.cardiomaine.planning",
+      "sha256_cert_fingerprints": [
+        "7F:84:B0:C6:F9:E8:F6:9E:94:2C:12:0D:39:65:5B:FA:7C:6B:70:C1:E5:56:AD:48:E5:78:49:4D:E2:71:1B:6B"
+      ]
+    }
+  }
+]

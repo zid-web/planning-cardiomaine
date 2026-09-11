@@ -139,23 +139,23 @@ Sans cette étape, l'application s'ouvre avec une barre d'adresse de navigateur
 en haut de l'écran. Elle fonctionne, mais elle ne ressemble plus à une
 application.
 
-1. Récupérer l'empreinte de la clé d'envoi :
+`public/.well-known/assetlinks.json` **est déjà en place**, pour le paquet
+`com.cardiomaine.planning` et l'empreinte de la clé d'envoi. Reste donc :
+
+1. Contrôler le fichier avant de déployer :
 
    ```sh
-   keytool -list -v -keystore android.keystore -alias cardiomaine | grep -A1 SHA256
+   node scripts/check-assetlinks.mjs
    ```
 
-2. Dans **ce dépôt**, copier `docs/android/assetlinks.template.json` vers
-   `public/.well-known/assetlinks.json`, renseigner le nom de paquet et
-   l'empreinte, committer, déployer.
-
-3. Vérifier :
+2. Après déploiement, contrôler qu'il est bien **servi** — c'est un test
+   distinct, un hébergeur peut ignorer les dossiers commençant par un point :
 
    ```sh
    node scripts/check-assetlinks.mjs https://<domaine>
    ```
 
-4. **Après le premier envoi sur Play**, récupérer l'empreinte de la clé de
+3. **Après le premier envoi sur Play**, récupérer l'empreinte de la clé de
    signature Play (Play Console → *Test et publication* → *Intégrité de
    l'application* → *Signature d'application Play*) et l'**ajouter** à la liste.
    C'est elle qui compte pour les utilisateurs : c'est l'oubli le plus fréquent,
