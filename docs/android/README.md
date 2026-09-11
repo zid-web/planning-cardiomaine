@@ -10,17 +10,28 @@ Sans lui, l'application s'ouvre avec une barre d'adresse visible en haut de
 l'écran — elle fonctionne, mais elle ne ressemble plus à une application. C'est
 l'erreur la plus fréquente sur ce type de projet.
 
-## Mise en place
+## État
 
-1. Copier `assetlinks.template.json` vers `public/.well-known/assetlinks.json`
-   (Next.js sert `public/` à la racine du domaine, dossiers en point compris).
-2. Remplacer `package_name` par le nom de paquet choisi à la création du projet
-   Android. **Il est définitif** : il identifie l'application sur le Play Store
-   et ne peut plus changer après la première publication.
-3. Remplacer les deux empreintes SHA-256 (voir ci-dessous).
-4. Committer, déployer, puis vérifier avec :
+`public/.well-known/assetlinks.json` est en place, pour le paquet
+`com.cardiomaine.planning` et l'empreinte de la **clé d'envoi** — celle de la
+keystore générée par bubblewrap sur le Mac, alias `cardiomaine`, sauvegardée
+dans `~/Documents/cardiomaine-keystore.keystore`. Next.js
+sert `public/` à la racine du domaine, dossiers commençant par un point
+compris.
 
-       node scripts/check-assetlinks.mjs https://<domaine>
+Il manque encore l'empreinte de la **clé de signature Play**, qui n'existe
+qu'après le premier envoi (voir ci-dessous) — c'est elle qui compte pour les
+utilisateurs.
+
+Le gabarit `assetlinks.template.json` reste ici pour mémoire, si le fichier doit
+être refait.
+
+    node scripts/check-assetlinks.mjs                        # le fichier local
+    node scripts/check-assetlinks.mjs https://<domaine>      # le fichier servi
+
+Le nom de paquet `com.cardiomaine.planning` est **définitif** : il identifie
+l'application sur le Play Store et ne peut plus changer après la première
+publication.
 
 ## Les deux empreintes, et pourquoi les deux
 

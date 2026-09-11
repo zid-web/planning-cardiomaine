@@ -8,6 +8,18 @@ This repository is linked to a [v0](https://v0.app) project. You can continue de
 
 [Continue working on v0 →](https://v0.app/chat/projects/prj_LJUIVj4l0zVwi8cjDTkntGYHRbNu)
 
+## Adresses
+
+| | |
+|---|---|
+| Production | https://planning-cardiomaine.vercel.app |
+| Solveur de gardes | https://guard-api-cardiomaine.onrender.com |
+| Supabase | https://rmrxsaiianffhpxpntws.supabase.co |
+
+Le domaine de production sert aussi
+`/.well-known/assetlinks.json`, la vérification de domaine de l'application
+Android — voir `docs/PUBLIER-SUR-GOOGLE-PLAY.md` et `docs/android/README.md`.
+
 ## Getting Started
 
 First, run the development server:

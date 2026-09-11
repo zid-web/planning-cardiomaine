@@ -63,7 +63,7 @@ l'initialisation**. Si le projet Android est généré avant que les bonnes icô
 soient déployées, l'application portera les anciennes.
 
 Donc, dans cet ordre : fusionner la PR qui installe les icônes → attendre le
-déploiement → vérifier que `https://<domaine>/icon-512x512.png` renvoie bien le
+déploiement → vérifier que `https://planning-cardiomaine.vercel.app/icon-512x512.png` renvoie bien le
 logo attendu → seulement ensuite générer le projet Android.
 
 ---
@@ -94,19 +94,24 @@ vie) :
 
 ```sh
 mkdir -p ~/cardiomaine-android && cd ~/cardiomaine-android
-bubblewrap init --manifest https://<domaine-de-production>/manifest.webmanifest
+bubblewrap init --manifest https://planning-cardiomaine.vercel.app/manifest.webmanifest
 ```
+
+Si la keystore du projet précédent a pu être récupérée, la copier dans ce
+dossier **avant** de lancer la commande et l'indiquer à l'invite : l'empreinte
+déjà déclarée dans `assetlinks.json` reste alors valable. Sinon, une clé neuve
+est créée et il faudra remplacer l'empreinte dans ce fichier.
 
 Les réponses qui comptent :
 
 | Question | Réponse | Pourquoi |
 |---|---|---|
-| Application ID / package name | par ex. `fr.cardiomaine.planning` | **Définitif.** Identifie l'application sur le Play Store ; ne peut plus changer après la première publication. Format en domaine inversé. |
+| Application ID / package name | `com.cardiomaine.planning` | Celui déjà déclaré dans `public/.well-known/assetlinks.json`. **Définitif** : identifie l'application sur le Play Store et ne peut plus changer après la première publication. Toute autre valeur casserait la vérification de domaine. |
 | App name | `Planning Cardiomaine` | Nom complet, dans la fiche. |
 | Short name | `Cardiomaine` | Sous l'icône de l'écran d'accueil : 12 caractères maximum, sinon Android tronque. |
 | Display mode | `standalone` | Comme le manifeste. |
 | Status bar color | `#0F2A47` | L'ardoise de la marque, comme `theme_color`. |
-| Key store location | `./android.keystore` | Créée à cette étape. |
+| Key store location | `./android.keystore` | Créée à cette étape — ou réutiliser celle du projet précédent, si elle a pu être récupérée, pour conserver la même empreinte que celle déjà déclarée. |
 | Key alias | par ex. `cardiomaine` | À noter, il faudra le ressaisir. |
 
 L'outil produit `twa-manifest.json` (la configuration, à versionner ou à
@@ -139,23 +144,23 @@ Sans cette étape, l'application s'ouvre avec une barre d'adresse de navigateur
 en haut de l'écran. Elle fonctionne, mais elle ne ressemble plus à une
 application.
 
-1. Récupérer l'empreinte de la clé d'envoi :
+`public/.well-known/assetlinks.json` **est déjà en place**, pour le paquet
+`com.cardiomaine.planning` et l'empreinte de la clé d'envoi. Reste donc :
+
+1. Contrôler le fichier avant de déployer :
 
    ```sh
-   keytool -list -v -keystore android.keystore -alias cardiomaine | grep -A1 SHA256
+   node scripts/check-assetlinks.mjs
    ```
 
-2. Dans **ce dépôt**, copier `docs/android/assetlinks.template.json` vers
-   `public/.well-known/assetlinks.json`, renseigner le nom de paquet et
-   l'empreinte, committer, déployer.
-
-3. Vérifier :
+2. Après déploiement, contrôler qu'il est bien **servi** — c'est un test
+   distinct, un hébergeur peut ignorer les dossiers commençant par un point :
 
    ```sh
-   node scripts/check-assetlinks.mjs https://<domaine>
+   node scripts/check-assetlinks.mjs https://planning-cardiomaine.vercel.app
    ```
 
-4. **Après le premier envoi sur Play**, récupérer l'empreinte de la clé de
+3. **Après le premier envoi sur Play**, récupérer l'empreinte de la clé de
    signature Play (Play Console → *Test et publication* → *Intégrité de
    l'application* → *Signature d'application Play*) et l'**ajouter** à la liste.
    C'est elle qui compte pour les utilisateurs : c'est l'oubli le plus fréquent,
