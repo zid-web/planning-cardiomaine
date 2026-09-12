@@ -788,6 +788,20 @@ export default function LoginPage() {
                   S&apos;inscrire
                 </Link>
               </p>
+
+              {/* Google Play attend un lien atteignable sans connexion vers la
+                  politique de confidentialité ; l'écran de connexion est le
+                  seul point d'entrée public de l'application. */}
+              <p style={{ textAlign: "center", fontSize: "0.8125rem", color: "#64748B" }}>
+                <Link
+                  href="/confidentialite"
+                  style={{ color: "#64748B", textDecoration: "none" }}
+                  onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                  onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+                >
+                  Politique de confidentialité
+                </Link>
+              </p>
             </form>
           </div>
         </main>

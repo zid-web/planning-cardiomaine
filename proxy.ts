@@ -20,6 +20,10 @@ export async function proxy(request: NextRequest) {
     "/auth/error",
     "/auth/sign-up-success",
     "/auth/reset-password-confirm",
+    // Exigée par Google Play, qui refuse la fiche si l'URL de politique de
+    // confidentialité n'est pas atteignable sans connexion. La sortir d'ici
+    // casserait la validation Play sans autre signe qu'une redirection.
+    "/confidentialite",
     "/api/ping-solver", // keep-alive cron (cron-job.org / Vercel Cron) — no login
     "/api/version", // version du déploiement (AppUpdateWatcher) — monté aussi sur la page de connexion
     "/api/test-s44",
