@@ -26,7 +26,7 @@ import { CardiomaineLockup } from "@/components/brand/cardiomaine-mark"
 const EDITEUR = {
   raisonSociale: "Pôle Santé Sud",
   adresse: "28 rue de Guetteloup, 72000 Le Mans",
-  contact: "sources@cardiomaine.fr",
+  contact: "zidouissem@gmail.com",
   /**
    * Région du projet Supabase. `eu-west-2` est la région AWS de Londres :
    * l'hébergement est donc au Royaume-Uni, hors Union européenne depuis le
