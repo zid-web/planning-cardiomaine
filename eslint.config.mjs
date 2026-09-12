@@ -5,8 +5,6 @@ const eslintConfig = [
     ignores: [
       "node_modules/**",
       ".next/**",
-      // Applications autonomes : chacune a sa propre configuration de lint.
-      "apps/**",
       "out/**",
       "build/**",
       "public/**",

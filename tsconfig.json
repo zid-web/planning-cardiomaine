@@ -45,10 +45,6 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    // `apps/*` regroupe des applications autonomes, chacune avec son propre
-    // tsconfig et ses propres dependances : les inclure ici ferait echouer
-    // `tsc --noEmit` du planning sur des modules qu'il n'installe pas.
-    "apps"
+    "node_modules"
   ]
 }
