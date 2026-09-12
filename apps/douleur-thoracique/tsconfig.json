@@ -14,10 +14,6 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    // Liste explicite des types globaux. Sans elle, TS inclut tous les @types/*
-    // du projet, dont le stub vide @types/minimatch (tire transitivement) : il
-    // echoue sur TS2688 et ABANDONNE avant de verifier le moindre fichier,
-    // si bien que `tsc --noEmit` ne rapportait plus aucune erreur.
     "types": [
       "node",
       "react",
@@ -46,9 +42,7 @@
   ],
   "exclude": [
     "node_modules",
-    // `apps/*` regroupe des applications autonomes, chacune avec son propre
-    // tsconfig et ses propres dependances : les inclure ici ferait echouer
-    // `tsc --noEmit` du planning sur des modules qu'il n'installe pas.
-    "apps"
+    "out",
+    ".next"
   ]
 }
