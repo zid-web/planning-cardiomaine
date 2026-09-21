@@ -486,13 +486,42 @@ export default function LoginPage() {
       })
 
       if (authError) {
+        // Supabase renvoie 400 pour plusieurs causes distinctes, pas seulement
+        // pour un mot de passe faux. Les confondre sous « mot de passe
+        // incorrect » rend le blocage indiagnosticable : un compte dont
+        // l'adresse n'est pas confirmée, ou temporairement bloqué pour excès
+        // de tentatives, affiche exactement le même message — et l'utilisateur
+        // s'acharne sur un mot de passe qui, lui, est bon.
+        //
+        // `code` est le champ stable de supabase-js ; le message est un repli
+        // pour les versions qui ne le renseignent pas encore.
+        const code = (authError as { code?: string }).code ?? ""
+        const message = authError.message?.toLowerCase() ?? ""
+        const matches = (needle: string) => code === needle || message.includes(needle.replace(/_/g, " "))
+
+        if (matches("email_not_confirmed")) {
+          throw new Error(
+            "Votre adresse e-mail n'a pas encore été confirmée : la connexion est " +
+              "refusée quel que soit le mot de passe. Demandez à un administrateur " +
+              "de réinitialiser votre mot de passe, ce qui confirmera l'adresse.",
+          )
+        }
+        if (authError.status === 429 || matches("over_request_rate_limit") || matches("over_email_send_rate_limit")) {
+          throw new Error(
+            "Trop de tentatives de connexion. Patientez quelques minutes avant de réessayer — " +
+              "le blocage est temporaire et ne vient pas de votre mot de passe.",
+          )
+        }
+        if (matches("user_banned")) {
+          throw new Error("Ce compte est désactivé. Contactez un administrateur.")
+        }
         if (authError.status === 400 || authError.status === 401) {
           throw new Error("Email ou mot de passe incorrect.")
-        } else if (authError.status === 422) {
-          throw new Error("Email introuvable. Vérifiez votre adresse ou créez un compte.")
-        } else {
-          throw new Error(authError.message || "Échec de l'authentification. Veuillez réessayer.")
         }
+        if (authError.status === 422) {
+          throw new Error("Email introuvable. Vérifiez votre adresse ou créez un compte.")
+        }
+        throw new Error(authError.message || "Échec de l'authentification. Veuillez réessayer.")
       }
 
       if (!data.user) throw new Error("Échec de la connexion.")

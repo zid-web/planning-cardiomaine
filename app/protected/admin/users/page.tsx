@@ -294,6 +294,23 @@ export default function AdminUsersPage() {
                       {u.doctor_code}
                     </span>
                   ) : null}
+                  {/*
+                    Une adresse non confirmée interdit toute connexion, quel que
+                    soit le mot de passe. C'est la cause la plus déroutante d'un
+                    « mot de passe incorrect » persistant, et rien ne la montrait
+                    jusqu'ici. Réinitialiser le mot de passe confirme l'adresse
+                    et lève donc le blocage.
+                  */}
+                  {u.email_confirmed_at === null ? (
+                    <span className="rounded-full bg-[#FDECEE] px-2 py-0.5 text-[10px] font-bold text-[#8E2C39]">
+                      e-mail non confirmé — connexion impossible
+                    </span>
+                  ) : null}
+                  {u.last_sign_in_at === null ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                      jamais connecté
+                    </span>
+                  ) : null}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setEditUser({ ...u })}>
