@@ -3,46 +3,51 @@ import { createBrowserClient } from '@supabase/ssr'
 /**
  * Client Supabase côté navigateur.
  *
- * Il n'y a **volontairement plus de valeurs de repli** codées en dur ici.
+ * Les deux constantes ci-dessous ne sont **pas** un vestige : c'est la
+ * configuration sur laquelle la production tourne réellement. Vérifié dans
+ * l'onglet Réseau du navigateur sur planning-cardiomaine.vercel.app — la
+ * connexion Realtime part vers cet hôte, avec cette clé.
  *
- * Le fichier en contenait, présentées comme un secours pour la prévisualisation
- * v0. Le projet Supabase a depuis régénéré ses clés, ce qui invalide toutes les
- * précédentes même non expirées — la clé de repli était donc morte, tout en
- * restant syntaxiquement valable et non expirée (`exp` en 2099). Résultat : tout
- * environnement où `NEXT_PUBLIC_SUPABASE_ANON_KEY` n'est pas défini
- * s'authentifiait contre une clé refusée par Supabase, et **chaque** tentative
- * de connexion échouait — y compris avec le bon mot de passe.
+ * La raison est que `NEXT_PUBLIC_*` est figée dans le bundle **à la
+ * compilation**, et que les variables Vercel correspondantes n'atteignent pas
+ * le build : le repli est donc ce qui s'y retrouve inliné. Les avoir retirées,
+ * en les croyant mortes, aurait fait tomber la connexion pour tout le service
+ * au premier déploiement.
  *
- * L'écran de connexion traduisant ces échecs en « Email ou mot de passe
- * incorrect », la panne était indiagnosticable : l'utilisateur s'acharnait sur
- * un mot de passe correct, l'administrateur réinitialisait sans effet, et rien
- * n'indiquait que la configuration était en cause.
+ * Ces valeurs sont publiques par conception — la clé anon est servie à chaque
+ * navigateur et ce sont les règles RLS qui protègent les données. Les inscrire
+ * ici n'expose rien que le bundle ne contienne déjà.
  *
- * Mieux vaut donc échouer bruyamment, avec un message qui nomme la cause, que
- * de retomber en silence sur une valeur qui peut pourrir sans prévenir.
+ * Avant de les changer ou de les supprimer : ouvrir l'onglet Réseau sur la
+ * production, tenter une connexion, et lire l'hôte et la clé réellement
+ * envoyés. C'est la seule source de vérité — ni le tableau de bord Supabase,
+ * ni les variables d'environnement Vercel ne l'ont donnée correctement.
  */
-export function createClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const FALLBACK_URL = 'https://rmrxsaiianffhpxpntws.supabase.co'
+const FALLBACK_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtcnhzYWlpYW5mZmhweHBudHdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMzI3MTUsImV4cCI6MjA5OTgwODcxNX0.WlUydbEb3oZ2ZnyStE7du6wZhtuzKxGzgFyJPZOQdbo'
 
-  if (!url || !key) {
+export function createClient() {
+  const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  // Le repli reste silencieux en usage normal, mais on trace quelle source a
+  // servi : quand une connexion échoue, savoir si le bundle porte la valeur
+  // d'environnement ou le repli fait gagner des heures de diagnostic.
+  if (!envUrl || !envKey) {
     const missing = [
-      !url && 'NEXT_PUBLIC_SUPABASE_URL',
-      !key && 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+      !envUrl && 'NEXT_PUBLIC_SUPABASE_URL',
+      !envKey && 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
     ]
       .filter(Boolean)
       .join(' et ')
 
-    console.error(
-      `[supabase/client] Configuration absente : ${missing}. ` +
-        "Aucune connexion n'est possible depuis cet environnement tant que " +
-        'ces variables ne sont pas définies (Vercel → Settings → Environment Variables).',
-    )
-    throw new Error(
-      `Configuration Supabase absente (${missing}). ` +
-        "Ce n'est pas un problème de mot de passe : contactez l'administrateur.",
+    console.warn(
+      `[supabase/client] ${missing} absente(s) du bundle : repli sur la ` +
+        'configuration intégrée. Ce repli est attendu en production ; il ne ' +
+        'signale un problème que si la connexion échoue ensuite.',
     )
   }
 
-  return createBrowserClient(url, key)
+  return createBrowserClient(envUrl || FALLBACK_URL, envKey || FALLBACK_ANON_KEY)
 }
