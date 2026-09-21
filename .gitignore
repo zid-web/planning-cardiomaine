@@ -15,3 +15,6 @@ tsconfig.tsbuildinfo
 # Clé de signature Android — ne jamais versionner, même en dépôt privé.
 *.keystore
 *.jks
+
+# Lien local Vercel (vercel link) : identifiants de projet, propres à la machine.
+.vercel

@@ -19,6 +19,16 @@ export type AdminUserRow = {
   doctor_code: string | null
   must_change_password: boolean | null
   created_at: string | null
+  /**
+   * `null` tant que l'adresse n'a pas été confirmée. Un compte non confirmé
+   * ne peut PAS se connecter : Supabase refuse avec un code 400, que l'écran
+   * de connexion affichait jusqu'ici comme « mot de passe incorrect ».
+   * Réinitialiser le mot de passe d'un tel compte ne le débloque pas — d'où
+   * l'intérêt de voir cet état dans la liste.
+   */
+  email_confirmed_at: string | null
+  /** `null` si le compte ne s'est jamais connecté. */
+  last_sign_in_at: string | null
 }
 
 async function assertAdmin() {
@@ -50,8 +60,14 @@ export async function listUsers() {
 
     if (error) return { success: false as const, error: error.message, users: [] as AdminUserRow[] }
 
-    // Compléter les emails manquants depuis Auth (anciens profils / trigger partiel)
-    const emailById = new Map<string, string>()
+    // On lit déjà la liste Auth pour compléter les emails manquants ; on en
+    // garde aussi l'état de confirmation et la dernière connexion, qui sont
+    // les deux seules informations permettant de comprendre pourquoi un
+    // utilisateur n'arrive pas à se connecter.
+    const authById = new Map<
+      string,
+      { email: string | null; emailConfirmedAt: string | null; lastSignInAt: string | null }
+    >()
     try {
       let page = 1
       for (;;) {
@@ -62,7 +78,11 @@ export async function listUsers() {
         if (authErr) break
         const batch = listed?.users || []
         for (const u of batch) {
-          if (u.email) emailById.set(u.id, u.email)
+          authById.set(u.id, {
+            email: u.email ?? null,
+            emailConfirmedAt: u.email_confirmed_at ?? null,
+            lastSignInAt: u.last_sign_in_at ?? null,
+          })
         }
         if (batch.length < 200) break
         page += 1
@@ -72,10 +92,15 @@ export async function listUsers() {
       // Auth list optionnelle — on garde les emails profil
     }
 
-    const users = (profiles || []).map((p) => ({
-      ...(p as AdminUserRow),
-      email: (p as AdminUserRow).email || emailById.get(p.id) || null,
-    }))
+    const users = (profiles || []).map((p) => {
+      const auth = authById.get(p.id)
+      return {
+        ...(p as AdminUserRow),
+        email: (p as AdminUserRow).email || auth?.email || null,
+        email_confirmed_at: auth?.emailConfirmedAt ?? null,
+        last_sign_in_at: auth?.lastSignInAt ?? null,
+      }
+    })
 
     return { success: true as const, users }
   } catch (err) {
@@ -302,8 +327,16 @@ export async function resetUserPassword(
       targetIsAdmin,
     }
 
+    // `email_confirm: true` en plus du mot de passe : un compte dont l'adresse
+    // n'a jamais été confirmée ne peut pas se connecter, quel que soit son mot
+    // de passe. Sans cela, l'administrateur réinitialise, transmet le mot de
+    // passe, et l'utilisateur reste bloqué sur « mot de passe incorrect » — le
+    // geste n'aurait servi à rien. Confirmer l'adresse est cohérent avec
+    // l'intention : l'administrateur débloque quelqu'un qu'il connaît, et les
+    // comptes créés depuis cette page sont de toute façon déjà confirmés.
     const { error: authError } = await admin.auth.admin.updateUserById(id, {
       password: newPassword,
+      email_confirm: true,
     })
     if (authError) {
       perfWarn("admin-users", "password_reset_failed", { ...audit, error: authError.message })

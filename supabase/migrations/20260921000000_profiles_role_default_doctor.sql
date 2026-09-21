@@ -1,0 +1,25 @@
+-- Le rôle par défaut d'un nouveau profil passe d'« admin » à « doctor ».
+--
+-- `public.profiles.role` était déclaré `DEFAULT 'admin'` dans la migration
+-- initiale, et le déclencheur `handle_new_user()` insère la ligne de profil
+-- sans préciser de rôle : toute création de compte hors interface
+-- d'administration produisait donc un administrateur du planning, capable de
+-- modifier la grille de tout le service.
+--
+-- L'inscription publique est désormais désactivée côté application
+-- (`app/auth/sign-up/page.tsx` redirige vers la connexion), mais un défaut
+-- permissif reste un piège : il suffirait de réactiver l'inscription, de
+-- configurer un envoi d'e-mail, ou de créer un utilisateur depuis le tableau
+-- de bord Supabase pour fabriquer un administrateur sans s'en apercevoir. La
+-- valeur sûre est le rôle le moins privilégié ; l'élévation doit être un geste
+-- explicite.
+--
+-- Sans effet sur les comptes existants : `ALTER COLUMN ... SET DEFAULT` ne
+-- modifie que les lignes créées ensuite. Sans effet non plus sur la création
+-- par un administrateur : `createUser` (app/actions/admin-user-actions.ts)
+-- fixe le rôle explicitement, le défaut ne s'y applique pas.
+--
+-- À appliquer au projet hébergé : cette migration ne s'exécute pas toute
+-- seule. `supabase db push`, ou le même ALTER depuis l'éditeur SQL.
+
+ALTER TABLE public.profiles ALTER COLUMN role SET DEFAULT 'doctor';

@@ -56,11 +56,6 @@ export default function HomePage() {
                   Se connecter
                 </Button>
               </Link>
-              <Link href="/auth/sign-up">
-                <Button variant="outline" className="px-8 py-3">
-                  S&apos;inscrire
-                </Button>
-              </Link>
             </div>
           </div>
 
