@@ -443,6 +443,58 @@ function InstallPWAButton() {
   )
 }
 
+/**
+ * Hôte Supabase réellement configuré dans ce déploiement.
+ *
+ * `NEXT_PUBLIC_SUPABASE_URL` est inlinée dans le bundle servi au navigateur :
+ * la nommer dans un message d'erreur n'expose rien que le code public ne
+ * contienne déjà, et c'est la seule information qui distingue « le réseau est
+ * coupé » de « cet environnement pointe vers une adresse injoignable ».
+ */
+function configuredAuthHost(): string | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!url) return null
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
+/**
+ * Panne réseau : la requête n'a jamais abouti, donc aucun statut HTTP n'est
+ * revenu. Supabase l'enveloppe dans une `AuthRetryableFetchError` de statut 0
+ * dont le message est celui du navigateur — « Failed to fetch » sous Chrome,
+ * « Load failed » sous Safari et iOS, « NetworkError… » sous Firefox.
+ *
+ * Ces messages tombaient dans le cas générique, qui les réaffichait tels
+ * quels : en anglais, sans indication de cause, et sur le même écran que
+ * « mot de passe incorrect ». L'utilisateur ressaisit alors un mot de passe
+ * correct pendant que la requête, elle, ne part même pas.
+ */
+const NETWORK_FAILURE_HINTS = [
+  "failed to fetch",
+  "load failed",
+  "networkerror",
+  "network request failed",
+]
+
+function isNetworkFailure(name: string, status: number | undefined, lowerMessage: string): boolean {
+  if (name === "AuthRetryableFetchError" && (status === 0 || status === undefined)) return true
+  return NETWORK_FAILURE_HINTS.some((hint) => lowerMessage.includes(hint))
+}
+
+function networkFailureMessage(): string {
+  const host = configuredAuthHost()
+  return (
+    "Impossible de joindre le serveur d'authentification" +
+    (host ? ` (${host})` : "") +
+    ". La requête n'a pas abouti : ce n'est pas un problème de mot de passe. " +
+    "Vérifiez votre connexion ; si elle fonctionne, c'est que cet environnement " +
+    "pointe vers une adresse Supabase injoignable et que sa configuration est à corriger."
+  )
+}
+
 // ─── Page principale ──────────────────────────────────────────────────────────
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -499,6 +551,10 @@ export default function LoginPage() {
         const message = authError.message?.toLowerCase() ?? ""
         const matches = (needle: string) => code === needle || message.includes(needle.replace(/_/g, " "))
 
+        if (isNetworkFailure((authError as { name?: string }).name ?? "", authError.status, message)) {
+          throw new Error(networkFailureMessage())
+        }
+
         if (matches("email_not_confirmed")) {
           throw new Error(
             "Votre adresse e-mail n'a pas encore été confirmée : la connexion est " +
@@ -528,7 +584,13 @@ export default function LoginPage() {
 
       router.push("/protected/planning")
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Une erreur inattendue est survenue")
+      // `fetch` peut aussi échouer avant que supabase-js n'enveloppe l'erreur
+      // (`TypeError: Failed to fetch`) : même panne, même message attendu.
+      if (err instanceof Error && isNetworkFailure(err.name, undefined, err.message.toLowerCase())) {
+        setError(networkFailureMessage())
+      } else {
+        setError(err instanceof Error ? err.message : "Une erreur inattendue est survenue")
+      }
     } finally {
       setIsLoading(false)
     }
