@@ -8,8 +8,26 @@ import AppUpdateWatcher from "@/components/app-update-watcher"
 import { BUILD_ID } from "@/lib/build-id"
 import "./globals.css"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+/**
+ * Geist, réellement appliquée.
+ *
+ * Les deux appels existaient déjà, mais leur résultat était affecté à des
+ * variables inutilisées : la police était téléchargée à chaque build, servie au
+ * navigateur, et jamais employée — toute l'application s'affichait avec la
+ * police par défaut du système. `variable` expose chaque fonte comme propriété
+ * CSS personnalisée, posée sur <html> ci-dessous et consommée par `--font-sans`
+ * dans globals.css. Sans ces trois maillons, `font-sans` ne désigne rien.
+ */
+const geistSans = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist-sans",
+  display: "swap",
+})
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+  display: "swap",
+})
 
 export const metadata: Metadata = {
   title: "Plateforme de gestion : planning Cardiomaine",
@@ -76,7 +94,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="fr" className="h-full overflow-hidden">
+    <html lang="fr" className={`${geistSans.variable} ${geistMono.variable} h-full overflow-hidden`}>
       <body className={`font-sans antialiased h-full overflow-hidden m-0 p-0`}>
         <div id="root" className="h-full overflow-hidden">
           {children}

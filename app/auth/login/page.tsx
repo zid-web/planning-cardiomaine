@@ -575,7 +575,10 @@ export default function LoginPage() {
           throw new Error("Email ou mot de passe incorrect.")
         }
         if (authError.status === 422) {
-          throw new Error("Email introuvable. Vérifiez votre adresse ou créez un compte.")
+          throw new Error(
+            "Email introuvable. Vérifiez votre adresse — les comptes sont créés par " +
+              "un administrateur du planning, il n'y a pas d'inscription libre.",
+          )
         }
         throw new Error(authError.message || "Échec de l'authentification. Veuillez réessayer.")
       }
@@ -868,17 +871,6 @@ export default function LoginPage() {
                 {isLoading ? "Connexion en cours…" : "Se connecter"}
               </button>
 
-              <p style={{ textAlign: "center", fontSize: "0.875rem", color: "#475569" }}>
-                Pas encore de compte ?{" "}
-                <Link
-                  href="/auth/sign-up"
-                  style={{ fontWeight: 500, color: "#1B3A5C", textDecoration: "none" }}
-                  onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
-                  onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
-                >
-                  S&apos;inscrire
-                </Link>
-              </p>
 
               {/* Google Play attend un lien atteignable sans connexion vers la
                   politique de confidentialité ; l'écran de connexion est le
