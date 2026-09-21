@@ -789,15 +789,13 @@ export default function LoginPage() {
                 </Link>
               </p>
 
-              {/*
-                Lien public vers la politique de confidentialité. Google Play
-                exige une URL accessible sans connexion ; l'écran de connexion
-                est la seule page publique où la placer.
-              */}
-              <p style={{ textAlign: "center", fontSize: "0.75rem", color: "#94a3b8" }}>
+              {/* Google Play attend un lien atteignable sans connexion vers la
+                  politique de confidentialité ; l'écran de connexion est le
+                  seul point d'entrée public de l'application. */}
+              <p style={{ textAlign: "center", fontSize: "0.8125rem", color: "#64748B" }}>
                 <Link
                   href="/confidentialite"
-                  style={{ color: "#94a3b8", textDecoration: "none" }}
+                  style={{ color: "#64748B", textDecoration: "none" }}
                   onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
                   onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
                 >

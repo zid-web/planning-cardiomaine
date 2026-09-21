@@ -323,9 +323,14 @@ export function StatsDialog({
           ) : (
             /* ADMIN VIEW: Full Multi-Doctor Dashboard */
             <Tabs defaultValue="graphs" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 max-w-sm mb-6 bg-slate-200/50">
-                <TabsTrigger value="graphs">Graphiques (Par Domaines)</TabsTrigger>
-                <TabsTrigger value="list">Détails (Tous les Médecins)</TabsTrigger>
+              {/* En largeur téléphone, les libellés passent sur deux lignes (coupure avant la parenthèse) au lieu de déborder l'un sur l'autre */}
+              <TabsList className="grid w-full grid-cols-2 max-w-sm sm:max-w-md h-auto mb-6 bg-slate-200/50">
+                <TabsTrigger value="graphs" className="min-w-0 h-full flex-wrap gap-x-1 gap-y-0 py-1.5 whitespace-normal text-center text-xs leading-tight sm:text-sm">
+                  Graphiques <span className="whitespace-nowrap">(Par Domaines)</span>
+                </TabsTrigger>
+                <TabsTrigger value="list" className="min-w-0 h-full flex-wrap gap-x-1 gap-y-0 py-1.5 whitespace-normal text-center text-xs leading-tight sm:text-sm">
+                  Détails <span className="whitespace-nowrap">(Tous les Médecins)</span>
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="graphs" className="space-y-6 mt-0">
