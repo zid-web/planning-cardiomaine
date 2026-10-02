@@ -3,7 +3,8 @@
  *
  * 1. Astreinte ATL Nuit samedi ⇒ même médecin en ATL Nuit vendredi (systématique).
  * 2. Garde samedi : un seul médecin Matin → Midi → Nuit dans la mesure du possible.
- * 3. Semaines paires (week-end ATL WOM, pas CH) :
+ * 3. Semaines WOM (week-end ATL W/O/M, pas CH — paires jusqu'à 2026,
+ *    impaires à partir de 2027, voir `lib/astreinte-cycle.ts`) :
  *    - **Exactement 5 week-ends combo / semestre** (prédéfinis) ;
  *    - Autres week-ends WOM **mono**.
  * 4. Sur week-end **combo**, croisement soft Sat → Dim (cases vides).
@@ -16,7 +17,12 @@
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
 import { isListedDoctor } from "@/lib/doctor-code"
 import type { EquityCounts } from "@/lib/equity-tracking"
-import { dateStrForWeekDay, isOddIsoWeek } from "@/lib/fixed-assignments"
+import {
+  isChAstreinteWeek,
+  listWomAstreinteWeekKeys,
+  womWeekIndexInHalfYear,
+} from "@/lib/astreinte-cycle"
+import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import {
   getWeekendWeekPreset,
@@ -227,18 +233,14 @@ function otherWom(primary: WomAtlDoctor, preferred?: WomAtlDoctor): WomAtlDoctor
 }
 
 /**
- * Index 0..12 de la semaine paire dans son semestre (H1 = W02…W26, H2 = W28…W52).
- * Retourne null si semaine impaire / invalide.
+ * Index 0..12 de la semaine WOM dans son semestre (2026 : H1 = W02…W26,
+ * H2 = W28…W52 ; 2027 : H1 = W01…W25, H2 = W27…W51).
+ * Retourne null si semaine CH / invalide.
  */
 export function evenWeekIndexInHalfYear(weekKey: string): number | null {
-  if (isOddIsoWeek(weekKey)) return null
-  const weekNum = Number.parseInt(weekKey.split("-W")[1] || "0", 10)
-  if (!weekNum || weekNum % 2 !== 0) return null
-  const evenIndex = weekNum / 2 - 1
-  return (
-    ((evenIndex % WOM_EVEN_WEEKS_PER_HALF_YEAR) + WOM_EVEN_WEEKS_PER_HALF_YEAR) %
-    WOM_EVEN_WEEKS_PER_HALF_YEAR
-  )
+  const idx = womWeekIndexInHalfYear(weekKey)
+  if (idx === null) return null
+  return idx % WOM_EVEN_WEEKS_PER_HALF_YEAR
 }
 
 /** Liste les 5 (×2 semestres) week keys combo pour une année civile. */
@@ -247,12 +249,10 @@ export function listWomComboWeekKeys(year: number): string[] {
   if (override?.length) return [...override]
 
   const keys: string[] = []
-  for (const halfBase of [0, WOM_EVEN_WEEKS_PER_HALF_YEAR]) {
-    for (const idx of WOM_COMBO_EVEN_INDICES) {
-      const evenIndex = halfBase + idx
-      const weekNum = (evenIndex + 1) * 2
-      if (weekNum < 1 || weekNum > 52) continue
-      keys.push(`${year}-W${String(weekNum).padStart(2, "0")}`)
+  for (const key of listWomAstreinteWeekKeys(year)) {
+    const idx = evenWeekIndexInHalfYear(key)
+    if (idx !== null && (WOM_COMBO_EVEN_INDICES as readonly number[]).includes(idx)) {
+      keys.push(key)
     }
   }
   return keys
@@ -260,10 +260,10 @@ export function listWomComboWeekKeys(year: number): string[] {
 
 /**
  * Week-end combo = calendrier prédéfini (override année / indices) **ou**
- * preset `kind: "combo"`. Semaines impaires (CH) : jamais combo.
+ * preset `kind: "combo"`. Semaines CH : jamais combo.
  */
 export function isWomComboWeekend(weekKey: string): boolean {
-  if (!weekKey || isOddIsoWeek(weekKey)) return false
+  if (!weekKey || isChAstreinteWeek(weekKey)) return false
 
   const preset = getWeekendWeekPreset(weekKey)
   if (preset?.kind === "combo") return true
@@ -310,7 +310,7 @@ export function proposeWeekendWomPattern(
   weekKey: string,
   equity?: Record<string, EquityCounts>,
 ): WeekendWomPattern | null {
-  if (isOddIsoWeek(weekKey)) return null
+  if (isChAstreinteWeek(weekKey)) return null
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "0", 10)
   if (!weekNum) return null
 
@@ -695,7 +695,7 @@ function applyComboPair(
 
 /**
  * Injecte / complète le pattern WOM (mono ou combo).
- * Semaines impaires (CH) : no-op.
+ * Semaines CH : no-op.
  * Presets : remplissent vides / retirent absents ; saisie manuelle disponible conservée.
  * Hors preset : soft fill cases vides (sans médecins en vacances).
  */
@@ -704,7 +704,7 @@ export function applyWeekendWomPattern(
   weekKey: string,
   opts: WeekendWomApplyOpts = {},
 ): ScheduleData {
-  if (!weekKey || isOddIsoWeek(weekKey)) return schedule
+  if (!weekKey || isChAstreinteWeek(weekKey)) return schedule
   const { equity, vacations } = opts
 
   const preset = getWeekendWeekPreset(weekKey)

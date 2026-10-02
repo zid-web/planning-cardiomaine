@@ -31,6 +31,7 @@ import {
   type LastComboGardeState,
 } from "@/lib/weekend-combo-solver";
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules";
+import { astreinteWeekTypeForWeek } from "@/lib/astreinte-cycle";
 import { canAssignDoctorToSlot } from "@/lib/slot-blocking";
 
 // Configuration
@@ -372,6 +373,11 @@ export async function generateGuardsViaAPI(
     const payload = {
       week_start_date: weekStartDate,
       week_type: resolvedWeekType,
+      // Roulement astreintes ATL CH / W-O-M (1 = semaine CH, 2 = semaine WOM).
+      // Égal à week_type jusqu'à 2026, inversé à partir de 2027-W01
+      // (lib/astreinte-cycle.ts). week_type continue de piloter Rythmo / Coro
+      // vendredi ; le solveur doit lire ce champ pour les nuits ATL + week-end.
+      astreinte_week_type: astreinteWeekTypeForWeek(currentWeekKey),
       weekend_mode: weekendMode,
       last_nct_doctor: lastNctDoctor || doctors[0]?.id || "M",
       previous_sunday_guard_doctor: previousSundayGuardDoctor,

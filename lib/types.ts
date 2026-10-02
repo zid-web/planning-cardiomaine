@@ -16,6 +16,13 @@ export type CellData = {
    */
   manuallyCleared?: boolean
   /**
+   * True si le contenu de la case a été posé par un admin (modale
+   * d'affectation). Les remplissages structurels « souples » (ex. roulement
+   * CH / W-O-M des astreintes ATL) ne réécrivent jamais une telle case :
+   * un échange CH ↔ W/O/M saisi à la main est conservé.
+   */
+  manualAssignment?: boolean
+  /**
    * Lignes « Hors site - … » uniquement : créneau réellement occupé.
    * Absent = valeur par défaut de la ligne/jour (voir `lib/off-site-slots.ts`).
    * Détermine la disponibilité du médecin sur l'autre demi-journée.
