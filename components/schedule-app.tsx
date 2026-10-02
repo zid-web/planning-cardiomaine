@@ -194,6 +194,7 @@ import {
   type NctEntry,
 } from "@/lib/nct-calendar"
 import { loadNctCalendar, saveNctCalendar } from "@/app/actions/nct-calendar-actions"
+import { schoolHolidayZoneB } from "@/lib/french-calendar"
 
 type ChangeRequest = {
   id: string
@@ -449,10 +450,10 @@ export function ScheduleApp({
     void refreshRequests()
   }, [refreshRequests])
 
-  // G3: sync planning between admins via Supabase Realtime
+  // Sync planning en temps réel via Supabase Realtime — **tous les rôles**
+  // (admins et médecins : l'app installée sur téléphone reflète les
+  // modifications sans recharger). Seuls les admins reçoivent un toast.
   useEffect(() => {
-    if (!isAdmin) return
-
     setRealtimeStatus("connecting")
     const channel = supabase
       .channel("planning-schedules")
@@ -473,9 +474,11 @@ export function ScheduleApp({
             ...prev,
             [row.week_key!]: row.schedule_data!,
           }))
-          toast.message(`Planning ${row.week_key} synchronisé`, {
-            description: row.updated_by ? `par ${row.updated_by}` : undefined,
-          })
+          if (isAdmin) {
+            toast.message(`Planning ${row.week_key} synchronisé`, {
+              description: row.updated_by ? `par ${row.updated_by}` : undefined,
+            })
+          }
         },
       )
       .subscribe((status: string) => {
@@ -487,6 +490,90 @@ export function ScheduleApp({
       void supabase.removeChannel(channel)
     }
   }, [supabase, isAdmin, currentUser, setFullSchedule])
+
+  /** Recharge le calendrier NCT depuis la base (modifié par un autre admin). */
+  const reloadNctCalendar = useCallback(async () => {
+    try {
+      const list = await loadNctCalendar()
+      setNctCalendar(list)
+      setNctCalendarState(list)
+    } catch (err) {
+      console.warn("[schedule-app] Calendrier NCT non rechargé:", err)
+    }
+  }, [])
+
+  // Congés et calendrier NCT en temps réel (tables ajoutées à supabase_realtime
+  // par la migration 20261003000000 — sans elle ces abonnements restent
+  // silencieux et la resynchronisation au retour dans l'app prend le relais).
+  useEffect(() => {
+    const channel = supabase
+      .channel("planning-vacations-settings")
+      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_vacations" }, () => {
+        void loadVacations()
+      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "settings" },
+        (payload: { new?: { key?: string } | null; old?: { key?: string } | null }) => {
+          const key = payload.new?.key ?? payload.old?.key
+          if (!key || key === "nct_calendar") void reloadNctCalendar()
+        },
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, reloadNctCalendar])
+
+  // Retour dans l'app (téléphone sorti de veille, onglet réactivé, réseau
+  // revenu) : les websockets sont coupés en arrière-plan, surtout sur iOS, et
+  // des événements ont pu être manqués. On recharge tout depuis la base, au
+  // plus une fois toutes les 20 s.
+  const lastResyncRef = React.useRef(0)
+  const hiddenAtRef = React.useRef<number | null>(null)
+  useEffect(() => {
+    const resync = async () => {
+      const now = Date.now()
+      if (now - lastResyncRef.current < 20_000) return
+      lastResyncRef.current = now
+      try {
+        const [full] = await Promise.all([
+          loadFullScheduleFromDb(),
+          loadVacations(),
+          reloadNctCalendar(),
+          refreshRequests(),
+        ])
+        if (full && typeof full === "object") {
+          setFullSchedule((prev) => ({ ...prev, ...(full as FullSchedule) }))
+        }
+      } catch (err) {
+        console.warn("[schedule-app] Resynchronisation échouée:", err)
+      }
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAtRef.current = Date.now()
+        return
+      }
+      const hiddenFor = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0
+      hiddenAtRef.current = null
+      if (hiddenFor >= 5_000) void resync()
+    }
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void resync() // restauration depuis le bfcache (Safari / iOS)
+    }
+    const onOnline = () => void resync()
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("pageshow", onPageShow)
+    window.addEventListener("online", onOnline)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("pageshow", onPageShow)
+      window.removeEventListener("online", onOnline)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadNctCalendar, refreshRequests])
 
   // Demandes de modification en temps réel (confirmé utilisateur 01/08/2026)
   // - sans ça, une nouvelle demande soumise par un non-admin n'apparaissait
@@ -1986,6 +2073,12 @@ export function ScheduleApp({
     return holidays[key] // returns Name of holiday or undefined
   }
 
+  /** Vacances scolaires zone B du jour (mêmes codes couleur que le calendrier NCT). */
+  const schoolHolidayOfDay = (day: string) => {
+    const iso = dateStrForWeekDay(weekKey, day)
+    return iso ? schoolHolidayZoneB(iso) : null
+  }
+
   const isAllowedOnHoliday = (rowKey: string) => {
     return rowKey.includes("Astreintes ATL") || rowKey.includes("Garde")
   }
@@ -2582,6 +2675,14 @@ export function ScheduleApp({
                   <h3 className="text-xs font-semibold text-slate-600 md:text-sm">
                     Planning global · S{currentWeekInfo.week}
                   </h3>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500 md:text-[11px]">
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm border border-rose-300 bg-rose-100" /> Férié
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm border border-amber-200 bg-amber-100" /> Vacances (zone B)
+                    </span>
+                  </div>
                 </div>
 
                 <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white shadow-sm">
@@ -2602,16 +2703,25 @@ export function ScheduleApp({
                           {DAYS.map((d, i) => (
                             <th
                               key={d}
+                              title={
+                                [
+                                  isDateHoliday(weekDates[i]) ? `Férié : ${isDateHoliday(weekDates[i])}` : null,
+                                  schoolHolidayOfDay(d) ? `Vacances scolaires zone B : ${schoolHolidayOfDay(d)?.name}` : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ") || undefined
+                              }
                               className={`p-1.5 md:p-2 text-center font-medium min-w-[85px] border-r last:border-r-0 relative group whitespace-nowrap text-[11px]
                                 ${d === "SAMEDI" || d === "DIMANCHE" ? "bg-slate-50/80" : "bg-white"}
-                                ${isDateHoliday(weekDates[i]) ? "bg-red-100 text-red-700 border-l-4 border-r-4 border-red-400" : ""}
+                                ${schoolHolidayOfDay(d) && !isDateHoliday(weekDates[i]) ? "bg-amber-100 text-amber-900" : ""}
+                                ${isDateHoliday(weekDates[i]) ? "bg-rose-100 text-rose-800 border-l-4 border-r-4 border-rose-300" : ""}
                               `}
                             >
                               <div className="text-[9px] md:text-[10px] uppercase tracking-wider">{d.slice(0, 3)}</div>
                               <div className="text-xs md:text-sm font-bold">{weekDates[i].slice(0, 5)}</div>
 
                               {isDateHoliday(weekDates[i]) && (
-                                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-red-600 text-white text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none mb-1">
+                                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-rose-600 text-white text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none mb-1">
                                   🎉 {isDateHoliday(weekDates[i])}
                                 </div>
                               )}
@@ -2705,6 +2815,7 @@ export function ScheduleApp({
 
                                   const holidayName = isDateHoliday(weekDates[dayIndex])
                                   const isHoliday = !!holidayName
+                                  const schoolHoliday = !isHoliday ? schoolHolidayOfDay(day) : null
                                   const isRestrictedHoliday = isHoliday && !isAllowedOnHoliday(rowKey)
                                   const cellBlocked = isCellBlocked(rowKey, day)
                                   const isMyShift = Boolean(highlightMyShifts && doctorCode && displayAssignees.includes(doctorCode))
@@ -2717,7 +2828,8 @@ export function ScheduleApp({
                                         cellBlocked
                                           ? "bg-black cursor-not-allowed opacity-40"
                                           : "cursor-pointer hover:bg-gray-50",
-                                        isHoliday && "bg-red-50 border-l-4 border-r-4 border-red-400",
+                                        isHoliday && "bg-rose-50 border-l-4 border-r-4 border-rose-300",
+                                        schoolHoliday && !cellBlocked && "bg-amber-50",
                                         isMyShift && !cellBlocked && "bg-blue-100/90 ring-2 ring-blue-600 shadow-sm z-10 font-bold",
                                         // Proposition solveur « Générer » — distincte des fixes (validated)
                                         // et des demandes de changement (anneau orange sur badge).
@@ -2738,6 +2850,7 @@ export function ScheduleApp({
                                       }}
                                       title={
                                         holidayName ||
+                                        (schoolHoliday ? `Vacances scolaires zone B : ${schoolHoliday.name}` : "") ||
                                         (cellBlocked
                                           ? "Case bloquée"
                                           : isSolverProposal
@@ -4012,7 +4125,7 @@ export function ScheduleApp({
             isOpen={nctModalOpen}
             onClose={() => setNctModalOpen(false)}
             calendar={nctCalendar}
-            defaultYear={Number.parseInt(weekKey.split("-W")[0], 10) || undefined}
+            defaultDate={dateStrForWeekDay(weekKey, "JEUDI") ?? undefined}
             onSave={commitNctCalendar}
           />
         </Suspense>
