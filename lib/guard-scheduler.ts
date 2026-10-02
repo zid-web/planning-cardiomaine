@@ -1,6 +1,7 @@
 import { getWeekendWeekPreset } from "@/lib/weekend-wom-presets"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { isWomAstreinteWeek } from "@/lib/astreinte-cycle"
+import { getNctCalendar, NCT_DEFAULT_2025_DEC, NCT_DEFAULT_2026 } from "@/lib/nct-calendar"
 
 export interface GuardConstraints {
   noFridayUsers: string[] // M, W, O
@@ -85,43 +86,9 @@ const OFF_SITE_DAYS: Record<string, string[]> = {
   R: ["MARDI"], // R en Scinti mardi
 }
 
-export const NCT_DATES_2026 = [
-  { date: "2026-01-15", user: "W" }, // Starting with W for 2026
-  { date: "2026-01-29", user: "M" },
-  { date: "2026-02-05", user: "W" },
-  { date: "2026-02-19", user: "M" },
-  { date: "2026-02-26", user: "W" },
-  { date: "2026-03-12", user: "M" },
-  { date: "2026-03-26", user: "W" },
-  { date: "2026-04-09", user: "M" },
-  { date: "2026-04-30", user: "W" },
-  { date: "2026-05-07", user: "M" },
-  { date: "2026-05-21", user: "W" },
-  { date: "2026-05-28", user: "M" },
-  { date: "2026-06-11", user: "W" },
-  { date: "2026-06-18", user: "M" },
-  { date: "2026-06-25", user: "W" },
-  { date: "2026-07-09", user: "M" },
-  // Aligné guard-api/solver.py NCT_FIXED_SCHEDULE
-  { date: "2026-07-23", user: "M" },
-  { date: "2026-09-10", user: "W" }, // Corrigé (demande utilisateur, S37 = W)
-  { date: "2026-09-17", user: "W" },
-  { date: "2026-09-24", user: "M" },
-  { date: "2026-10-01", user: "W" },
-  { date: "2026-10-15", user: "M" },
-  { date: "2026-10-29", user: "W" },
-  { date: "2026-11-05", user: "M" },
-  { date: "2026-11-19", user: "W" },
-  { date: "2026-11-26", user: "M" },
-  { date: "2026-12-03", user: "W" },
-  { date: "2026-12-17", user: "M" },
-]
-
-export const NCT_DATES_2025_DEC = [
-  { date: "2025-12-04", user: "M" },
-  { date: "2025-12-11", user: "W" },
-  { date: "2025-12-18", user: "M" },
-]
+/** Calendriers par défaut — voir `lib/nct-calendar.ts` (modifiable par l'admin). */
+export const NCT_DATES_2026 = NCT_DEFAULT_2026
+export const NCT_DATES_2025_DEC = NCT_DEFAULT_2025_DEC
 
 const NCT_USERS_DATES: Record<string, string[]> = {}
 
@@ -560,7 +527,7 @@ function toLocalIsoDate(date: Date): string {
 /** Calendrier NCT (W/M uniquement) : date ISO → médecin */
 function buildNctDoctorByDate(): Map<string, string> {
   const map = new Map<string, string>()
-  ;[...NCT_DATES_2025_DEC, ...NCT_DATES_2026].forEach((nct) => {
+  getNctCalendar().forEach((nct) => {
     map.set(nct.date, nct.user)
   })
   return map

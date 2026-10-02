@@ -32,6 +32,8 @@ import {
 } from "@/lib/weekend-combo-solver";
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules";
 import { astreinteWeekTypeForWeek } from "@/lib/astreinte-cycle";
+import { setNctCalendar } from "@/lib/nct-calendar";
+import { loadNctCalendar } from "@/app/actions/nct-calendar-actions";
 import { canAssignDoctorToSlot } from "@/lib/slot-blocking";
 
 // Configuration
@@ -230,6 +232,10 @@ export async function generateGuardsViaAPI(
     const wnEarly = getWeekNumber(parseISO(weekStartDate));
     const resolvedWeekType: 1 | 2 =
       weekType ?? (wnEarly.week % 2 === 0 ? 2 : 1);
+
+    // Calendrier NCT personnalisé (settings) — lu par applyStructuralConstraints
+    // côté serveur pour ne pas réinjecter une date supprimée par l'admin.
+    setNctCalendar(await loadNctCalendar());
 
     // 2. Récupère le dernier médecin NCT + dernier combo garde (espacement 15 j.)
     const [lastNctDoctor, lastComboGarde] = await Promise.all([

@@ -151,6 +151,9 @@ import { DoctorVacation } from "@/lib/types"
 const VoiceAndUploadPanel = lazy(() =>
   import("@/components/VoiceAndUploadPanel").then((m) => ({ default: m.VoiceAndUploadPanel })),
 )
+const NctCalendarModal = lazy(() =>
+  import("@/components/nct-calendar-modal").then((m) => ({ default: m.NctCalendarModal })),
+)
 const VacationsModal = lazy(() =>
   import("@/components/vacations-modal").then((m) => ({ default: m.VacationsModal })),
 )
@@ -177,7 +180,20 @@ import {
 } from "@/lib/guard-api-mapping"
 import { toast } from "sonner"
 import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
-import { applyNctAssignmentsToFullSchedule, type NctAssignment, weekKeyFromIsoDate } from "@/lib/nct-command"
+import {
+  applyNctAssignmentsToFullSchedule,
+  dayNameFromIsoDateLocal,
+  type NctAssignment,
+  weekKeyFromIsoDate,
+} from "@/lib/nct-command"
+import {
+  diffNctCalendars,
+  normalizeNctCalendar,
+  setNctCalendar,
+  withNctEntry,
+  type NctEntry,
+} from "@/lib/nct-calendar"
+import { loadNctCalendar, saveNctCalendar } from "@/app/actions/nct-calendar-actions"
 
 type ChangeRequest = {
   id: string
@@ -258,6 +274,11 @@ export function ScheduleApp({
   /** Garde nuit dimanche semaine précédente → ½ off lundi (apm / matin si habituel). */
   const [previousSundayGuardDoctor, setPreviousSundayGuardDoctor] = useState<string | null>(null)
   const [vacationsModalOpen, setVacationsModalOpen] = useState(false)
+  // Calendrier NCT modifiable (settings.nct_calendar) — voir lib/nct-calendar.ts
+  const [nctCalendar, setNctCalendarState] = useState<NctEntry[]>([])
+  /** false tant que le calendrier n'est pas chargé — évite de réinjecter une date supprimée. */
+  const [nctReady, setNctReady] = useState(false)
+  const [nctModalOpen, setNctModalOpen] = useState(false)
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
@@ -376,6 +397,24 @@ export function ScheduleApp({
   // Load vacations on mount
   useEffect(() => {
     void loadVacations()
+  }, [])
+
+  // Calendrier NCT : version personnalisée en base, sinon défaut
+  useEffect(() => {
+    let cancelled = false
+    void loadNctCalendar()
+      .then((list) => {
+        if (cancelled) return
+        setNctCalendar(list)
+        setNctCalendarState(list)
+      })
+      .catch((err) => console.warn("[schedule-app] Calendrier NCT non chargé:", err))
+      .finally(() => {
+        if (!cancelled) setNctReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const loadVacations = async (): Promise<DoctorVacation[]> => {
@@ -644,7 +683,7 @@ export function ScheduleApp({
       previousSundayGuardDoctor,
       isFreshWeek: !fullSchedule[weekKey],
     })
-  }, [fullSchedule, weekKey, vacations, vacationsReady, previousSundayGuardDoctor])
+  }, [fullSchedule, weekKey, vacations, vacationsReady, previousSundayGuardDoctor, nctCalendar])
 
   // Persiste les contraintes quand la semaine ou les congés changent (debounce court)
   // → toutes les semaines déjà en mémoire + la semaine affichée (répercussion immédiate CRUD)
@@ -660,7 +699,7 @@ export function ScheduleApp({
   )
 
   useEffect(() => {
-    if (!vacationsReady) return
+    if (!vacationsReady || !nctReady) return
     const gen = ++constraintsPersistGenRef.current
     const timer = window.setTimeout(() => {
       void (async () => {
@@ -720,13 +759,67 @@ export function ScheduleApp({
     }
     // Pas de dépendance à l’identité de fullSchedule (évite courses à l’ajout congés)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekKey, vacationsSig, weekLoaded, currentUser, vacationsReady, previousSundayGuardDoctor])
+  }, [weekKey, vacationsSig, weekLoaded, currentUser, vacationsReady, previousSundayGuardDoctor, nctReady, nctCalendar])
 
   const openWorkloadStats = () => {
     setShowWorkloadStats(true)
   }
 
   // Update full schedule when local schedule changes
+  /**
+   * Applique un nouveau calendrier NCT : mémoire + base, puis nettoie les
+   * semaines dont une date a été supprimée (les dates ajoutées / réaffectées
+   * sont injectées par applyStructuralConstraints). `null` = calendrier par défaut.
+   */
+  const commitNctCalendar = async (
+    nextList: NctEntry[] | null,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const prev = nctCalendar
+    const res = await saveNctCalendar(nextList)
+    if (!res.success || !res.calendar) {
+      return { ok: false, error: res.error || "Échec de l'enregistrement du calendrier NCT" }
+    }
+    const next = res.calendar
+    setNctCalendar(next)
+    setNctCalendarState(next)
+
+    const { removed } = diffNctCalendars(prev, next)
+    if (removed.length > 0) {
+      let nextFull: FullSchedule = { ...fullSchedule }
+      const touched = new Set<string>()
+      for (const entry of removed) {
+        const wk = weekKeyFromIsoDate(entry.date)
+        const day = dayNameFromIsoDateLocal(entry.date)
+        const cell = nextFull[wk]?.["Hors site - NCT"]?.[day]
+        if (!cell || (cell.value || []).length === 0) continue
+        nextFull = {
+          ...nextFull,
+          [wk]: {
+            ...nextFull[wk],
+            "Hors site - NCT": {
+              ...nextFull[wk]["Hors site - NCT"],
+              [day]: { ...cell, value: [], type: "empty", status: "validated" },
+            },
+          },
+        }
+        touched.add(wk)
+      }
+      if (touched.size > 0) {
+        setFullSchedule(nextFull)
+        try {
+          for (const wk of touched) {
+            await saveScheduleToDb(wk, nextFull[wk], currentUser || "unknown", { source: "constraints" })
+          }
+        } catch (err) {
+          console.error("[nct] nettoyage des semaines en échec:", err)
+          toast.error("Calendrier NCT enregistré mais le nettoyage de certaines semaines a échoué.")
+        }
+      }
+    }
+    toast.success("Calendrier NCT enregistré")
+    return { ok: true }
+  }
+
   const updateSchedule = async (
     newSchedule: ScheduleData,
     source: ScheduleSaveSource = "ui",
@@ -1169,6 +1262,23 @@ export function ScheduleApp({
       }
     }
 
+    // Case NCT modifiée à la main (ex. W ↔ M) : le calendrier suit, sinon la
+    // contrainte structurelle remettrait le médecin du calendrier.
+    if (row === "Hors site - NCT") {
+      const date = dateStrForWeekDay(weekKey, day)
+      if (date) {
+        const user = (nextCell.value || []).find((d) => isListedDoctor(d)) ?? null
+        const nextCal = withNctEntry(nctCalendar, date, user)
+        if (JSON.stringify(nextCal) !== JSON.stringify(normalizeNctCalendar(nctCalendar))) {
+          setNctCalendar(nextCal)
+          setNctCalendarState(nextCal)
+          void saveNctCalendar(nextCal).then((res) => {
+            if (!res.success) toast.error(`Calendrier NCT non enregistré : ${res.error}`)
+          })
+        }
+      }
+    }
+
     void updateSchedule(newSchedule)
     if (opts?.closeModal) {
       setSelectedCell(null)
@@ -1595,6 +1705,18 @@ export function ScheduleApp({
           return
         }
         setFullSchedule(next)
+        // Le calendrier suit la liste dictée (sinon la contrainte structurelle la défait)
+        {
+          const merged = normalizeNctCalendar([
+            ...nctCalendar,
+            ...data.nct_assignments.map((a) => ({ date: a.date, user: a.doctor })),
+          ])
+          setNctCalendar(merged)
+          setNctCalendarState(merged)
+          void saveNctCalendar(merged).then((res) => {
+            if (!res.success) toast.error(`Calendrier NCT non enregistré : ${res.error}`)
+          })
+        }
         void (async () => {
           try {
             for (const wk of touchedWeekKeys) {
@@ -2210,6 +2332,17 @@ export function ScheduleApp({
                             <span className="hidden md:inline">Effacer propositions ({solverProposalCount})</span>
                           </Button>
                         )}
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
+                          onClick={() => setNctModalOpen(true)}
+                          title="Modifier le calendrier NCT (ajouter / supprimer / réaffecter une date)"
+                        >
+                          <CalendarDays className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
+                          <span className="hidden md:inline">NCT</span>
+                        </Button>
 
                         <Button
                           variant="outline"
@@ -3870,6 +4003,19 @@ export function ScheduleApp({
           onOpenChange={setShowSixMonthProjection}
           currentUser={currentUser || "admin"}
         />
+      )}
+
+      {/* Calendrier NCT */}
+      {isAdmin && (
+        <Suspense fallback={null}>
+          <NctCalendarModal
+            isOpen={nctModalOpen}
+            onClose={() => setNctModalOpen(false)}
+            calendar={nctCalendar}
+            defaultYear={Number.parseInt(weekKey.split("-W")[0], 10) || undefined}
+            onSave={commitNctCalendar}
+          />
+        </Suspense>
       )}
 
       {/* Vacations Modal */}

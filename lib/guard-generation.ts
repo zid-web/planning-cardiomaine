@@ -2,7 +2,7 @@
 
 import { DoctorVacation } from '@/lib/types'
 import { STAFF_INITIALS } from './constants'
-import { NCT_DATES_2026, NCT_DATES_2025_DEC } from './guard-scheduler'
+import { nctDoctorForDate } from './nct-calendar'
 import {
   format,
   parseISO,
@@ -303,7 +303,8 @@ export function generateWeeklyGuards(
 
     // RÈGLE 5: NCT jeudi uniquement - alternance W/M
     if (dayName === 'JEUDI') {
-      const nctDate = NCT_DATES_2026.find((nct) => nct.date === dateStr)
+      const nctUser = nctDoctorForDate(dateStr)
+      const nctDate = nctUser ? { date: dateStr, user: nctUser } : undefined
       if (nctDate && !guards.find((g) => g.date === dateStr && g.type === 'NCT')) {
         guards.push({
           date: dateStr,
@@ -312,7 +313,7 @@ export function generateWeeklyGuards(
           type: 'NCT',
           notes: 'Alternance W/M uniquement',
         })
-        equity[nctDate.user].nctCount++
+        if (equity[nctDate.user]) equity[nctDate.user].nctCount++
       }
     }
   })
