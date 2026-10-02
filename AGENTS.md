@@ -117,6 +117,12 @@ required service is the Next.js dev server; the backend is Supabase.
 - **Doublon Cs solveur** : le backend peut émettre 2 `Assignment` identiques (ex. Apm Cs PSS Lun Z / Mar H, 2ᵉ note `"… (doublon)"`). `mergeAssignmentsIntoSchedule` + `mergeCellDoctorsPreservingRemplacants` **ne dédupliquent pas** les lignes `isDoublonEligibleRow` (`lib/slot-blocking.ts`) pour garder `["Z","Z"]` → affichage `Z²`. Les autres lignes restent dédupliquées.
 - **PDF « JSON malformé »** : root cause dans **`guard-api-cardiomaine`** (`pdf_upload.py` / `llm_json.py`), pas le proxy Next. Corriger uniquement dans ce dépôt.
 
+### Configuration Supabase (code, pas Vercel)
+- **Source unique : `lib/supabase/config.ts`** (`getSupabaseConfig`). Le projet de production (`rmrxsaiianffhpxpntws`, clé anon publique) est **fixé dans le code** pour le navigateur (`client.ts`), le serveur (`server.ts`), le proxy (`proxy.ts`, `lib/supabase/proxy.ts`) et l'admin (`admin.ts`, URL). Les variables Vercel `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` sont **ignorées** (un avertissement console le signale) — l'intégration Supabase de Vercel (17/07) injecte celles d'un *autre* projet (`cdvz…`) et cassait la connexion dès qu'elles atteignaient le build.
+- **Exception : Supabase local** (`NEXT_PUBLIC_SUPABASE_URL` en `localhost` / `127.0.0.1` **et** clé fournie) → l'environnement est respecté, pour les tests de bout en bout ci-dessous.
+- Changer de projet = modifier `SUPABASE_PROJECT_URL` / `SUPABASE_PROJECT_ANON_KEY` dans `config.ts`. `SUPABASE_SERVICE_ROLE_KEY` (Vercel, **Secret**) doit appartenir au **même** projet que l'URL.
+- Diagnostic : `/api/debug-env` (connecté) affiche `effective` (URL réellement utilisée, source, adresse d'environnement ignorée).
+
 ### Supabase backend (important auth caveat)
 - Committed `.env` points at a hosted Supabase project. The client (`lib/supabase/client.ts`) hardcodes the same values as a fallback.
 - The hosted project has email confirmation ON (`mailer_autoconfirm=false`) and no seeded/test accounts, so you **cannot** self-signup and log in without access to the confirmation email. The documented sample accounts (e.g. `marie@cardiomaine.fr`) do **not** exist in that project.

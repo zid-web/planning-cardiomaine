@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { getSupabaseConfig } from '@/lib/supabase/config'
 import { createClient } from '@/lib/supabase/client'
 
 export default function SupabaseConfigPage() {
@@ -22,8 +23,8 @@ export default function SupabaseConfigPage() {
 
         setStatus('✅ Supabase connecté avec succès!')
         setConfig({
-          url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-          hasAnon: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          url: getSupabaseConfig().url,
+          hasAnon: !!getSupabaseConfig().anonKey,
           session: data.session ? 'Actif' : 'Aucune session',
         })
       } catch (error) {
