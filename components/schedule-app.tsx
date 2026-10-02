@@ -449,10 +449,10 @@ export function ScheduleApp({
     void refreshRequests()
   }, [refreshRequests])
 
-  // G3: sync planning between admins via Supabase Realtime
+  // Sync planning en temps réel via Supabase Realtime — **tous les rôles**
+  // (admins et médecins : l'app installée sur téléphone reflète les
+  // modifications sans recharger). Seuls les admins reçoivent un toast.
   useEffect(() => {
-    if (!isAdmin) return
-
     setRealtimeStatus("connecting")
     const channel = supabase
       .channel("planning-schedules")
@@ -473,9 +473,11 @@ export function ScheduleApp({
             ...prev,
             [row.week_key!]: row.schedule_data!,
           }))
-          toast.message(`Planning ${row.week_key} synchronisé`, {
-            description: row.updated_by ? `par ${row.updated_by}` : undefined,
-          })
+          if (isAdmin) {
+            toast.message(`Planning ${row.week_key} synchronisé`, {
+              description: row.updated_by ? `par ${row.updated_by}` : undefined,
+            })
+          }
         },
       )
       .subscribe((status: string) => {
@@ -487,6 +489,90 @@ export function ScheduleApp({
       void supabase.removeChannel(channel)
     }
   }, [supabase, isAdmin, currentUser, setFullSchedule])
+
+  /** Recharge le calendrier NCT depuis la base (modifié par un autre admin). */
+  const reloadNctCalendar = useCallback(async () => {
+    try {
+      const list = await loadNctCalendar()
+      setNctCalendar(list)
+      setNctCalendarState(list)
+    } catch (err) {
+      console.warn("[schedule-app] Calendrier NCT non rechargé:", err)
+    }
+  }, [])
+
+  // Congés et calendrier NCT en temps réel (tables ajoutées à supabase_realtime
+  // par la migration 20261003000000 — sans elle ces abonnements restent
+  // silencieux et la resynchronisation au retour dans l'app prend le relais).
+  useEffect(() => {
+    const channel = supabase
+      .channel("planning-vacations-settings")
+      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_vacations" }, () => {
+        void loadVacations()
+      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "settings" },
+        (payload: { new?: { key?: string } | null; old?: { key?: string } | null }) => {
+          const key = payload.new?.key ?? payload.old?.key
+          if (!key || key === "nct_calendar") void reloadNctCalendar()
+        },
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, reloadNctCalendar])
+
+  // Retour dans l'app (téléphone sorti de veille, onglet réactivé, réseau
+  // revenu) : les websockets sont coupés en arrière-plan, surtout sur iOS, et
+  // des événements ont pu être manqués. On recharge tout depuis la base, au
+  // plus une fois toutes les 20 s.
+  const lastResyncRef = React.useRef(0)
+  const hiddenAtRef = React.useRef<number | null>(null)
+  useEffect(() => {
+    const resync = async () => {
+      const now = Date.now()
+      if (now - lastResyncRef.current < 20_000) return
+      lastResyncRef.current = now
+      try {
+        const [full] = await Promise.all([
+          loadFullScheduleFromDb(),
+          loadVacations(),
+          reloadNctCalendar(),
+          refreshRequests(),
+        ])
+        if (full && typeof full === "object") {
+          setFullSchedule((prev) => ({ ...prev, ...(full as FullSchedule) }))
+        }
+      } catch (err) {
+        console.warn("[schedule-app] Resynchronisation échouée:", err)
+      }
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAtRef.current = Date.now()
+        return
+      }
+      const hiddenFor = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0
+      hiddenAtRef.current = null
+      if (hiddenFor >= 5_000) void resync()
+    }
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void resync() // restauration depuis le bfcache (Safari / iOS)
+    }
+    const onOnline = () => void resync()
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("pageshow", onPageShow)
+    window.addEventListener("online", onOnline)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("pageshow", onPageShow)
+      window.removeEventListener("online", onOnline)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadNctCalendar, refreshRequests])
 
   // Demandes de modification en temps réel (confirmé utilisateur 01/08/2026)
   // - sans ça, une nouvelle demande soumise par un non-admin n'apparaissait

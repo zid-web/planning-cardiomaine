@@ -17,7 +17,8 @@ import { toast } from "sonner"
  *    démonte l'arbre entier — écran blanc. On recharge alors une seule fois,
  *    ce qui suffit puisque le nouveau HTML référence les nouveaux chunks.
  *
- * 2. Détection proactive : on compare la version qui a rendu la page à celle
+ * 2. Détection proactive (vérification chaque minute, au retour dans l'app et
+ *    à l'ouverture) : on compare la version qui a rendu la page à celle
  *    servie par `/api/version`, et on propose de recharger. La comparaison ne
  *    passe pas par le service worker : `sw.js` est statique, un déploiement
  *    qui ne le modifie pas ne déclenche aucune mise à jour côté navigateur.
@@ -29,7 +30,9 @@ import { toast } from "sonner"
  */
 
 const VERSION_ENDPOINT = "/api/version"
-const POLL_INTERVAL_MS = 15 * 60 * 1000
+const POLL_INTERVAL_MS = 60 * 1000
+/** Première vérification peu après l'ouverture (app installée relancée depuis l'état gelé). */
+const INITIAL_CHECK_DELAY_MS = 3 * 1000
 const CHUNK_RELOAD_KEY = "pwa:chunk-reload-at"
 const CHUNK_RELOAD_COOLDOWN_MS = 60 * 1000
 
@@ -137,7 +140,12 @@ export default function AppUpdateWatcher({ buildId }: { buildId: string }) {
       }
     }
 
-    const interval = window.setInterval(() => void checkVersion(), POLL_INTERVAL_MS)
+    const interval = window.setInterval(() => {
+      void checkVersion()
+      // Le navigateur ne revérifie sw.js qu'à la navigation : on le force aussi.
+      void navigator.serviceWorker?.getRegistration().then((reg) => reg?.update().catch(() => {}))
+    }, POLL_INTERVAL_MS)
+    const initialCheck = window.setTimeout(() => void checkVersion(), INITIAL_CHECK_DELAY_MS)
 
     const onVisibility = () => {
       if (document.visibilityState !== "visible") return
@@ -149,6 +157,10 @@ export default function AppUpdateWatcher({ buildId }: { buildId: string }) {
 
     document.addEventListener("visibilitychange", onVisibility)
     window.addEventListener("online", onVisibility)
+    // iOS : une PWA reprise depuis le bfcache ne déclenche pas toujours
+    // visibilitychange ; `pageshow` et `focus` couvrent ces cas.
+    window.addEventListener("pageshow", onVisibility)
+    window.addEventListener("focus", onVisibility)
 
     // ── 3. Service worker en attente = signal complémentaire ────────────────
     let onControllerChange: (() => void) | null = null
@@ -186,6 +198,9 @@ export default function AppUpdateWatcher({ buildId }: { buildId: string }) {
     return () => {
       cancelled = true
       window.clearInterval(interval)
+      window.clearTimeout(initialCheck)
+      window.removeEventListener("pageshow", onVisibility)
+      window.removeEventListener("focus", onVisibility)
       window.removeEventListener("error", onError)
       window.removeEventListener("unhandledrejection", onRejection)
       document.removeEventListener("visibilitychange", onVisibility)
