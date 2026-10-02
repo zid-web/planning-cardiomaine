@@ -16,6 +16,7 @@
  * Cases fermées (`lib/closed-slots.ts`) : Stress Mer/Ven apm, EE1 matin sauf jeudi.
  */
 
+import { NCT_DOCTORS } from "@/lib/nct-calendar"
 import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
 import { isAtlEligibleForCell, isCoroEligibleDoctor, isCoroEligibleForCell } from "@/lib/group-clinical-rules"
@@ -44,6 +45,7 @@ const CDL_ROW = "Hors site - CDL"
 const IRM_ROW = "Hors site - IRM"
 
 /** Seul médecin autorisé sur l’IRM (consigne 26/08/2026). */
+const NCT_ROW = "Hors site - NCT"
 export const IRM_DOCTOR = "S"
 export { IRM_ROW }
 const ATL_ROWS = [
@@ -685,6 +687,16 @@ export function canAssignDoctorToSlot(
     return {
       allowed: false,
       reason: `${doctorId} ne fait jamais de Cs Tessée.`,
+    }
+  }
+
+  // NCT : pour le moment réservé à W et M (alternance du calendrier NCT).
+  // Le sélecteur de la modale grise les autres médecins avec ce motif ; un
+  // remplaçant texte libre reste possible (traité plus haut).
+  if (rowKey === NCT_ROW && !(NCT_DOCTORS as readonly string[]).includes(doctorId)) {
+    return {
+      allowed: false,
+      reason: `Le NCT est réservé à ${NCT_DOCTORS.join(" ou ")}.`,
     }
   }
 
