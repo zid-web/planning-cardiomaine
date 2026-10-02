@@ -25,7 +25,7 @@ import {
   applyHabitualHalfDaysOff,
   applyNightGuardRecoveryOffs,
 } from "@/lib/half-day-off"
-import { NCT_DATES_2025_DEC, NCT_DATES_2026 } from "@/lib/guard-scheduler"
+import { getNctCalendar } from "@/lib/nct-calendar"
 import type { CellData, DoctorVacation, ScheduleData } from "@/lib/types"
 import { applyClosedSlotsClear } from "@/lib/closed-slots"
 import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
@@ -668,13 +668,7 @@ export function applyNctCalendarConstraints(
   const monday = mondayOfIsoWeekKey(weekKey)
   if (!monday) return schedule
 
-  const yearNum = Number.parseInt(weekKey.split("-")[0] || "0", 10)
-  const nctList =
-    yearNum === 2025
-      ? NCT_DATES_2025_DEC
-      : yearNum >= 2026
-        ? NCT_DATES_2026
-        : []
+  const nctList = getNctCalendar()
 
   const dayToDate: Record<string, string> = {}
   for (const day of DAYS) {

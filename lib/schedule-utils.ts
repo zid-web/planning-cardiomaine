@@ -2,7 +2,8 @@ import { DAYS } from "./constants"
 import { applyFixedClinicalAssignments } from "./fixed-assignments"
 import { applyHabitualHalfDaysOff } from "./half-day-off"
 import type { CellData, DoctorVacation, ScheduleData } from "./types"
-import { constraints2026, generateAstreinteRotation, NCT_DATES_2026, NCT_DATES_2025_DEC } from "./guard-scheduler"
+import { constraints2026, generateAstreinteRotation } from "./guard-scheduler"
+import { getNctCalendar } from "./nct-calendar"
 import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
 
 export const getWeekNumber = (d: Date) => {
@@ -250,17 +251,17 @@ export const generateWeekSchedule = (
     }
   })
 
-  if (yearNum === 2025 && weekNum >= 49) {
-    const dayToDateMap: Record<string, string> = {}
+  // Calendrier NCT (modifiable par l'admin — voir lib/nct-calendar.ts)
+  {
+    const nctDayByDate: Record<string, string> = {}
     DAYS.forEach((dayName, index) => {
       const d = new Date(targetMonday)
       d.setUTCDate(targetMonday.getUTCDate() + index)
-      dayToDateMap[dayName] = d.toISOString().split("T")[0]
+      nctDayByDate[d.toISOString().split("T")[0]] = dayName
     })
-
-    NCT_DATES_2025_DEC.forEach((nct) => {
-      const dayName = Object.keys(dayToDateMap).find((day) => dayToDateMap[day] === nct.date)
-      if (dayName && schedule["Hors site - NCT"]) {
+    getNctCalendar().forEach((nct) => {
+      const dayName = nctDayByDate[nct.date]
+      if (dayName && schedule["Hors site - NCT"]?.[dayName]) {
         schedule["Hors site - NCT"][dayName].value = [nct.user]
       }
     })
@@ -272,14 +273,6 @@ export const generateWeekSchedule = (
       const d = new Date(targetMonday)
       d.setUTCDate(targetMonday.getUTCDate() + index)
       dayToDateMap[dayName] = d.toISOString().split("T")[0] // YYYY-MM-DD
-    })
-
-    // Apply NCT dates
-    NCT_DATES_2026.forEach((nct) => {
-      const dayName = Object.keys(dayToDateMap).find((day) => dayToDateMap[day] === nct.date)
-      if (dayName && schedule["Hors site - NCT"]) {
-        schedule["Hors site - NCT"][dayName].value = [nct.user]
-      }
     })
 
     // Apply fixed guards
