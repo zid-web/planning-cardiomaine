@@ -5,6 +5,7 @@ import type { CellData, ScheduleData } from "@/lib/types";
 import { buildWeekendComboSolverFields } from "@/lib/weekend-combo-solver";
 import { getWeekNumber } from "@/lib/schedule-utils";
 import { parseISO } from "date-fns";
+import { astreinteWeekTypeForWeek } from "@/lib/astreinte-cycle";
 
 const GARDE_ROW_KEYS = new Set(["Garde Matin", "Garde Midi", "Garde Nuit"]);
 const NURSES = new Set(["Val", "Véro", "Laura"]);
@@ -244,6 +245,8 @@ export type HistoricalPatternsRequestPayload = Record<
 export type GenerateWeekRequestPayload = {
   week_start_date: string;
   week_type: number;
+  /** Roulement astreintes CH / W-O-M (1 = semaine CH, 2 = semaine WOM) — voir lib/astreinte-cycle.ts. */
+  astreinte_week_type?: 1 | 2;
   medecins: GuardMedecin[];
   vacations?: Array<{ doctor_id: string; start_date: string; end_date: string }>;
   congres?: Array<{ doctor_id: string; start_date: string; end_date: string }>;
@@ -700,6 +703,7 @@ export function buildCurrentWeekRequestPayload(opts: {
   return {
     week_start_date: opts.weekStartDate,
     week_type: opts.weekNumber % 2 === 0 ? 2 : 1,
+    astreinte_week_type: astreinteWeekTypeForWeek(weekKey),
     medecins: buildMedecinsPayload(),
     vacations: opts.vacations || [],
     weekend_mode: opts.weekendMode || "ROTATION",

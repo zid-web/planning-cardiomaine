@@ -26,7 +26,7 @@ import {
   applyNightGuardRecoveryOffs,
 } from "@/lib/half-day-off"
 import { NCT_DATES_2025_DEC, NCT_DATES_2026 } from "@/lib/guard-scheduler"
-import type { DoctorVacation, ScheduleData } from "@/lib/types"
+import type { CellData, DoctorVacation, ScheduleData } from "@/lib/types"
 import { applyClosedSlotsClear } from "@/lib/closed-slots"
 import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
 import type { EquityCounts } from "@/lib/equity-tracking"
@@ -34,6 +34,7 @@ import { applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { applyStressAndDRules } from "@/lib/stress-rules"
 import { ensureNurseDoctorBinomeProposals, ensureValOnBothEeRooms } from "@/lib/nurse-rules"
 import { applyWeekendWomRules } from "@/lib/weekend-wom-rules"
+import { chNightWeekdaysForWeek, isChAstreinteWeek } from "@/lib/astreinte-cycle"
 import {
   mergeVacancesIntoConges,
   populateCongesRowFromVacations,
@@ -57,7 +58,7 @@ export const STRUCTURAL_CONSTRAINT_NOTES = [
   "LFB Jeudi rotation H/S/G (désignable avant Générer ; sautée si LFB suspendue)",
   "VISITE U/A/B + PSSL B(jeudi)/Z(mardi) désignables avant Générer",
   "Suspensions activity_maintenance : NCT S31–S36 ; PSSL/LFB/CDL S28–S36 (2026)",
-  "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines impaires) — jamais Garde Matin/Midi/Nuit",
+  "CH = Astreinte ATL uniquement (nuit Lun–Ven selon roulement + ATL weekend semaines CH ; roulement inversé dès 2027-W01 ; échange manuel CH ↔ W/O/M conservé) — jamais Garde Matin/Midi/Nuit",
   "ATL Matin/Midi Lun–Ven = même médecin que Coro matin / Coro apm",
   "ATL Matin/Midi/Soir = M/O/W/CH ; FV = ATL Midi jeudi seulement (= Coro)",
   "Gardes Lun-Ven : Matin/Midi/Nuit au même médecin (cases vides only) ; jamais deux nuits consécutives",
@@ -76,19 +77,13 @@ const ATL_ROWS = ["Astreintes ATL Matin", "Astreintes ATL Midi", "Astreintes ATL
 const GARDE_PERIOD_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
 
 /**
- * Roulement CH / WOM (aligné solveur week_type) :
- * - semaine impaire (week_type=1) : CH = nuits Lun/Mar/Ven + weekend ATL complet ;
- *   W/O/M = nuits Mer/Jeu
- * - semaine paire (week_type=2) : CH = nuits Mer/Jeu ;
- *   W/O/M = nuits Lun/Mar/Ven + weekend ATL complet
+ * Roulement CH / WOM : voir `lib/astreinte-cycle.ts`.
+ * - semaine CH  : CH = nuits Lun/Mar/Ven + weekend ATL complet ; W/O/M = nuits Mer/Jeu
+ * - semaine WOM : CH = nuits Mer/Jeu ; W/O/M = nuits Lun/Mar/Ven + weekend ATL complet
+ * Jusqu'à 2026 : semaine CH = n° ISO impair. À partir de 2027-W01 : inversé
+ * (S1 2027 = semaine WOM).
  */
-export { isOddIsoWeek }
-
-export function chNightWeekdaysForWeek(weekKey: string): Set<string> {
-  return isOddIsoWeek(weekKey)
-    ? new Set(["LUNDI", "MARDI", "VENDREDI"])
-    : new Set(["MERCREDI", "JEUDI"])
-}
+export { isOddIsoWeek, chNightWeekdaysForWeek }
 
 function ensureDoctorInCell(
   schedule: ScheduleData,
@@ -141,11 +136,46 @@ function removeDoctorFromCell(
   }
 }
 
+/** Case saisie par un admin : le roulement CH ne la réécrit pas. */
+function isAdminOwnedCell(cell: CellData | undefined): boolean {
+  if (!cell) return false
+  if (cell.manuallyCleared) return true
+  return Boolean(cell.manualAssignment) && (cell.value?.length ?? 0) > 0
+}
+
+/**
+ * Case du roulement CH (nuit Lun–Ven ou ATL week-end) : CH y est ajouté s'il
+ * manque, sauf si l'admin a saisi ou vidé la case (ex. W à la place de CH
+ * après un échange) — elle reste alors intacte.
+ */
+function placeChOnCycleCell(
+  schedule: ScheduleData,
+  rowKey: string,
+  day: string,
+): ScheduleData {
+  if (isAdminOwnedCell(schedule[rowKey]?.[day])) return schedule
+  return ensureDoctorInCell(schedule, rowKey, day, "CH")
+}
+
+/**
+ * Case hors roulement CH : CH n'y est retiré que s'il ne vient pas d'une
+ * saisie admin (échange CH ↔ W/O/M conservé).
+ */
+function removeChOffCycle(schedule: ScheduleData, rowKey: string, day: string): ScheduleData {
+  if (isAdminOwnedCell(schedule[rowKey]?.[day])) return schedule
+  return removeDoctorFromCell(schedule, rowKey, day, "CH")
+}
+
 /**
  * CH : uniquement Astreinte ATL **Nuit** Lun–Ven (selon roulement),
- * et Astreinte ATL Matin+Midi+Nuit Sam/Dim les semaines impaires.
- * Retire CH des ATL Matin/Midi en semaine, des créneaux hors roulement,
- * et **de toutes les lignes Garde** (Matin/Midi/Nuit, y compris week-end).
+ * et Astreinte ATL Matin+Midi+Nuit Sam/Dim les semaines CH.
+ * Retire CH des ATL Matin/Midi en semaine et **de toutes les lignes Garde**
+ * (Matin/Midi/Nuit, y compris week-end) — règles absolues.
+ *
+ * Le roulement (nuits / week-end) est **souple** : une case modifiée par
+ * l'admin (`manualAssignment`, `manuallyCleared`) n'est jamais réécrite, ce
+ * qui permet un échange ponctuel (ex. W fait le mercredi de CH, CH fait le
+ * lundi de W).
  */
 export function applyChAstreinteConstraints(
   schedule: ScheduleData,
@@ -153,28 +183,20 @@ export function applyChAstreinteConstraints(
 ): ScheduleData {
   let next = schedule
   const chNights = chNightWeekdaysForWeek(weekKey)
-  const chWeekend = isOddIsoWeek(weekKey)
+  const chWeekend = isChAstreinteWeek(weekKey)
 
   for (const day of WEEKDAYS) {
     // Jamais Matin/Midi en semaine pour CH
     next = removeDoctorFromCell(next, "Astreintes ATL Matin", day, "CH")
     next = removeDoctorFromCell(next, "Astreintes ATL Midi", day, "CH")
-    if (chNights.has(day)) {
-      next = ensureDoctorInCell(next, "Astreintes ATL Nuit", day, "CH")
-    } else {
-      next = removeDoctorFromCell(next, "Astreintes ATL Nuit", day, "CH")
-    }
+    next = chNights.has(day)
+      ? placeChOnCycleCell(next, "Astreintes ATL Nuit", day)
+      : removeChOffCycle(next, "Astreintes ATL Nuit", day)
   }
 
   for (const day of WEEKEND) {
-    if (chWeekend) {
-      for (const row of ATL_ROWS) {
-        next = ensureDoctorInCell(next, row, day, "CH")
-      }
-    } else {
-      for (const row of ATL_ROWS) {
-        next = removeDoctorFromCell(next, row, day, "CH")
-      }
+    for (const row of ATL_ROWS) {
+      next = chWeekend ? placeChOnCycleCell(next, row, day) : removeChOffCycle(next, row, day)
     }
   }
 

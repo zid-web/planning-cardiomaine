@@ -1054,6 +1054,11 @@ export function ScheduleApp({
     if (nextCell.manuallyCleared && (nextCell.value?.length || 0) > 0) {
       nextCell = { ...nextCell, manuallyCleared: false }
     }
+    // Contenu choisi par l'admin : prioritaire sur les remplissages
+    // structurels souples (roulement CH / W-O-M, etc.).
+    if ((nextCell.value?.length || 0) > 0) {
+      nextCell = { ...nextCell, manualAssignment: true }
+    }
     let newSchedule: ScheduleData = {
       ...schedule,
       [row]: {

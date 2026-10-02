@@ -1,5 +1,6 @@
 import { getWeekendWeekPreset } from "@/lib/weekend-wom-presets"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
+import { isWomAstreinteWeek } from "@/lib/astreinte-cycle"
 
 export interface GuardConstraints {
   noFridayUsers: string[] // M, W, O
@@ -473,10 +474,11 @@ export function generateAstreinteRotation(
       year: currentYear,
     }
 
-    const isEvenWeek = currentWeek % 2 === 0
+    const weekKey = `${currentYear}-W${String(currentWeek).padStart(2, "0")}`
 
-    if (isEvenWeek) {
-      // Semaines PAIRES (week_type=2):
+    if (isWomAstreinteWeek(weekKey)) {
+      // Semaines WOM (paires jusqu'à 2026, impaires à partir de 2027 — voir
+      // lib/astreinte-cycle.ts) :
       // W/O/M: nuits Lun/Mar/Ven (pas de nuits consécutives Lun–Ven) + weekend ATL
       // CH: nuits Mer/Jeu
       // Ven ATL Nuit = médecin Sat ATL (systématique).
@@ -490,7 +492,6 @@ export function generateAstreinteRotation(
       rotation.tuesday = user2 // ≠ lundi (pas de nuits ATL consécutives Lun–Ven)
       rotation.wednesday = "CH"
       rotation.thursday = "CH"
-      const weekKey = `${currentYear}-W${String(currentWeek).padStart(2, "0")}`
       const preset = getWeekendWeekPreset(weekKey)
 
       // Preset calendrier prime sur la rotation générique pour Ven/week-end ATL
@@ -517,7 +518,7 @@ export function generateAstreinteRotation(
 
       userIndex++
     } else {
-      // Semaines IMPAIRES (week_type=1):
+      // Semaines CH (impaires jusqu'à 2026, paires à partir de 2027) :
       // CH: nuits Lun/Mar/Ven + weekend ATL entier
       // W/O/M: nuits Mer/Jeu (médecins distincts — pas de consécutif)
       const user1 = usersOMW[userIndex % 3]
