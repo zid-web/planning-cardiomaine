@@ -11,6 +11,7 @@ import {
   withNctEntry,
   type NctEntry,
 } from '@/lib/nct-calendar'
+import { publicHolidayName, schoolHolidayZoneB } from '@/lib/french-calendar'
 import { cn } from '@/lib/utils'
 
 interface NctCalendarModalProps {
@@ -253,30 +254,64 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                 {grid.flat().map((cell) => {
                   const user = byDate.get(cell.date) ?? null
                   const isToday = cell.date === today
+                  const ferie = publicHolidayName(cell.date)
+                  const vacances = schoolHolidayZoneB(cell.date)
+                  const hint = [
+                    ferie ? `Férié : ${ferie}` : null,
+                    vacances ? `Vacances scolaires zone B : ${vacances.name}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
                   return (
                     <button
                       key={cell.date}
                       type="button"
                       onClick={() => setUser(cell.date, cycleNctUser(user))}
                       title={
-                        user
+                        (user
                           ? `NCT ${user} — cliquer pour changer / supprimer`
-                          : `Ajouter un NCT le ${formatFr(cell.date)}`
+                          : `Ajouter un NCT le ${formatFr(cell.date)}`) + (hint ? ` (${hint})` : '')
                       }
                       className={cn(
                         'relative flex h-11 flex-col items-center justify-center rounded-md border text-sm transition',
                         !cell.inMonth && 'opacity-35',
                         user
                           ? cn('border-transparent font-bold', USER_STYLE[user] ?? 'bg-slate-700 text-white')
-                          : 'border-slate-200 bg-white text-slate-800 hover:border-blue-400 hover:bg-blue-50',
-                        isToday && !user && 'ring-2 ring-amber-400',
+                          : ferie
+                            ? 'border-rose-300 bg-rose-100 font-semibold text-rose-800 hover:border-blue-400'
+                            : vacances
+                              ? 'border-amber-200 bg-amber-100 text-amber-900 hover:border-blue-400'
+                              : 'border-slate-200 bg-white text-slate-800 hover:border-blue-400 hover:bg-blue-50',
+                        isToday && !user && 'ring-2 ring-slate-900/70',
                       )}
                     >
                       <span className="leading-none">{cell.day}</span>
                       {user && <span className="text-[10px] font-semibold leading-none opacity-90">{user}</span>}
+                      {/* NCT posé un jour férié / pendant les vacances : repère conservé */}
+                      {user && ferie && (
+                        <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-rose-300 ring-1 ring-white" />
+                      )}
+                      {user && !ferie && vacances && (
+                        <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-300 ring-1 ring-white" />
+                      )}
                     </button>
                   )
                 })}
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
+                <span className="flex items-center gap-1">
+                  <span className="h-3 w-3 rounded-sm border border-rose-300 bg-rose-100" /> Jour férié
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="h-3 w-3 rounded-sm border border-amber-200 bg-amber-100" /> Vacances scolaires (zone B)
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="h-3 w-3 rounded-sm bg-blue-600" /> NCT W
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="h-3 w-3 rounded-sm bg-violet-600" /> NCT M
+                </span>
               </div>
 
               <div className="mt-3">
@@ -306,6 +341,16 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                           </button>
                         ))}
                       </div>
+                      {publicHolidayName(e.date) && (
+                        <span className="rounded bg-rose-100 px-1.5 text-[10px] font-semibold text-rose-800" title={publicHolidayName(e.date) ?? ''}>
+                          férié
+                        </span>
+                      )}
+                      {!publicHolidayName(e.date) && schoolHolidayZoneB(e.date) && (
+                        <span className="rounded bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-900" title={schoolHolidayZoneB(e.date)?.name}>
+                          vacances
+                        </span>
+                      )}
                       {!(NCT_DOCTORS as readonly string[]).includes(e.user) && (
                         <span className="rounded bg-slate-200 px-1.5 text-xs font-semibold text-slate-800">{e.user}</span>
                       )}
