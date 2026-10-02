@@ -194,6 +194,7 @@ import {
   type NctEntry,
 } from "@/lib/nct-calendar"
 import { loadNctCalendar, saveNctCalendar } from "@/app/actions/nct-calendar-actions"
+import { schoolHolidayZoneB } from "@/lib/french-calendar"
 
 type ChangeRequest = {
   id: string
@@ -2072,6 +2073,12 @@ export function ScheduleApp({
     return holidays[key] // returns Name of holiday or undefined
   }
 
+  /** Vacances scolaires zone B du jour (mêmes codes couleur que le calendrier NCT). */
+  const schoolHolidayOfDay = (day: string) => {
+    const iso = dateStrForWeekDay(weekKey, day)
+    return iso ? schoolHolidayZoneB(iso) : null
+  }
+
   const isAllowedOnHoliday = (rowKey: string) => {
     return rowKey.includes("Astreintes ATL") || rowKey.includes("Garde")
   }
@@ -2668,6 +2675,14 @@ export function ScheduleApp({
                   <h3 className="text-xs font-semibold text-slate-600 md:text-sm">
                     Planning global · S{currentWeekInfo.week}
                   </h3>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500 md:text-[11px]">
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm border border-rose-300 bg-rose-100" /> Férié
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm border border-amber-200 bg-amber-100" /> Vacances (zone B)
+                    </span>
+                  </div>
                 </div>
 
                 <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white shadow-sm">
@@ -2688,16 +2703,25 @@ export function ScheduleApp({
                           {DAYS.map((d, i) => (
                             <th
                               key={d}
+                              title={
+                                [
+                                  isDateHoliday(weekDates[i]) ? `Férié : ${isDateHoliday(weekDates[i])}` : null,
+                                  schoolHolidayOfDay(d) ? `Vacances scolaires zone B : ${schoolHolidayOfDay(d)?.name}` : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ") || undefined
+                              }
                               className={`p-1.5 md:p-2 text-center font-medium min-w-[85px] border-r last:border-r-0 relative group whitespace-nowrap text-[11px]
                                 ${d === "SAMEDI" || d === "DIMANCHE" ? "bg-slate-50/80" : "bg-white"}
-                                ${isDateHoliday(weekDates[i]) ? "bg-red-100 text-red-700 border-l-4 border-r-4 border-red-400" : ""}
+                                ${schoolHolidayOfDay(d) && !isDateHoliday(weekDates[i]) ? "bg-amber-100 text-amber-900" : ""}
+                                ${isDateHoliday(weekDates[i]) ? "bg-rose-100 text-rose-800 border-l-4 border-r-4 border-rose-300" : ""}
                               `}
                             >
                               <div className="text-[9px] md:text-[10px] uppercase tracking-wider">{d.slice(0, 3)}</div>
                               <div className="text-xs md:text-sm font-bold">{weekDates[i].slice(0, 5)}</div>
 
                               {isDateHoliday(weekDates[i]) && (
-                                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-red-600 text-white text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none mb-1">
+                                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full bg-rose-600 text-white text-[10px] px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none mb-1">
                                   🎉 {isDateHoliday(weekDates[i])}
                                 </div>
                               )}
@@ -2791,6 +2815,7 @@ export function ScheduleApp({
 
                                   const holidayName = isDateHoliday(weekDates[dayIndex])
                                   const isHoliday = !!holidayName
+                                  const schoolHoliday = !isHoliday ? schoolHolidayOfDay(day) : null
                                   const isRestrictedHoliday = isHoliday && !isAllowedOnHoliday(rowKey)
                                   const cellBlocked = isCellBlocked(rowKey, day)
                                   const isMyShift = Boolean(highlightMyShifts && doctorCode && displayAssignees.includes(doctorCode))
@@ -2803,7 +2828,8 @@ export function ScheduleApp({
                                         cellBlocked
                                           ? "bg-black cursor-not-allowed opacity-40"
                                           : "cursor-pointer hover:bg-gray-50",
-                                        isHoliday && "bg-red-50 border-l-4 border-r-4 border-red-400",
+                                        isHoliday && "bg-rose-50 border-l-4 border-r-4 border-rose-300",
+                                        schoolHoliday && !cellBlocked && "bg-amber-50",
                                         isMyShift && !cellBlocked && "bg-blue-100/90 ring-2 ring-blue-600 shadow-sm z-10 font-bold",
                                         // Proposition solveur « Générer » — distincte des fixes (validated)
                                         // et des demandes de changement (anneau orange sur badge).
@@ -2824,6 +2850,7 @@ export function ScheduleApp({
                                       }}
                                       title={
                                         holidayName ||
+                                        (schoolHoliday ? `Vacances scolaires zone B : ${schoolHoliday.name}` : "") ||
                                         (cellBlocked
                                           ? "Case bloquée"
                                           : isSolverProposal
