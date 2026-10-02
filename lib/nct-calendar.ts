@@ -148,3 +148,52 @@ export function withNctEntry(
   const rest = list.filter((e) => e.date !== date)
   return normalizeNctCalendar(user ? [...rest, { date, user }] : rest)
 }
+
+export type MonthGridCell = { date: string; day: number; inMonth: boolean }
+
+function isoOf(y: number, m0: number, d: number): string {
+  return new Date(Date.UTC(y, m0, d)).toISOString().split("T")[0]
+}
+
+/**
+ * Grille d'un mois (semaines du lundi au dimanche, 5 ou 6 lignes) pour
+ * l'affichage calendrier. `month0` : 0 = janvier.
+ */
+export function buildMonthGrid(year: number, month0: number): MonthGridCell[][] {
+  const first = new Date(Date.UTC(year, month0, 1))
+  const offset = (first.getUTCDay() + 6) % 7 // lundi = 0
+  const daysInMonth = new Date(Date.UTC(year, month0 + 1, 0)).getUTCDate()
+  const total = Math.ceil((offset + daysInMonth) / 7) * 7
+  const weeks: MonthGridCell[][] = []
+  for (let i = 0; i < total; i += 7) {
+    const row: MonthGridCell[] = []
+    for (let j = 0; j < 7; j++) {
+      const dayNum = i + j - offset + 1
+      const dt = new Date(Date.UTC(year, month0, dayNum))
+      row.push({
+        date: isoOf(year, month0, dayNum),
+        day: dt.getUTCDate(),
+        inMonth: dayNum >= 1 && dayNum <= daysInMonth,
+      })
+    }
+    weeks.push(row)
+  }
+  return weeks
+}
+
+/** Mois précédent / suivant avec passage d'une année à l'autre. */
+export function shiftMonth(year: number, month0: number, delta: number): { year: number; month0: number } {
+  const idx = year * 12 + month0 + delta
+  return { year: Math.floor(idx / 12), month0: ((idx % 12) + 12) % 12 }
+}
+
+/**
+ * Clic sur un jour : pas de NCT → premier médecin (W) → M → suppression.
+ * Un médecin hors W/M (saisi dans la grille) repasse à W.
+ */
+export function cycleNctUser(current: string | null): string | null {
+  if (!current) return NCT_DOCTORS[0]
+  const idx = (NCT_DOCTORS as readonly string[]).indexOf(current)
+  if (idx === -1) return NCT_DOCTORS[0]
+  return idx + 1 < NCT_DOCTORS.length ? NCT_DOCTORS[idx + 1] : null
+}

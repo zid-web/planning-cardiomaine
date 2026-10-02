@@ -3,6 +3,9 @@
  */
 import assert from "node:assert/strict"
 import {
+  buildMonthGrid,
+  cycleNctUser,
+  shiftMonth,
   DEFAULT_NCT_CALENDAR,
   diffNctCalendars,
   getNctCalendar,
@@ -87,6 +90,27 @@ function main() {
     setNctCalendar(null)
   }
   assert.equal(nctDoctorForDate("2026-09-10"), "W")
+
+  // --- Aides d'affichage calendrier ---
+  assert.deepEqual(shiftMonth(2026, 11, 1), { year: 2027, month0: 0 })
+  assert.deepEqual(shiftMonth(2027, 0, -1), { year: 2026, month0: 11 })
+  assert.deepEqual(shiftMonth(2026, 5, 14), { year: 2027, month0: 7 })
+  assert.equal(cycleNctUser(null), "W")
+  assert.equal(cycleNctUser("W"), "M")
+  assert.equal(cycleNctUser("M"), null)
+  assert.equal(cycleNctUser("O"), "W")
+
+  // Octobre 2026 : le 1er est un jeudi → 3 cases vides avant, grille lundi→dimanche
+  const oct = buildMonthGrid(2026, 9)
+  assert.equal(oct.length, 5)
+  assert.ok(oct.every((w) => w.length === 7))
+  assert.equal(oct[0][3].date, "2026-10-01")
+  assert.equal(oct[0][3].inMonth, true)
+  assert.equal(oct[0][2].inMonth, false)
+  assert.equal(oct[0][0].date, "2026-09-28")
+  assert.equal(oct[4][6].date, "2026-11-01")
+  // Février 2027 : commence un lundi, 28 jours → 4 lignes exactement
+  assert.equal(buildMonthGrid(2027, 1).length, 4)
 
   console.log("✅ nct-calendar tests passed")
 }

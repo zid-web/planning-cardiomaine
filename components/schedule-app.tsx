@@ -4012,7 +4012,7 @@ export function ScheduleApp({
             isOpen={nctModalOpen}
             onClose={() => setNctModalOpen(false)}
             calendar={nctCalendar}
-            defaultYear={Number.parseInt(weekKey.split("-W")[0], 10) || undefined}
+            defaultDate={dateStrForWeekDay(weekKey, "JEUDI") ?? undefined}
             onSave={commitNctCalendar}
           />
         </Suspense>
