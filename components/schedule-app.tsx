@@ -37,6 +37,7 @@ import {
   Smartphone,
   Sparkles,
   Sun,
+  Eraser,
   Trash2,
   TrendingUp,
   User,
@@ -160,6 +161,7 @@ const HistoryImportDialog = lazy(() =>
   import("@/components/history-import-dialog").then((m) => ({ default: m.HistoryImportDialog })),
 )
 import { createClient } from "@/lib/supabase/client"
+import { clearSolverProposals } from "@/lib/clear-solver-proposals"
 import type { PdfWeekExtraction } from "@/lib/history-import"
 import { loadFullScheduleFromDb } from "@/app/actions/schedule-actions"
 import {
@@ -978,6 +980,45 @@ export function ScheduleApp({
     }
     return n
   }, [schedule])
+
+  /**
+   * Bouton « Effacer les propositions » : retire toutes les propositions du
+   * solveur (cases violettes « Prop. ») de la semaine affichée pour pouvoir
+   * relancer « Générer ». Contrairement à « Retour » (restauration de
+   * l'instantané d'avant génération), les saisies manuelles faites depuis, les
+   * cases validées et les contraintes structurelles sont conservées.
+   */
+  const handleClearProposals = async () => {
+    if (!isAdmin || !schedule) return
+    const wk = weekKey
+    const { schedule: stripped, cleared } = clearSolverProposals(schedule)
+    if (cleared === 0) {
+      toast.info("Aucune proposition à effacer sur cette semaine.")
+      return
+    }
+    // Les contraintes structurelles repeuplent ce qui leur revient (rotation
+    // LFB, CH, couplages gardes/ATL…) en cases validées.
+    const next = applyStructuralConstraints(stripped, wk, vacations, {
+      vacationsReady,
+      previousSundayGuardDoctor,
+    })
+    setFullSchedule((prev) => ({ ...prev, [wk]: next }))
+    // « Retour » n'a plus de sens : l'instantané d'avant génération est périmé.
+    setPreGenerationSnapshot((prev) => {
+      const copy = { ...prev }
+      delete copy[wk]
+      return copy
+    })
+    try {
+      await saveScheduleToDb(wk, next, currentUser || "unknown", { source: "revert" })
+      toast.success(
+        `${cleared} proposition${cleared > 1 ? "s" : ""} effacée${cleared > 1 ? "s" : ""} — vous pouvez relancer « Générer ».`,
+      )
+    } catch (error) {
+      toast.error("Propositions effacées à l'écran mais la sauvegarde a échoué. Réessayez.")
+      console.error("[schedule-app] Échec de sauvegarde après effacement des propositions:", error)
+    }
+  }
 
   const getUserTasks = (day: string) => {
     if (!doctorCode) return []
@@ -2154,6 +2195,19 @@ export function ScheduleApp({
                           >
                             <span className="hidden sm:inline">Retour</span>
                             <span className="sm:hidden">↩</span>
+                          </Button>
+                        )}
+
+                        {solverProposalCount > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
+                            onClick={() => void handleClearProposals()}
+                            title="Effacer toutes les propositions du solveur (cases violettes) de la semaine, sans toucher aux saisies manuelles ni aux contraintes habituelles, puis relancer Générer"
+                          >
+                            <Eraser className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
+                            <span className="hidden md:inline">Effacer propositions ({solverProposalCount})</span>
                           </Button>
                         )}
 
