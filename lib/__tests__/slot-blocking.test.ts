@@ -344,6 +344,21 @@ function main() {
   r = canAssignDoctorToSlot("FV", "2026-10-01", "Matin - Coro", "JEUDI", schedule, [])
   assert.equal(r.allowed, false, "FV refusé sur Coro le jeudi MATIN (seul l'apm est autorisé)")
 
+  // NCT : réservé à W et M dans le sélecteur ; remplaçant libre toujours possible
+  schedule = generateWeekSchedule("2026-W40", [])
+  for (const ok of ["W", "M"]) {
+    r = canAssignDoctorToSlot(ok, "2026-10-01", "Hors site - NCT", "JEUDI", schedule, [])
+    assert.equal(r.allowed, true, `${ok} autorisé au NCT`)
+  }
+  for (const ko of ["O", "S", "CH", "B"]) {
+    r = canAssignDoctorToSlot(ko, "2026-10-01", "Hors site - NCT", "JEUDI", schedule, [])
+    assert.equal(r.allowed, false, `${ko} refusé au NCT`)
+    // CH a sa propre règle (astreintes ATL uniquement) qui répond avant
+    if (ko !== "CH") assert.match(r.reason || "", /W ou M/)
+  }
+  r = canAssignDoctorToSlot("Dupont", "2026-10-01", "Hors site - NCT", "JEUDI", schedule, [])
+  assert.equal(r.allowed, true, "remplaçant texte libre autorisé au NCT")
+
   console.log("✅ slot-blocking tests passed")
 }
 

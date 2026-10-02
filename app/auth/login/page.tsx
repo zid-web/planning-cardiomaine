@@ -1,6 +1,7 @@
 "use client"
 
 import { createClient } from "@/lib/supabase/client"
+import { configuredSupabaseHost } from "@/lib/supabase/config"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -452,13 +453,7 @@ function InstallPWAButton() {
  * coupé » de « cet environnement pointe vers une adresse injoignable ».
  */
 function configuredAuthHost(): string | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!url) return null
-  try {
-    return new URL(url).host
-  } catch {
-    return url
-  }
+  return configuredSupabaseHost()
 }
 
 /**

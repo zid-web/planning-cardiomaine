@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { getSupabaseConfig } from '@/lib/supabase/config'
 import { createServerClient } from "@supabase/ssr"
 
 /**
@@ -42,13 +43,7 @@ export async function proxy(request: NextRequest) {
     },
   })
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    // Misconfigured env: do not hard-block the whole app
-    return response
-  }
+  const { url: supabaseUrl, anonKey: supabaseAnonKey } = getSupabaseConfig()
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {

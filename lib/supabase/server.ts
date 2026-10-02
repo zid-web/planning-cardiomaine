@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { getSupabaseConfig } from '@/lib/supabase/config'
 
 /**
  * Especially important if using Fluid compute: Don't put this client in a
@@ -7,18 +8,7 @@ import { cookies } from 'next/headers'
  * it.
  */
 export async function createClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!url || !key) {
-    console.error('[app] Missing Supabase environment variables in server context', {
-      hasUrl: !!url,
-      hasKey: !!key,
-    })
-    throw new Error(
-      'Supabase environment variables are not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your environment.',
-    )
-  }
+  const { url, anonKey: key } = getSupabaseConfig()
 
   const cookieStore = await cookies()
 

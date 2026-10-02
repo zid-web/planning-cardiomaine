@@ -1,4 +1,7 @@
+import { getSupabaseConfig } from '@/lib/supabase/config'
+
 export async function GET() {
+  const effective = getSupabaseConfig()
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -14,6 +17,7 @@ export async function GET() {
       key_length: key?.length || 0,
       key_starts_with_sb: key?.startsWith('sb_') || false,
     },
+    effective: { url: effective.url, source: effective.source, ignored_env_url: effective.ignoredEnvUrl ?? null },
     debug_info: {
       url_value: url || 'UNDEFINED',
       key_value: key ? `${key.substring(0, 20)}...` : 'UNDEFINED',
