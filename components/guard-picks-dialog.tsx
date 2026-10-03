@@ -4,7 +4,6 @@ import React, { useState, useMemo, useCallback, useEffect, useTransition } from 
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
@@ -15,16 +14,15 @@ import {
   CheckCircle2,
   XCircle,
   Clock3,
-  ChevronDown,
-  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  CalendarRange,
   Loader2,
   Info,
   Trash2,
   Moon,
   Sun,
   Star,
-  Shield,
-  Users,
   AlertCircle,
   CheckCheck,
   Zap,
@@ -32,12 +30,19 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { DOCTOR_COLORS, DOCTORS } from "@/lib/constants"
+import { getSemesterGuardSlots, type SemesterGuardSlot } from "@/lib/semester-guard-slots"
+import { buildMonthGrid } from "@/lib/nct-calendar"
+import { schoolHolidayZoneB } from "@/lib/french-calendar"
 import {
-  getSemesterGuardSlots,
-  groupSlotsByMonth,
-  monthLabelFromKey,
-  type SemesterGuardSlot,
-} from "@/lib/semester-guard-slots"
+  defaultGuardCursor,
+  GUARD_MONTH_NAMES,
+  guardMonthKey,
+  SEMESTER_MONTHS,
+  stepGuardMonth,
+  stepGuardSemester,
+  summarizeGuardSlot,
+  type GuardCursor,
+} from "@/lib/guard-picks-view"
 import {
   getMyGuardPicks,
   getGuardPicksForSemester,
@@ -60,9 +65,6 @@ type Props = {
 }
 
 type GuardType = "Garde Matin" | "Garde Nuit"
-type Semester = 1 | 2
-
-const CURRENT_YEAR = new Date().getFullYear()
 
 const GUARD_ICON: Record<GuardType, React.ReactNode> = {
   "Garde Matin": <Sun className="h-4 w-4 text-amber-500 shrink-0" />,
@@ -347,102 +349,118 @@ function SlotCard({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Month accordion section with bulk validation button
+// Case d'un jour dans la grille du mois (comme le calendrier NCT)
 // ─────────────────────────────────────────────────────────────────────────────
-function MonthSection({
-  monthKey,
-  slots,
-  myPicks,
-  allPicks,
-  vacationDates,
-  isAdmin,
-  doctorCode,
-  onPick,
-  onDelete,
-  onApprove,
-  onReject,
-  onApproveBulk,
-  onAdminAssign,
+const WEEKDAYS_SHORT = ["L", "M", "M", "J", "V", "S", "D"]
+
+function GuardMiniRow({
+  icon,
+  summary,
 }: {
-  monthKey: string
-  slots: SemesterGuardSlot[]
-  myPicks: GuardPickRow[]
-  allPicks: GuardPickRow[]
-  vacationDates: Set<string>
-  isAdmin: boolean
-  doctorCode: string
-  onPick: (slot: SemesterGuardSlot, guardType: GuardType) => void
-  onDelete: (id: string) => void
-  onApprove: (id: string) => void
-  onReject: (id: string, note?: string) => void
-  onApproveBulk: (ids: string[], label: string) => void
-  onAdminAssign: (slot: SemesterGuardSlot, guardType: GuardType, doctor: string) => void
+  icon: React.ReactNode
+  summary: ReturnType<typeof summarizeGuardSlot>
 }) {
-  const [open, setOpen] = useState(true)
+  return (
+    <span className="flex items-center justify-center gap-0.5 leading-none">
+      {icon}
+      {summary.state === "approved" ? (
+        <span className="rounded bg-emerald-600 px-1 text-[10px] font-black text-white">
+          {summary.doctor}
+        </span>
+      ) : summary.state === "pending" ? (
+        <span className="rounded bg-amber-400 px-1 text-[10px] font-black text-amber-950">
+          {summary.pendingCount}
+        </span>
+      ) : (
+        <span className="text-[10px] text-slate-400">–</span>
+      )}
+    </span>
+  )
+}
 
-  const monthPicks = allPicks.filter(p => slots.some(s => s.date === p.date))
-  const pendingMonthPicks = monthPicks.filter(p => p.status === "pending")
+function DayCell({
+  date,
+  day,
+  inMonth,
+  slot,
+  isSelected,
+  isToday,
+  isOnVacation,
+  hasMyPick,
+  allPicks,
+  onSelect,
+}: {
+  date: string
+  day: number
+  inMonth: boolean
+  slot: SemesterGuardSlot | undefined
+  isSelected: boolean
+  isToday: boolean
+  isOnVacation: boolean
+  hasMyPick: boolean
+  allPicks: GuardPickRow[]
+  onSelect: (date: string) => void
+}) {
+  const school = schoolHolidayZoneB(date)
 
-  const monthLabel = monthLabelFromKey(monthKey)
+  if (!slot) {
+    // Jour ordinaire : non cliquable, seulement un repère (vacances scolaires).
+    return (
+      <div
+        className={cn(
+          "flex h-16 flex-col items-start rounded-md border p-1 text-xs sm:h-[72px]",
+          !inMonth && "opacity-30",
+          school ? "border-amber-200 bg-amber-50 text-amber-900/70" : "border-slate-100 bg-white text-slate-300",
+          isToday && "ring-2 ring-slate-900/50",
+        )}
+        title={school ? `Vacances scolaires zone B : ${school.name}` : undefined}
+      >
+        {day}
+      </div>
+    )
+  }
+
+  const matin = summarizeGuardSlot(allPicks, date, "Garde Matin")
+  const nuit = summarizeGuardSlot(allPicks, date, "Garde Nuit")
+  const tone = slot.isWomCombo
+    ? "border-purple-300 bg-purple-50 hover:border-purple-500"
+    : slot.dayType === "ferie"
+      ? "border-rose-300 bg-rose-100 hover:border-rose-500"
+      : slot.dayType === "samedi"
+        ? "border-blue-300 bg-blue-50 hover:border-blue-500"
+        : "border-slate-300 bg-slate-50 hover:border-slate-500"
 
   return (
-    <div className="rounded-xl border border-slate-200 overflow-hidden shadow-xs bg-white">
-      <div
-        className="w-full flex items-center justify-between px-4 py-3 bg-slate-100/90 border-b border-slate-200 flex-wrap gap-2 cursor-pointer select-none"
-        onClick={() => setOpen(o => !o)}
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-base font-black text-slate-800 capitalize">
-            {monthLabel}
-          </span>
-          <Badge className="text-xs px-2.5 py-0.5 bg-blue-100 text-blue-800 border-blue-200 font-bold">
-            {slots.length} WE & Fériés
-          </Badge>
-          {pendingMonthPicks.length > 0 && (
-            <Badge className="text-xs px-2.5 py-0.5 bg-amber-100 text-amber-900 border-amber-300 font-extrabold animate-pulse">
-              ⚡ {pendingMonthPicks.length} en attente
-            </Badge>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
-          {/* Admin Bulk Action for the month */}
-          {isAdmin && pendingMonthPicks.length > 0 && (
-            <Button
-              size="sm"
-              onClick={() => onApproveBulk(pendingMonthPicks.map(p => p.id), `mois de ${monthLabel}`)}
-              className="h-8 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-xs"
-            >
-              <Zap className="h-3.5 w-3.5" />
-              Valider tout ce bloc ({pendingMonthPicks.length})
-            </Button>
-          )}
-
-          {open ? <ChevronUp className="h-5 w-5 text-slate-600" /> : <ChevronDown className="h-5 w-5 text-slate-600" />}
-        </div>
-      </div>
-
-      {open && (
-        <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {slots.map(slot => (
-            <SlotCard
-              key={slot.date}
-              slot={slot}
-              myPicks={myPicks}
-              allPicks={allPicks}
-              vacationDates={vacationDates}
-              isAdmin={isAdmin}
-              doctorCode={doctorCode}
-              onPick={onPick}
-              onDelete={onDelete}
-              onApprove={onApprove}
-              onReject={onReject}
-              onAdminAssign={onAdminAssign}
-            />
-          ))}
-        </div>
+    <button
+      type="button"
+      onClick={() => onSelect(date)}
+      aria-pressed={isSelected}
+      title={`${slot.label}${slot.isWomCombo ? " · combo M/O/W" : ""}${isOnVacation ? " · congé" : ""}${school ? ` · vacances ${school.name}` : ""}`}
+      className={cn(
+        "relative flex h-16 flex-col items-stretch justify-between rounded-md border p-1 text-left transition sm:h-[72px]",
+        tone,
+        !inMonth && "opacity-50",
+        isOnVacation && "opacity-60 [background-image:repeating-linear-gradient(135deg,transparent_0_4px,rgba(100,116,139,0.18)_4px_6px)]",
+        hasMyPick && "ring-2 ring-blue-500",
+        isSelected && "ring-2 ring-slate-900 shadow-md",
+        isToday && !isSelected && "outline outline-2 outline-offset-1 outline-slate-900/40",
       )}
-    </div>
+    >
+      <span className="flex items-start justify-between">
+        <span className="text-xs font-extrabold text-slate-900">{day}</span>
+        <span className="flex items-center gap-0.5">
+          {slot.isWomCombo && <Star className="h-2.5 w-2.5 text-purple-600" />}
+          {school && <span className="h-2 w-2 rounded-full bg-amber-400 ring-1 ring-white" />}
+          {isOnVacation && <span className="text-[10px]">🏖</span>}
+        </span>
+      </span>
+      {!isOnVacation && (
+        <span className="flex flex-col gap-0.5">
+          <GuardMiniRow icon={<Sun className="h-2.5 w-2.5 text-amber-500" />} summary={matin} />
+          <GuardMiniRow icon={<Moon className="h-2.5 w-2.5 text-indigo-500" />} summary={nuit} />
+        </span>
+      )}
+    </button>
   )
 }
 
@@ -450,25 +468,26 @@ function MonthSection({
 // Main Dialog
 // ─────────────────────────────────────────────────────────────────────────────
 export function GuardPicksDialog({ open, onOpenChange, isAdmin, doctorCode }: Props) {
-  const [semester, setSemester] = useState<Semester>(
-    new Date().getMonth() < 8 ? 1 : 2,
-  )
-  const [year, setYear] = useState(CURRENT_YEAR)
+  const [cursor, setCursor] = useState<GuardCursor>(() => defaultGuardCursor())
+  const [view, setView] = useState<"month" | "semester">("month")
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [myPicks, setMyPicks] = useState<GuardPickRow[]>([])
   const [allPicks, setAllPicks] = useState<GuardPickRow[]>([])
   const [vacationDates, setVacationDates] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const detailRef = React.useRef<HTMLDivElement | null>(null)
+
+  const { semester, year, month0 } = cursor
 
   // Compute all slots for the semester
-  const slots = useMemo(
-    () => getSemesterGuardSlots(semester, year),
-    [semester, year],
-  )
+  const slots = useMemo(() => getSemesterGuardSlots(semester, year), [semester, year])
+  const slotByDate = useMemo(() => new Map(slots.map((s) => [s.date, s])), [slots])
 
-  const groupedSlots = useMemo(
-    () => groupSlotsByMonth(slots),
-    [slots],
+  const monthPrefix = `${guardMonthKey(cursor)}-`
+  const monthSlots = useMemo(
+    () => slots.filter((s) => s.date.startsWith(monthPrefix)),
+    [slots, monthPrefix],
   )
 
   // Load data when semester/year changes
@@ -496,9 +515,49 @@ export function GuardPicksDialog({ open, onOpenChange, isAdmin, doctorCode }: Pr
     }
   }, [open, loadData])
 
+  // À l'ouverture : mois courant, vue Mois
+  useEffect(() => {
+    if (!open) return
+    setCursor(defaultGuardCursor())
+    setView("month")
+    setSelectedDate(null)
+  }, [open])
+
+  // Changement de mois : présélection du premier jour utile (admin : celui qui a
+  // des demandes en attente ; sinon le premier week-end / férié du mois).
+  useEffect(() => {
+    if (view !== "month") return
+    const firstPending = monthSlots.find((s) => allPicks.some((p) => p.date === s.date && p.status === "pending"))
+    setSelectedDate((prev) => {
+      if (prev && monthSlots.some((s) => s.date === prev)) return prev
+      return (isAdmin ? firstPending : undefined)?.date ?? monthSlots[0]?.date ?? null
+    })
+  }, [monthSlots, view, isAdmin, allPicks])
+
+  // Raccourcis clavier : ← → changent de mois (ou de semestre en vue d'ensemble)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
+      const delta = e.key === "ArrowRight" ? 1 : -1
+      setCursor((c) => (view === "month" ? stepGuardMonth(c, delta) : stepGuardSemester(c, delta)))
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open, view])
+
   // Stats
-  const totalPendingAll = allPicks.filter(p => p.status === "pending").length
-  const totalApprovedAll = allPicks.filter(p => p.status === "approved").length
+  const totalPendingAll = allPicks.filter((p) => p.status === "pending").length
+  const totalApprovedAll = allPicks.filter((p) => p.status === "approved").length
+  const monthPendingIds = useMemo(
+    () =>
+      allPicks
+        .filter((p) => p.status === "pending" && p.date.startsWith(monthPrefix))
+        .map((p) => p.id),
+    [allPicks, monthPrefix],
+  )
 
   const handlePick = (slot: SemesterGuardSlot, guardType: GuardType) => {
     startTransition(async () => {
@@ -596,11 +655,34 @@ export function GuardPicksDialog({ open, onOpenChange, isAdmin, doctorCode }: Pr
     })
   }
 
+  const selectDate = (date: string) => {
+    setSelectedDate(date)
+    // Sur téléphone la fiche du jour est sous la grille : on la ramène à l'écran.
+    window.setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 50)
+  }
+
+  const goToday = () => {
+    setCursor(defaultGuardCursor())
+    setView("month")
+  }
+
+  const selectedSlot = selectedDate ? slotByDate.get(selectedDate) : undefined
+  const grid = useMemo(() => buildMonthGrid(year, month0), [year, month0])
+  const todayIso = (() => {
+    const t = new Date()
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`
+  })()
+  const monthTitle = `${GUARD_MONTH_NAMES[month0]} ${year}`
+  const semesterTitle = `${semester === 1 ? "S1" : "S2"} ${year} · ${semester === 1 ? "janv. – août" : "sept. – déc."}`
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[96vw] max-w-6xl h-[92vh] max-h-[92vh] overflow-hidden bg-slate-50 text-slate-900 p-0 flex flex-col rounded-2xl border border-slate-200 shadow-2xl">
-        {/* Header */}
-        <div className="flex-none p-3 sm:p-4 border-b border-slate-200 bg-white sticky top-0 z-10">
+      <DialogContent
+        // Pas de focus automatique sur la 1ʳᵉ flèche (anneau noir parasite à l'ouverture)
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        className="w-[96vw] max-w-3xl h-[92vh] max-h-[92vh] overflow-hidden bg-slate-50 text-slate-900 p-0 flex flex-col rounded-2xl border border-slate-200 shadow-2xl">
+        {/* En-tête */}
+        <div className="flex-none p-3 sm:p-4 border-b border-slate-200 bg-white">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="space-y-0.5">
               <DialogTitle className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
@@ -608,22 +690,27 @@ export function GuardPicksDialog({ open, onOpenChange, isAdmin, doctorCode }: Pr
                 Choix de Gardes — WE & Fériés
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500 hidden sm:block">
-                Positionnez vos préférences de gardes de weekend et jours fériés. L'admin valide et intègre directement les choix au planning général.
+                {isAdmin
+                  ? "Touchez un jour pour traiter les demandes : Valider, Refuser ou assigner directement un médecin."
+                  : "Touchez un jour coloré, puis « Choisir » la garde Matin ou Nuit. L'admin valide et l'intègre au planning."}
               </DialogDescription>
             </div>
 
-            {/* Stats & Global Bulk Validation Button */}
             <div className="flex items-center gap-1.5 flex-wrap">
               {isAdmin && totalPendingAll > 0 && (
                 <Button
-                  onClick={() => handleApproveBulk(allPicks.filter(p => p.status === "pending").map(p => p.id), "tout le semestre")}
+                  onClick={() =>
+                    handleApproveBulk(
+                      allPicks.filter((p) => p.status === "pending").map((p) => p.id),
+                      "tout le semestre",
+                    )
+                  }
                   className="h-7 sm:h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold gap-1 text-[11px] sm:text-xs shadow-xs"
                 >
                   <CheckCheck className="h-3.5 w-3.5" />
                   Tout valider ({totalPendingAll})
                 </Button>
               )}
-
               <div className="flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-1 text-[11px]">
                 <Clock3 className="h-3 w-3 text-amber-600" />
                 <span className="font-bold text-amber-800">{totalPendingAll} en attente</span>
@@ -634,137 +721,187 @@ export function GuardPicksDialog({ open, onOpenChange, isAdmin, doctorCode }: Pr
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Semester selector */}
-          <div className="mt-2 sm:mt-3 flex items-center gap-2 flex-wrap justify-between">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg">
-                {([1, 2] as Semester[]).map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setSemester(s)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-[11px] font-bold transition-all",
-                      semester === s
-                        ? "bg-blue-600 text-white shadow-xs"
-                        : "text-slate-600 hover:text-slate-900",
-                    )}
-                  >
-                    {s === 1 ? "🌸 S1 (Jan–Août)" : "🍂 S2 (Sept–Déc+)"}
-                  </button>
-                ))}
-              </div>
+        {/* Navigation : flèches mois / semestre + bascule Mois ⇄ Semestre (comme le calendrier NCT) */}
+        <div className="flex-none flex items-center gap-1 border-b border-slate-100 bg-slate-100/70 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setCursor((c) => (view === "month" ? stepGuardMonth(c, -1) : stepGuardSemester(c, -1)))}
+            className="rounded-md p-1.5 text-slate-600 hover:bg-slate-200"
+            aria-label={view === "month" ? "Mois précédent" : "Semestre précédent"}
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setView((v) => (v === "month" ? "semester" : "month"))}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-base font-bold text-slate-900 hover:bg-slate-200"
+            title={view === "month" ? "Voir tout le semestre" : "Revenir au mois"}
+          >
+            <CalendarRange className="h-4 w-4 text-slate-500" />
+            {view === "month" ? monthTitle : semesterTitle}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCursor((c) => (view === "month" ? stepGuardMonth(c, 1) : stepGuardSemester(c, 1)))}
+            className="rounded-md p-1.5 text-slate-600 hover:bg-slate-200"
+            aria-label={view === "month" ? "Mois suivant" : "Semestre suivant"}
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={goToday}
+            className="ml-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+          >
+            Aujourd&apos;hui
+          </button>
+        </div>
 
-              <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg">
-                {[CURRENT_YEAR, CURRENT_YEAR + 1].map(y => (
-                  <button
-                    key={y}
-                    onClick={() => setYear(y)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-[11px] font-bold transition-all",
-                      year === y
-                        ? "bg-indigo-600 text-white shadow-xs"
-                        : "text-slate-600 hover:text-slate-900",
-                    )}
-                  >
-                    {y}
-                  </button>
-                ))}
-              </div>
+        {/* Corps */}
+        <div className="flex-1 overflow-y-auto min-h-0 p-3 sm:p-4 space-y-3">
+          {isPending && (
+            <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 shadow-xs">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Mise à jour et intégration au planning en cours…
             </div>
+          )}
 
-            {isAdmin && (
-              <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-[10px] sm:text-[11px] px-2 py-0.5 font-bold">
-                <Shield className="h-3 w-3 mr-1 text-rose-600" /> Mode Validation Admin actif
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="flex-none px-3 sm:px-4 py-1.5 bg-slate-100/70 border-b border-slate-200 flex flex-wrap items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] text-slate-600">
-          <div className="flex items-center gap-1">
-            <div className="h-2.5 w-2.5 rounded border border-purple-400 bg-purple-100" />
-            <span>Combo M/O/W</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-2.5 w-2.5 rounded border border-rose-400 bg-rose-100" />
-            <span>Férié</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-2.5 w-2.5 rounded border border-blue-400 bg-blue-100" />
-            <span>Samedi</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="h-2.5 w-2.5 rounded border border-slate-300 bg-white" />
-            <span>Dimanche</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Sun className="h-3 w-3 text-amber-500" />
-            <span>Matin</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Moon className="h-3 w-3 text-indigo-400" />
-            <span>Nuit</span>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto min-h-0 p-3 sm:p-4 space-y-3 sm:space-y-4">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
               <p className="text-sm text-slate-500">Chargement des propositions…</p>
             </div>
-          ) : slots.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
-              <AlertCircle className="h-8 w-8" />
-              <p className="text-sm">Aucun week-end ni férié pour cette période.</p>
+          ) : view === "semester" ? (
+            /* Vue Semestre : une tuile par mois, un clic ouvre le mois */
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {SEMESTER_MONTHS[semester].map((m0) => {
+                const prefix = `${guardMonthKey({ year, month0: m0 })}-`
+                const mSlots = slots.filter((s) => s.date.startsWith(prefix))
+                const pending = allPicks.filter((p) => p.status === "pending" && p.date.startsWith(prefix)).length
+                const approved = allPicks.filter((p) => p.status === "approved" && p.date.startsWith(prefix)).length
+                const mine = myPicks.filter((p) => p.status !== "rejected" && p.date.startsWith(prefix)).length
+                return (
+                  <button
+                    key={m0}
+                    type="button"
+                    onClick={() => {
+                      setCursor({ semester, year, month0: m0 })
+                      setView("month")
+                    }}
+                    className="flex min-h-[92px] flex-col rounded-lg border border-slate-200 bg-white p-2.5 text-left transition hover:border-blue-400 hover:bg-blue-50"
+                  >
+                    <span className="text-sm font-black text-slate-900">{GUARD_MONTH_NAMES[m0]}</span>
+                    <span className="text-[11px] text-slate-500">{mSlots.length} WE & fériés</span>
+                    <span className="mt-auto flex flex-wrap gap-1 pt-1.5">
+                      {pending > 0 && (
+                        <span className="rounded bg-amber-100 px-1.5 text-[10px] font-bold text-amber-900">
+                          {pending} en attente
+                        </span>
+                      )}
+                      {approved > 0 && (
+                        <span className="rounded bg-emerald-100 px-1.5 text-[10px] font-bold text-emerald-900">
+                          {approved} attribuée{approved > 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {!isAdmin && mine > 0 && (
+                        <span className="rounded bg-blue-100 px-1.5 text-[10px] font-bold text-blue-900">
+                          {mine} à moi
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           ) : (
             <>
-              {isPending && (
-                <div className="flex items-center gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 shadow-xs">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Mise à jour et intégration au planning en cours…
+              {/* Grille du mois */}
+              <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-xs sm:p-3">
+                <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-slate-500">
+                  {WEEKDAYS_SHORT.map((d, i) => (
+                    <div key={i}>{d}</div>
+                  ))}
                 </div>
-              )}
+                <div className="mt-1 grid grid-cols-7 gap-1">
+                  {grid.flat().map((cell) => (
+                    <DayCell
+                      key={cell.date}
+                      date={cell.date}
+                      day={cell.day}
+                      inMonth={cell.inMonth}
+                      slot={slotByDate.get(cell.date)}
+                      isSelected={selectedDate === cell.date}
+                      isToday={cell.date === todayIso}
+                      isOnVacation={vacationDates.has(cell.date)}
+                      hasMyPick={myPicks.some((p) => p.date === cell.date && p.status !== "rejected")}
+                      allPicks={allPicks}
+                      onSelect={selectDate}
+                    />
+                  ))}
+                </div>
 
-              {/* Info box */}
-              {!isAdmin ? (
-                <div className="flex items-start gap-2 rounded-lg bg-sky-50 border border-sky-200 px-3 py-2 text-xs text-sky-700">
-                  <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  <span>
-                    Cliquez sur <strong>Choisir</strong> pour proposer une garde. Vos choix sont soumis à validation par l'admin qui les intègrera directement au planning. Vos dates de congés sont automatiquement bloquées.
-                  </span>
+                {/* Légende */}
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-600 sm:text-[11px]">
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border border-blue-300 bg-blue-50" /> Samedi</span>
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border border-slate-300 bg-slate-50" /> Dimanche</span>
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border border-rose-300 bg-rose-100" /> Férié</span>
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border border-purple-300 bg-purple-50" /> Combo M/O/W</span>
+                  <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border border-amber-200 bg-amber-100" /> Vacances (zone B)</span>
+                  <span className="flex items-center gap-1"><Sun className="h-3 w-3 text-amber-500" /> Matin</span>
+                  <span className="flex items-center gap-1"><Moon className="h-3 w-3 text-indigo-500" /> Nuit</span>
+                  <span className="flex items-center gap-1"><span className="rounded bg-emerald-600 px-1 text-[9px] font-black text-white">W</span> attribuée</span>
+                  <span className="flex items-center gap-1"><span className="rounded bg-amber-400 px-1 text-[9px] font-black text-amber-950">2</span> demandes en attente</span>
                 </div>
-              ) : (
-                <div className="flex items-start gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800 font-medium">
-                  <Shield className="h-3.5 w-3.5 mt-0.5 shrink-0 text-emerald-600" />
-                  <span>
-                    <strong>Espace Administrateur :</strong> Cliquez sur <strong>Valider</strong> (vert) ou <strong>Refuser</strong> (rouge) devant chaque médecin pour traiter sa demande, ou cliquez sur <strong>Valider tout ce bloc</strong> pour approuver un mois en 1 clic.
-                  </span>
-                </div>
-              )}
+              </div>
 
-              {[...groupedSlots.entries()].map(([monthKey, monthSlots]) => (
-                <MonthSection
-                  key={monthKey}
-                  monthKey={monthKey}
-                  slots={monthSlots}
-                  myPicks={myPicks}
-                  allPicks={allPicks}
-                  vacationDates={vacationDates}
-                  isAdmin={isAdmin}
-                  doctorCode={doctorCode}
-                  onPick={handlePick}
-                  onDelete={handleDelete}
-                  onApprove={handleApprove}
-                  onReject={handleReject}
-                  onApproveBulk={handleApproveBulk}
-                  onAdminAssign={handleAdminAssign}
-                />
-              ))}
+              {/* Barre du mois : résumé + validation en bloc (admin) */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  {monthSlots.length
+                    ? `${monthSlots.length} week-end${monthSlots.length > 1 ? "s" : ""} / férié${monthSlots.length > 1 ? "s" : ""} en ${GUARD_MONTH_NAMES[month0].toLowerCase()}`
+                    : "Aucun week-end ni férié ce mois-ci"}
+                </p>
+                {isAdmin && monthPendingIds.length > 0 && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleApproveBulk(monthPendingIds, `${GUARD_MONTH_NAMES[month0].toLowerCase()} ${year}`)}
+                    className="h-8 text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-xs"
+                  >
+                    <Zap className="h-3.5 w-3.5" />
+                    Valider tout le mois ({monthPendingIds.length})
+                  </Button>
+                )}
+              </div>
+
+              {/* Fiche du jour sélectionné */}
+              <div ref={detailRef}>
+                {selectedSlot ? (
+                  <SlotCard
+                    slot={selectedSlot}
+                    myPicks={myPicks}
+                    allPicks={allPicks}
+                    vacationDates={vacationDates}
+                    isAdmin={isAdmin}
+                    doctorCode={doctorCode}
+                    onPick={handlePick}
+                    onDelete={handleDelete}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onAdminAssign={handleAdminAssign}
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                    <Info className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {monthSlots.length
+                        ? "Touchez un jour coloré pour voir et choisir ses gardes."
+                        : "Pas de garde à choisir ce mois-ci — utilisez les flèches pour changer de mois."}
+                    </span>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>
