@@ -1200,6 +1200,28 @@ export function ScheduleApp({
     }
   }
 
+  /**
+   * Bouton « Effacer propositions » — affiché dès qu'il y a au moins une case
+   * violette, y compris quand la barre d'outils est repliée (vue Globale sur
+   * téléphone) et avec un libellé court sous la largeur `md` (sinon il n'y a
+   * qu'une icône, peu lisible sur Android / iOS).
+   */
+  const clearProposalsButton =
+    isAdmin && solverProposalCount > 0 ? (
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 shrink-0 border-violet-300 bg-violet-50 px-2 text-[11px] font-semibold !text-violet-900 hover:bg-violet-100 hover:!text-violet-900"
+        onClick={() => void handleClearProposals()}
+        title="Effacer toutes les propositions du solveur (cases violettes) de la semaine, sans toucher aux saisies manuelles ni aux contraintes habituelles, puis relancer Générer"
+        aria-label={`Effacer les ${solverProposalCount} propositions du solveur`}
+      >
+        <Eraser className="mr-1 h-3.5 w-3.5 shrink-0 !text-violet-900" strokeWidth={2.25} />
+        <span className="md:hidden">Effacer ({solverProposalCount})</span>
+        <span className="hidden md:inline">Effacer propositions ({solverProposalCount})</span>
+      </Button>
+    ) : null
+
   const getUserTasks = (day: string) => {
     if (!doctorCode) return []
     return Object.entries(schedule)
@@ -2326,6 +2348,8 @@ export function ScheduleApp({
                         )}
                       </Button>
                     )}
+                    {/* Barre repliée : le bouton reste accessible sans ouvrir « Outils » */}
+                    {isGlobalView && !toolbarExpanded && clearProposalsButton}
                     {(!isGlobalView || toolbarExpanded) && (
                       <div className="flex max-w-full flex-wrap items-center gap-1">
                         <span
@@ -2413,18 +2437,7 @@ export function ScheduleApp({
                           </Button>
                         )}
 
-                        {solverProposalCount > 0 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
-                            onClick={() => void handleClearProposals()}
-                            title="Effacer toutes les propositions du solveur (cases violettes) de la semaine, sans toucher aux saisies manuelles ni aux contraintes habituelles, puis relancer Générer"
-                          >
-                            <Eraser className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
-                            <span className="hidden md:inline">Effacer propositions ({solverProposalCount})</span>
-                          </Button>
-                        )}
+                        {clearProposalsButton}
 
                         <Button
                           variant="outline"
