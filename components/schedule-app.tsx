@@ -1017,7 +1017,8 @@ export function ScheduleApp({
       toast.success("Planning enregistré")
     } catch (error) {
       console.error("[app] Failed to save to Supabase:", error)
-      toast.error("Échec de l'enregistrement du planning")
+      // Action serveur injoignable (réseau, ancienne version de l'app en cache…)
+      toast.error("Échec de l'enregistrement du planning — rechargez l'application et réessayez")
     }
   }
 
