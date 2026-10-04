@@ -66,7 +66,7 @@ import {
   sortedWorkloadEntries,
 } from "@/lib/scheduler-algo"
 import { StatsDialog } from "./stats-dialog"
-import { GuardPicksDialog } from "./guard-picks-dialog"
+import { GuardCalendarDialog } from "./guard-calendar-dialog"
 import { SixMonthProjectionDialog } from "./six-month-projection-dialog"
 import { canAssignDoctor, detectConflict, isDoctorUnavailable } from "@/lib/assignment-validation"
 import {
@@ -907,6 +907,95 @@ export function ScheduleApp({
     return { ok: true }
   }
 
+  /**
+   * « Choix de Gardes » : pose les initiales d'une garde (Matin / Nuit) sur une
+   * date quelconque (samedi, dimanche, férié), dans la bonne semaine — sans
+   * demande ni validation intermédiaire. Mêmes effets que l'édition d'une case :
+   * saisie admin protégée des remplissages automatiques (`manualAssignment`),
+   * ½ off de récupération après une Garde Nuit recalculé.
+   */
+  const fullScheduleRef = React.useRef(fullSchedule)
+  useEffect(() => {
+    fullScheduleRef.current = fullSchedule
+  }, [fullSchedule])
+
+  const setGuardAssignment = async (
+    date: string,
+    row: "Garde Matin" | "Garde Nuit",
+    doctors: string[],
+  ): Promise<boolean> => {
+    if (!isAdmin) return false
+    const wk = weekKeyFromIsoDate(date)
+    const day = dayNameFromIsoDateLocal(date)
+    const current = fullScheduleRef.current
+    const base: ScheduleData = structuredClone(current[wk] ?? generateWeekSchedule(wk, vacations))
+    DAYS.forEach((d) => {
+      if (!base["Notes du jour"]?.[d]) {
+        if (!base["Notes du jour"]) base["Notes du jour"] = {}
+        base["Notes du jour"][d] = { value: [], type: "empty", status: "validated" }
+      }
+    })
+    const prevCell: CellData = base[row]?.[day] ?? { value: [], type: "empty", status: "validated" }
+    const newStatus = adminEditsAreValidated(currentUser) ? "validated" : "pending"
+    const nextCell: CellData = {
+      ...prevCell,
+      value: doctors,
+      type: doctors.length ? "doctor" : "empty",
+      status: newStatus,
+      remplacant: prevCell.remplacant && doctors.includes(prevCell.remplacant) ? prevCell.remplacant : undefined,
+      // Saisie admin : protégée des remplissages ; case vidée : jamais re-remplie
+      manualAssignment: doctors.length > 0,
+      manuallyCleared: doctors.length === 0,
+      request:
+        newStatus === "pending"
+          ? { requester: currentUser, status: "pending", timestamp: Date.now() }
+          : undefined,
+    }
+    let nextWeek: ScheduleData = { ...base, [row]: { ...(base[row] || {}), [day]: nextCell } }
+    const updates: Array<{ weekKey: string; data: ScheduleData; source: ScheduleSaveSource }> = []
+
+    if (row === "Garde Nuit") {
+      const prevNight = (prevCell.value || []).filter(isListedDoctor).join("|")
+      const nextNight = doctors.filter(isListedDoctor).join("|")
+      if (prevNight !== nextNight) {
+        if (day === "DIMANCHE") {
+          const nextWk = nextIsoWeekKey(wk)
+          if (nextWk) {
+            const nextWeekBase = current[nextWk] || generateWeekSchedule(nextWk, vacations)
+            updates.push({
+              weekKey: nextWk,
+              data: placeMondayRecoveryFromSundayNight(
+                structuredClone(nextWeekBase),
+                nightGuardDoctorsOnDay(nextWeek, "DIMANCHE"),
+              ),
+              source: "constraints",
+            })
+          }
+        } else {
+          nextWeek = syncRecoveryOffsAfterNightGuardChange(nextWeek, day)
+        }
+      }
+    }
+    updates.unshift({ weekKey: wk, data: nextWeek, source: "ui" })
+
+    setFullSchedule((prev) => {
+      const next = { ...prev }
+      for (const u of updates) next[u.weekKey] = u.data
+      return next
+    })
+    try {
+      for (const u of updates) {
+        const result = await saveScheduleToDb(u.weekKey, u.data, currentUser || "unknown", { source: u.source })
+        if (result?.error) throw new Error(result.error)
+      }
+      return true
+    } catch (error) {
+      console.error("[schedule-app] Choix de garde non enregistré:", error)
+      toast.error("Échec de l'enregistrement de la garde. Réessayez.")
+      return false
+    }
+  }
+
   const updateSchedule = async (
     newSchedule: ScheduleData,
     source: ScheduleSaveSource = "ui",
@@ -1199,6 +1288,45 @@ export function ScheduleApp({
       console.error("[schedule-app] Échec de sauvegarde après effacement des propositions:", error)
     }
   }
+
+  /**
+   * Bouton « Effacer propositions » — **toujours présent** dans « Outils » pour
+   * l'admin (grisé, avec explication, quand il n'y a aucune case violette à
+   * effacer : un bouton qui apparaît et disparaît donne l'impression qu'il a été
+   * retiré). En vue Globale barre repliée (téléphone), il est aussi rendu à côté
+   * d'« Outils » dès qu'il y a au moins une proposition. Libellé court sous `md`.
+   */
+  const hasSolverProposals = solverProposalCount > 0
+  const clearProposalsButton = isAdmin ? (
+    <Button
+      variant="outline"
+      size="sm"
+      className={cn(
+        "h-7 shrink-0 border-violet-300 bg-violet-50 px-2 text-[11px] font-semibold !text-violet-900 hover:bg-violet-100 hover:!text-violet-900",
+        !hasSolverProposals && "opacity-60",
+      )}
+      // `aria-disabled` plutôt que `disabled` : sur tablette un bouton désactivé
+      // ne réagit pas ; le clic affiche « Aucune proposition à effacer ».
+      aria-disabled={!hasSolverProposals}
+      onClick={() => void handleClearProposals()}
+      title={
+        hasSolverProposals
+          ? "Effacer toutes les propositions du solveur (cases violettes) de la semaine, sans toucher aux saisies manuelles ni aux contraintes habituelles, puis relancer Générer"
+          : "Aucune proposition du solveur à effacer sur cette semaine (cases violettes « Prop. »)"
+      }
+      aria-label={
+        hasSolverProposals
+          ? `Effacer les ${solverProposalCount} propositions du solveur`
+          : "Effacer les propositions du solveur (aucune sur cette semaine)"
+      }
+    >
+      <Eraser className="mr-1 h-3.5 w-3.5 shrink-0 !text-violet-900" strokeWidth={2.25} />
+      <span className="md:hidden">Effacer{hasSolverProposals ? ` (${solverProposalCount})` : ""}</span>
+      <span className="hidden md:inline">
+        Effacer propositions{hasSolverProposals ? ` (${solverProposalCount})` : ""}
+      </span>
+    </Button>
+  ) : null
 
   const getUserTasks = (day: string) => {
     if (!doctorCode) return []
@@ -2326,6 +2454,8 @@ export function ScheduleApp({
                         )}
                       </Button>
                     )}
+                    {/* Barre repliée : le bouton reste accessible sans ouvrir « Outils » */}
+                    {isGlobalView && !toolbarExpanded && hasSolverProposals && clearProposalsButton}
                     {(!isGlobalView || toolbarExpanded) && (
                       <div className="flex max-w-full flex-wrap items-center gap-1">
                         <span
@@ -2413,18 +2543,7 @@ export function ScheduleApp({
                           </Button>
                         )}
 
-                        {solverProposalCount > 0 && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
-                            onClick={() => void handleClearProposals()}
-                            title="Effacer toutes les propositions du solveur (cases violettes) de la semaine, sans toucher aux saisies manuelles ni aux contraintes habituelles, puis relancer Générer"
-                          >
-                            <Eraser className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
-                            <span className="hidden md:inline">Effacer propositions ({solverProposalCount})</span>
-                          </Button>
-                        )}
+                        {clearProposalsButton}
 
                         <Button
                           variant="outline"
@@ -4103,11 +4222,14 @@ export function ScheduleApp({
         doctorCode={doctorCode || currentUser || ""}
       />
 
-      <GuardPicksDialog
+      <GuardCalendarDialog
         open={showGuardPicks}
         onOpenChange={setShowGuardPicks}
         isAdmin={isAdmin}
-        doctorCode={doctorCode || currentUser || ""}
+        fullSchedule={fullSchedule}
+        vacations={vacations}
+        defaultDate={dateStrForWeekDay(weekKey, "SAMEDI") ?? undefined}
+        onSetGuard={setGuardAssignment}
       />
 
       {isAdmin && (
