@@ -176,7 +176,7 @@ export function GuardCalendarDialog({ open, onOpenChange, isAdmin, fullSchedule,
         <div className="flex-none border-b border-slate-200 px-4 py-3">
           <DialogTitle className="flex items-center gap-2 text-lg font-bold">
             <CalendarCheck2 className="h-5 w-5 shrink-0 text-blue-600" />
-            Choix de Gardes
+            Gardes WE
           </DialogTitle>
           <DialogDescription className="text-xs text-slate-500">
             {isAdmin
