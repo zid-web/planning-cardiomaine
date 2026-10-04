@@ -138,6 +138,8 @@ import {
   type VacationRequest,
 } from "@/app/actions/vacation-request-actions"
 import { VacationRequestsPanel } from "@/components/vacation-requests-panel"
+import { getAdminInboxCounts, type AdminInboxCounts } from "@/app/actions/inbox-actions"
+import { listRemovedAssignments, weekOverlapsRange, type RemovedAssignment } from "@/lib/vacation-impact"
 import { getChangeRequestsHistory } from "@/app/actions/change-request-actions"
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules"
 import { getAllVacations } from "@/app/actions/vacation-actions"
@@ -450,6 +452,45 @@ export function ScheduleApp({
     void refreshRequests()
   }, [refreshRequests])
 
+  // « Boîte de réception » admin : demandes de congés en attente + messages non
+  // lus + demandes de changement en attente (toutes semaines). Rafraîchie à
+  // l'ouverture, chaque minute, au retour dans l'app et après chaque action.
+  const [inboxCounts, setInboxCounts] = useState<AdminInboxCounts | null>(null)
+  const refreshInbox = useCallback(async () => {
+    if (!isAdmin) return
+    const counts = await getAdminInboxCounts()
+    if (counts) setInboxCounts(counts)
+  }, [isAdmin])
+
+  useEffect(() => {
+    if (!isAdmin) return
+    void refreshInbox()
+    const interval = window.setInterval(() => void refreshInbox(), 60_000)
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshInbox()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("focus", onVisible)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("focus", onVisible)
+    }
+  }, [isAdmin, refreshInbox])
+
+  const inboxTotal = inboxCounts
+    ? inboxCounts.vacationPending + inboxCounts.messagesUnread + inboxCounts.changePending
+    : 0
+  const inboxTitle = inboxCounts
+    ? [
+        inboxCounts.messagesUnread ? `${inboxCounts.messagesUnread} message(s) non lu(s)` : null,
+        inboxCounts.vacationPending ? `${inboxCounts.vacationPending} demande(s) de congé` : null,
+        inboxCounts.changePending ? `${inboxCounts.changePending} demande(s) de changement` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : ""
+
   // Sync planning en temps réel via Supabase Realtime — **tous les rôles**
   // (admins et médecins : l'app installée sur téléphone reflète les
   // modifications sans recharger). Seuls les admins reçoivent un toast.
@@ -587,6 +628,7 @@ export function ScheduleApp({
         { event: "*", schema: "public", table: "change_requests" },
         (payload: any) => {
           void refreshRequests()
+          void refreshInbox()
 
           // Notification instantanée pour l'émetteur lors d'une réponse (UPDATE)
           if (payload.eventType === "UPDATE") {
@@ -628,7 +670,7 @@ export function ScheduleApp({
     return () => {
       void supabase.removeChannel(requestsChannel)
     }
-  }, [supabase, currentUserId, doctorCode, refreshRequests])
+  }, [supabase, currentUserId, doctorCode, refreshRequests, refreshInbox])
 
   // Présence temps réel : liste des utilisateurs actuellement connectés
   // (Supabase Realtime Presence), affichée dans le header - admin uniquement
@@ -1096,7 +1138,7 @@ export function ScheduleApp({
           if (!cancelled) setAllDoctorMessages(msgs || [])
         })
         .catch(console.error)
-      void markDoctorMessagesRead()
+      void markDoctorMessagesRead().then(() => refreshInbox())
     } else {
       getMyDoctorMessages()
         .then((msgs) => {
@@ -1107,7 +1149,7 @@ export function ScheduleApp({
     return () => {
       cancelled = true
     }
-  }, [isAdmin, showRequests, requestsTab])
+  }, [isAdmin, showRequests, requestsTab, refreshInbox])
 
   const sendNewDoctorMessage = async () => {
     const text = newDoctorMessageText.trim()
@@ -1201,7 +1243,62 @@ export function ScheduleApp({
     setMyVacationRequests(reqs || [])
   }
 
+  /**
+   * Congé validé : exécuté tout de suite sur le planning, sans recharger la page.
+   * Les semaines déjà chargées qui recoupent la période repassent par
+   * `applyStructuralConstraints` avec le nouveau congé (ligne Congés, retrait des
+   * affectations impossibles, ½ off, récupération après garde…), puis sont
+   * enregistrées. Renvoie les affectations retirées, à signaler à l'admin.
+   */
+  const applyApprovedVacation = async (
+    request: VacationRequest,
+    freshVacations: DoctorVacation[],
+  ): Promise<{ weeks: number; removed: RemovedAssignment[] }> => {
+    const current = fullScheduleRef.current
+    const impacted = Object.keys(current)
+      .filter((k) => /-W\d{2}$/.test(k))
+      .filter((wk) => {
+        const monday = dateStrForWeekDay(wk, "LUNDI")
+        const sunday = dateStrForWeekDay(wk, "DIMANCHE")
+        return Boolean(monday && sunday && weekOverlapsRange(monday, sunday, request.start_date, request.end_date))
+      })
+      .sort()
+
+    const next: FullSchedule = { ...current }
+    const removed: RemovedAssignment[] = []
+    const changed: string[] = []
+    for (const wk of impacted) {
+      const before = current[wk]
+      const prevKey = previousIsoWeekKey(wk)
+      const sundayDoc = prevKey ? extractSundayNightGuardDoctor(next[prevKey]) : null
+      const after = applyStructuralConstraints(structuredClone(before), wk, freshVacations, {
+        vacationsReady: true,
+        previousSundayGuardDoctor: sundayDoc,
+        isFreshWeek: false,
+      })
+      removed.push(...listRemovedAssignments(before, after, request.doctor_code, wk))
+      if (schedulesDiffer(before, after)) {
+        next[wk] = after
+        changed.push(wk)
+      }
+    }
+
+    if (changed.length > 0) {
+      setFullSchedule(next)
+      try {
+        for (const wk of changed) {
+          await saveScheduleToDb(wk, next[wk], currentUser || "unknown", { source: "constraints" })
+        }
+      } catch (err) {
+        console.error("[vacation] enregistrement du planning après congé:", err)
+        toast.error("Congé validé, mais l'enregistrement de certaines semaines a échoué. Rechargez la page.")
+      }
+    }
+    return { weeks: changed.length, removed }
+  }
+
   const decideOnVacationRequest = async (id: string, decision: "approved" | "rejected") => {
+    const request = allVacationRequests.find((r) => r.id === id)
     const result = await decideVacationRequest(id, decision)
     if (!result.success) {
       toast.error(result.error || "Échec du traitement de la demande")
@@ -1209,12 +1306,39 @@ export function ScheduleApp({
     }
     const reqs = await getAllVacationRequests()
     setAllVacationRequests(reqs || [])
-    if (decision === "approved") {
-      toast.success("Congé validé et appliqué au planning")
-      // Le planning affiché doit refléter le nouveau congé immédiatement.
-      window.location.reload()
-    } else {
+    void refreshInbox()
+    if (decision !== "approved") {
       toast.success("Demande refusée")
+      return
+    }
+    if (!request) {
+      toast.success("Congé validé")
+      await loadVacations()
+      return
+    }
+
+    // 1) Congés à jour (la ligne Congés se reconstruit depuis cette liste)
+    const fresh = await loadVacations()
+    // 2) Exécution sur le planning avec réarrangement des contraintes
+    const { weeks, removed } = await applyApprovedVacation(request, fresh)
+
+    toast.success(
+      `Congé de ${formatPersonLabel(request.doctor_code)} validé et appliqué` +
+        (weeks > 0 ? ` (${weeks} semaine${weeks > 1 ? "s" : ""} mise${weeks > 1 ? "s" : ""} à jour)` : ""),
+    )
+    if (removed.length > 0) {
+      const lines = removed.slice(0, 5).map((r) => {
+        const iso = dateStrForWeekDay(r.weekKey, r.day)
+        const date = iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : r.day.toLowerCase()
+        return `${r.row} (${date})`
+      })
+      toast.warning(
+        `${removed.length} affectation${removed.length > 1 ? "s" : ""} de ${formatPersonLabel(request.doctor_code)} retirée${removed.length > 1 ? "s" : ""} du planning`,
+        {
+          description: `${lines.join(", ")}${removed.length > lines.length ? "…" : ""}. Relancez « Générer » ou saisissez un remplaçant.`,
+          duration: 20000,
+        },
+      )
     }
   }
 
@@ -2447,9 +2571,9 @@ export function ScheduleApp({
                         title={toolbarExpanded ? "Réduire la barre d’outils" : "Afficher tous les outils"}
                       >
                         {toolbarExpanded ? "Réduire" : "Outils"}
-                        {pendingRequests.length > 0 && !toolbarExpanded && (
+                        {Math.max(inboxTotal, pendingRequests.length) > 0 && !toolbarExpanded && (
                           <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
-                            {pendingRequests.length}
+                            {Math.max(inboxTotal, pendingRequests.length)}
                           </span>
                         )}
                       </Button>
@@ -2636,10 +2760,18 @@ export function ScheduleApp({
                       <span className="text-xs font-bold text-slate-800">
                         {formatPersonLabel(doctorCode || currentUser)}
                       </span>
-                      <div className="relative">
+                      <div className="relative" title={isAdmin ? inboxTitle || undefined : undefined}>
                         <User className="size-3.5 text-slate-400" />
-                        {(isAdmin ? relevantPendingCount > 0 : (myPrivateNote || relevantPendingCount > 0)) && (
-                          <span className="absolute -top-1 -right-1 flex h-2 w-2 rounded-full bg-red-500 ring-1 ring-white animate-pulse" />
+                        {isAdmin ? (
+                          (inboxTotal > 0 || relevantPendingCount > 0) && (
+                            <span className="absolute -top-2 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-1 ring-white">
+                              {Math.max(inboxTotal, relevantPendingCount) > 99 ? "99+" : Math.max(inboxTotal, relevantPendingCount)}
+                            </span>
+                          )
+                        ) : (
+                          (myPrivateNote || relevantPendingCount > 0) && (
+                            <span className="absolute -top-1 -right-1 flex h-2 w-2 rounded-full bg-red-500 ring-1 ring-white animate-pulse" />
+                          )
                         )}
                       </div>
                     </Button>
@@ -2664,9 +2796,14 @@ export function ScheduleApp({
                           <Mail className={cn("size-4", (isAdmin ? relevantPendingCount > 0 : (myPrivateNote || relevantPendingCount > 0)) ? "text-red-500 animate-pulse" : "text-slate-400")} />
                           <span>Messages & Demandes</span>
                         </div>
-                        {(isAdmin ? relevantPendingCount > 0 : (myPrivateNote || relevantPendingCount > 0)) && (
-                          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shadow-sm animate-pulse">
-                            {isAdmin ? relevantPendingCount : (myPrivateNote ? 1 : 0) + relevantPendingCount}
+                        {(isAdmin ? Math.max(inboxTotal, relevantPendingCount) > 0 : (myPrivateNote || relevantPendingCount > 0)) && (
+                          <span
+                            className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shadow-sm"
+                            title={isAdmin ? inboxTitle || undefined : undefined}
+                          >
+                            {isAdmin
+                              ? Math.max(inboxTotal, relevantPendingCount)
+                              : (myPrivateNote ? 1 : 0) + relevantPendingCount}
                           </span>
                         )}
                       </button>
@@ -3714,9 +3851,12 @@ export function ScheduleApp({
                 )}
               >
                 Messages{" "}
-                {((!isAdmin && myPrivateNote) || (isAdmin && allDoctorMessages.some((m) => !m.read_at))) && (
-                  <span className="ml-1 inline-block h-2 w-2 rounded-full bg-red-500" />
+                {isAdmin && (inboxCounts?.messagesUnread ?? 0) > 0 && (
+                  <span className="ml-1 inline-block rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                    {inboxCounts?.messagesUnread}
+                  </span>
                 )}
+                {!isAdmin && myPrivateNote && <span className="ml-1 inline-block h-2 w-2 rounded-full bg-red-500" />}
               </button>
               <button
                 type="button"
@@ -3745,11 +3885,17 @@ export function ScheduleApp({
                 )}
               >
                 Congés{" "}
-                {isAdmin && allVacationRequests.some((r) => r.status === "pending") && (
-                  <span className="ml-1 inline-block rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                    {allVacationRequests.filter((r) => r.status === "pending").length}
-                  </span>
-                )}
+                {isAdmin &&
+                  (() => {
+                    const pendingVacations = allVacationRequests.length
+                      ? allVacationRequests.filter((r) => r.status === "pending").length
+                      : inboxCounts?.vacationPending ?? 0
+                    return pendingVacations > 0 ? (
+                      <span className="ml-1 inline-block rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                        {pendingVacations}
+                      </span>
+                    ) : null
+                  })()}
               </button>
             </div>
 
