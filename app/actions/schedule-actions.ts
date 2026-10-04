@@ -18,6 +18,21 @@ export async function saveScheduleToDb(
   updatedBy: string,
   options?: SaveScheduleOptions,
 ) {
+  try {
+    return await saveScheduleToDbUnsafe(weekKey, scheduleData, updatedBy, options)
+  } catch (err) {
+    // Ne jamais laisser l'action lever : Next masque le message en production.
+    console.error("[app] saveScheduleToDb threw:", err)
+    return { data: null, error: err instanceof Error ? err.message : "Erreur serveur inattendue" }
+  }
+}
+
+async function saveScheduleToDbUnsafe(
+  weekKey: string,
+  scheduleData: ScheduleData,
+  updatedBy: string,
+  options?: SaveScheduleOptions,
+) {
   const supabase = await createClient()
   const {
     data: { user },
