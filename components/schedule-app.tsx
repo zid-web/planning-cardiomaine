@@ -1290,26 +1290,43 @@ export function ScheduleApp({
   }
 
   /**
-   * Bouton « Effacer propositions » — affiché dès qu'il y a au moins une case
-   * violette, y compris quand la barre d'outils est repliée (vue Globale sur
-   * téléphone) et avec un libellé court sous la largeur `md` (sinon il n'y a
-   * qu'une icône, peu lisible sur Android / iOS).
+   * Bouton « Effacer propositions » — **toujours présent** dans « Outils » pour
+   * l'admin (grisé, avec explication, quand il n'y a aucune case violette à
+   * effacer : un bouton qui apparaît et disparaît donne l'impression qu'il a été
+   * retiré). En vue Globale barre repliée (téléphone), il est aussi rendu à côté
+   * d'« Outils » dès qu'il y a au moins une proposition. Libellé court sous `md`.
    */
-  const clearProposalsButton =
-    isAdmin && solverProposalCount > 0 ? (
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 shrink-0 border-violet-300 bg-violet-50 px-2 text-[11px] font-semibold !text-violet-900 hover:bg-violet-100 hover:!text-violet-900"
-        onClick={() => void handleClearProposals()}
-        title="Effacer toutes les propositions du solveur (cases violettes) de la semaine, sans toucher aux saisies manuelles ni aux contraintes habituelles, puis relancer Générer"
-        aria-label={`Effacer les ${solverProposalCount} propositions du solveur`}
-      >
-        <Eraser className="mr-1 h-3.5 w-3.5 shrink-0 !text-violet-900" strokeWidth={2.25} />
-        <span className="md:hidden">Effacer ({solverProposalCount})</span>
-        <span className="hidden md:inline">Effacer propositions ({solverProposalCount})</span>
-      </Button>
-    ) : null
+  const hasSolverProposals = solverProposalCount > 0
+  const clearProposalsButton = isAdmin ? (
+    <Button
+      variant="outline"
+      size="sm"
+      className={cn(
+        "h-7 shrink-0 border-violet-300 bg-violet-50 px-2 text-[11px] font-semibold !text-violet-900 hover:bg-violet-100 hover:!text-violet-900",
+        !hasSolverProposals && "opacity-60",
+      )}
+      // `aria-disabled` plutôt que `disabled` : sur tablette un bouton désactivé
+      // ne réagit pas ; le clic affiche « Aucune proposition à effacer ».
+      aria-disabled={!hasSolverProposals}
+      onClick={() => void handleClearProposals()}
+      title={
+        hasSolverProposals
+          ? "Effacer toutes les propositions du solveur (cases violettes) de la semaine, sans toucher aux saisies manuelles ni aux contraintes habituelles, puis relancer Générer"
+          : "Aucune proposition du solveur à effacer sur cette semaine (cases violettes « Prop. »)"
+      }
+      aria-label={
+        hasSolverProposals
+          ? `Effacer les ${solverProposalCount} propositions du solveur`
+          : "Effacer les propositions du solveur (aucune sur cette semaine)"
+      }
+    >
+      <Eraser className="mr-1 h-3.5 w-3.5 shrink-0 !text-violet-900" strokeWidth={2.25} />
+      <span className="md:hidden">Effacer{hasSolverProposals ? ` (${solverProposalCount})` : ""}</span>
+      <span className="hidden md:inline">
+        Effacer propositions{hasSolverProposals ? ` (${solverProposalCount})` : ""}
+      </span>
+    </Button>
+  ) : null
 
   const getUserTasks = (day: string) => {
     if (!doctorCode) return []
@@ -2438,7 +2455,7 @@ export function ScheduleApp({
                       </Button>
                     )}
                     {/* Barre repliée : le bouton reste accessible sans ouvrir « Outils » */}
-                    {isGlobalView && !toolbarExpanded && clearProposalsButton}
+                    {isGlobalView && !toolbarExpanded && hasSolverProposals && clearProposalsButton}
                     {(!isGlobalView || toolbarExpanded) && (
                       <div className="flex max-w-full flex-wrap items-center gap-1">
                         <span
