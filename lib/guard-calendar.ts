@@ -1,5 +1,5 @@
 /**
- * Calendrier « Choix de Gardes » : les samedis, dimanches et jours fériés se
+ * Calendrier « Gardes WE » : les samedis, dimanches et jours fériés se
  * remplissent directement avec des initiales de médecins (lignes `Garde Matin`
  * et `Garde Nuit` du planning), comme le calendrier NCT. Aucune demande ni
  * validation : fonctions pures, testées dans guard-calendar.test.ts.

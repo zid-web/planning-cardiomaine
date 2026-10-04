@@ -950,7 +950,7 @@ export function ScheduleApp({
   }
 
   /**
-   * « Choix de Gardes » : pose les initiales d'une garde (Matin / Nuit) sur une
+   * « Gardes WE » : pose les initiales d'une garde (Matin / Nuit) sur une
    * date quelconque (samedi, dimanche, férié), dans la bonne semaine — sans
    * demande ni validation intermédiaire. Mêmes effets que l'édition d'une case :
    * saisie admin protégée des remplissages automatiques (`manualAssignment`),
@@ -2552,10 +2552,10 @@ export function ScheduleApp({
                       size="sm"
                       className="h-7 border-emerald-300 bg-emerald-50 px-2 text-[11px] font-semibold !text-emerald-800 hover:bg-emerald-100 hover:!text-emerald-900"
                       onClick={() => setShowGuardPicks(true)}
-                      title="Choix de gardes week-end et jours fériés"
+                      title="Gardes WE et jours fériés"
                     >
                       <CalendarCheck2 className="mr-1 h-3.5 w-3.5 shrink-0 !text-emerald-700" strokeWidth={2.25} />
-                      <span className="hidden sm:inline">Choix de Gardes</span>
+                      <span className="hidden sm:inline">Gardes WE</span>
                     </Button>
                   </div>
                 )}
@@ -2720,10 +2720,10 @@ export function ScheduleApp({
                           size="sm"
                           className="h-7 border-emerald-300 bg-emerald-50 px-2 text-[11px] font-semibold !text-emerald-800 hover:bg-emerald-100 hover:!text-emerald-900"
                           onClick={() => setShowGuardPicks(true)}
-                          title="Choix de gardes week-end et jours fériés"
+                          title="Gardes WE et jours fériés"
                         >
                           <CalendarCheck2 className="mr-1 h-3.5 w-3.5 shrink-0 !text-emerald-700" strokeWidth={2.25} />
-                          <span className="hidden lg:inline">Choix de Gardes</span>
+                          <span className="hidden lg:inline">Gardes WE</span>
                         </Button>
 
                         <Button
