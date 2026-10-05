@@ -674,16 +674,16 @@ export function ScheduleApp({
 
   // Présence temps réel : liste des utilisateurs actuellement connectés
   // (Supabase Realtime Presence), affichée dans le header - admin uniquement
-  // (confirmé utilisateur 01/08/2026).
+  // (confirmé utilisateur 01/08/2026). Tous les comptes rejoignent le canal et
+  // s'annoncent ; seul l'admin en affiche la liste.
   useEffect(() => {
-    if (!isAdmin) return
-
     const presenceChannel = supabase.channel("planning-presence", {
       config: { presence: { key: currentUser || "unknown" } },
     })
 
     presenceChannel
       .on("presence", { event: "sync" }, () => {
+        if (!isAdmin) return
         const state = presenceChannel.presenceState() as Record<string, Array<{ user?: string }>>
         const users = Object.values(state)
           .flat()
