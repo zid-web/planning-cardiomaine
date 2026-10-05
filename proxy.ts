@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSupabaseConfig } from '@/lib/supabase/config'
 import { createServerClient } from "@supabase/ssr"
-import { isNctOnlyAccount } from "@/lib/nct-only"
 
 /**
  * Proxy (Next.js 16 — remplace middleware.ts).
@@ -73,21 +72,12 @@ export async function proxy(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("must_change_password, role, doctor_code")
+    .select("must_change_password")
     .eq("id", user.id)
     .single()
 
   if (profile?.must_change_password) {
     return NextResponse.redirect(new URL("/auth/setup-account", request.url))
-  }
-
-  // Compte « NCT seul » (ex. Q) : uniquement /protected/nct, /profile et la déconnexion.
-  if (
-    isNctOnlyAccount(profile) &&
-    pathname.startsWith("/protected") &&
-    !pathname.startsWith("/protected/nct")
-  ) {
-    return NextResponse.redirect(new URL("/protected/nct", request.url))
   }
 
   return response
