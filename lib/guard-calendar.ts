@@ -11,6 +11,9 @@ import { publicHolidayName } from "@/lib/french-calendar"
 export const GUARD_ROWS = ["Garde Matin", "Garde Nuit"] as const
 export type GuardRow = (typeof GUARD_ROWS)[number]
 
+/** Médecins concernés par les gardes WE / fériés (+ remplaçants en saisie libre). */
+export const GUARD_WE_DOCTORS = ["A", "M", "S", "Z", "G", "B", "H", "U", "P", "W", "O"] as const
+
 export type GuardDayKind = "samedi" | "dimanche" | "ferie"
 
 /** Type de jour de garde (`YYYY-MM-DD`), ou null pour un jour ordinaire. Le férié prime sur le week-end. */

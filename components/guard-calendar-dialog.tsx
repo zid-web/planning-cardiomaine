@@ -8,6 +8,7 @@ import { DOCTOR_COLORS, DOCTORS, NURSES } from "@/lib/constants"
 import { schoolHolidayZoneB, publicHolidayName } from "@/lib/french-calendar"
 import {
   GUARD_ROWS,
+  GUARD_WE_DOCTORS,
   guardDatesInMonth,
   guardDayKind,
   guardFill,
@@ -17,7 +18,7 @@ import {
 import { buildMonthGrid, shiftMonth } from "@/lib/nct-calendar"
 import { dayNameFromIsoDateLocal, weekKeyFromIsoDate } from "@/lib/nct-command"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
-import { formatPersonLabel } from "@/lib/doctor-code"
+import { formatPersonLabel, isListedDoctor, normalizeRemplacantLabel } from "@/lib/doctor-code"
 import type { DoctorVacation, FullSchedule } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -139,6 +140,9 @@ export function GuardCalendarDialog({ open, onOpenChange, isAdmin, fullSchedule,
       const current = valuesOf(selectedDate, row)
       out[row] = DOCTORS.filter(
         (d) =>
+          (GUARD_WE_DOCTORS as readonly string[]).includes(d) || current.includes(d)
+      ).filter(
+        (d) =>
           !(NURSES as readonly string[]).includes(d) &&
           (current.includes(d) ||
             canAssignDoctor(d, selectedDate, row, vacations, { schedule: week, day }).allowed),
@@ -146,6 +150,24 @@ export function GuardCalendarDialog({ open, onOpenChange, isAdmin, fullSchedule,
     }
     return out
   }, [selectedDate, isAdmin, fullSchedule, vacations, valuesOf])
+
+  const [remplacant, setRemplacant] = useState("")
+
+  const addRemplacant = async (row: GuardRow) => {
+    const label = normalizeRemplacantLabel(remplacant)
+    if (!label || !selectedDate || busy) return
+    const current = valuesOf(selectedDate, row)
+    if (current.includes(label)) {
+      setRemplacant("")
+      return
+    }
+    setBusy(true)
+    try {
+      if (await onSetGuard(selectedDate, row, [...current, label])) setRemplacant("")
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const toggle = async (row: GuardRow, doctor: string) => {
     if (!selectedDate || busy) return
@@ -406,14 +428,44 @@ export function GuardCalendarDialog({ open, onOpenChange, isAdmin, fullSchedule,
                                 </button>
                               )
                             })}
-                            {/* Valeurs non listées (ex. remplaçant en texte libre) : affichées, jamais modifiées ici */}
+                            {/* Remplaçants (texte libre) : toucher pour retirer */}
                             {current
-                              .filter((v) => !choices[row].includes(v))
+                              .filter((v) => !isListedDoctor(v))
                               .map((v) => (
-                                <span key={v} className="rounded-md bg-amber-100 px-2 py-1 text-sm font-bold text-amber-900">
-                                  {v}
-                                </span>
+                                <button
+                                  key={v}
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void toggle(row, v)}
+                                  title={`${v} (remplaçant) — toucher pour retirer`}
+                                  className="rounded-md bg-amber-100 px-2 py-1 text-sm font-bold text-amber-900"
+                                >
+                                  {v} ✕
+                                </button>
                               ))}
+                            <form
+                              className="flex items-center gap-1"
+                              onSubmit={(e) => {
+                                e.preventDefault()
+                                void addRemplacant(row)
+                              }}
+                            >
+                              <input
+                                value={remplacant}
+                                onChange={(e) => setRemplacant(e.target.value)}
+                                placeholder="Remplaçant"
+                                maxLength={40}
+                                aria-label={`Remplaçant ${ROW_LABEL[row]}`}
+                                className="h-8 w-28 rounded-md border border-slate-300 px-2 text-sm"
+                              />
+                              <button
+                                type="submit"
+                                disabled={busy || !normalizeRemplacantLabel(remplacant)}
+                                className="h-8 rounded-md border border-slate-300 px-2 text-sm font-bold disabled:opacity-40"
+                              >
+                                +
+                              </button>
+                            </form>
                           </div>
                         ) : (
                           <div className="flex flex-wrap gap-1.5">
