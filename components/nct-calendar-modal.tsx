@@ -23,6 +23,8 @@ interface NctCalendarModalProps {
   defaultDate?: string
   /** Enregistre le calendrier ; `null` = retour au calendrier par défaut. */
   onSave: (next: NctEntry[] | null) => Promise<{ ok: boolean; error?: string }>
+  /** Consultation seule : aucune modification possible, pas d'enregistrement. */
+  readOnly?: boolean
 }
 
 const MONTHS = [
@@ -57,7 +59,7 @@ function dayLabel(date: string): string {
   return DAY_LABELS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
 }
 
-export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSave }: NctCalendarModalProps) {
+export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSave, readOnly = false }: NctCalendarModalProps) {
   const [draft, setDraft] = useState<NctEntry[]>([])
   const [view, setView] = useState<'month' | 'year'>('month')
   const [cursor, setCursor] = useState<{ year: number; month0: number }>({ year: 2026, month0: 0 })
@@ -97,6 +99,7 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
   const goMonth = useCallback((delta: number) => setCursor((c) => shiftMonth(c.year, c.month0, delta)), [])
 
   const setUser = (date: string, user: string | null) => {
+    if (readOnly) return
     setError(null)
     setDraft((prev) => withNctEntry(prev, date, user))
   }
@@ -117,6 +120,7 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
   }, [isOpen, view, goMonth])
 
   const handleSave = async () => {
+    if (readOnly) return
     setSaving(true)
     setError(null)
     const res = await onSave(draft)
@@ -129,6 +133,7 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
   }
 
   const handleReset = async () => {
+    if (readOnly) return
     if (!confirm('Revenir au calendrier NCT par défaut ? Vos modifications seront perdues.')) return
     setSaving(true)
     setError(null)
@@ -154,7 +159,9 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
             <h2 className="text-lg font-bold text-gray-900">Calendrier NCT</h2>
             <p className="text-xs text-gray-500">
               {view === 'month'
-                ? 'Cliquez un jour : W → M → supprimer'
+                ? readOnly
+                  ? 'Consultation seule'
+                  : 'Cliquez un jour : W → M → supprimer'
                 : 'Choisissez un mois pour le modifier'}
             </p>
           </div>
@@ -267,6 +274,7 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                       key={cell.date}
                       type="button"
                       onClick={() => setUser(cell.date, cycleNctUser(user))}
+                      disabled={readOnly}
                       title={
                         (user
                           ? `NCT ${user} — cliquer pour changer / supprimer`
@@ -326,6 +334,11 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                       <span className="w-24 text-sm text-slate-800">
                         <span className="text-xs text-slate-500">{dayLabel(e.date)}</span> {formatFr(e.date).slice(0, 5)}
                       </span>
+                      {readOnly ? (
+                        <span className={cn('rounded-md px-3 py-0.5 text-sm font-semibold', USER_STYLE[e.user] ?? 'bg-slate-700 text-white')}>
+                          {e.user}
+                        </span>
+                      ) : (
                       <div className="flex overflow-hidden rounded-md border border-slate-300">
                         {NCT_DOCTORS.map((d) => (
                           <button
@@ -341,6 +354,7 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                           </button>
                         ))}
                       </div>
+                      )}
                       {publicHolidayName(e.date) && (
                         <span className="rounded bg-rose-100 px-1.5 text-[10px] font-semibold text-rose-800" title={publicHolidayName(e.date) ?? ''}>
                           férié
@@ -351,9 +365,10 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                           vacances
                         </span>
                       )}
-                      {!(NCT_DOCTORS as readonly string[]).includes(e.user) && (
+                      {!readOnly && !(NCT_DOCTORS as readonly string[]).includes(e.user) && (
                         <span className="rounded bg-slate-200 px-1.5 text-xs font-semibold text-slate-800">{e.user}</span>
                       )}
+                      {!readOnly && (
                       <button
                         type="button"
                         onClick={() => setUser(e.date, null)}
@@ -363,6 +378,7 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -377,6 +393,17 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
 
         {error && <p className="px-4 pb-2 text-sm text-red-600">{error}</p>}
 
+        {readOnly ? (
+          <div className="flex justify-end border-t border-slate-200 px-4 py-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+            >
+              Fermer
+            </button>
+          </div>
+        ) : (
         <div className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-3">
           <button
             type="button"
@@ -406,6 +433,7 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
             </button>
           </div>
         </div>
+        )}
       </div>
     </div>
   )

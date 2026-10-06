@@ -282,6 +282,8 @@ export function ScheduleApp({
   /** false tant que le calendrier n'est pas chargé — évite de réinjecter une date supprimée. */
   const [nctReady, setNctReady] = useState(false)
   const [nctModalOpen, setNctModalOpen] = useState(false)
+  // Calendrier NCT : édition réservée à l'admin ; consultation seule pour W.
+  const canViewNct = !isAdmin && doctorCode.trim().toUpperCase() === "W"
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
@@ -2547,6 +2549,19 @@ export function ScheduleApp({
                       </Button>
                     )}
 
+                    {canViewNct && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
+                        onClick={() => setNctModalOpen(true)}
+                        title="Consulter le calendrier NCT"
+                      >
+                        <CalendarDays className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
+                        <span className="hidden sm:inline">NCT</span>
+                      </Button>
+                    )}
+
                     <Button
                       variant="outline"
                       size="sm"
@@ -4388,9 +4403,10 @@ export function ScheduleApp({
       )}
 
       {/* Calendrier NCT */}
-      {isAdmin && (
+      {(isAdmin || canViewNct) && (
         <Suspense fallback={null}>
           <NctCalendarModal
+            readOnly={!isAdmin}
             isOpen={nctModalOpen}
             onClose={() => setNctModalOpen(false)}
             calendar={nctCalendar}
