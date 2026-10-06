@@ -1,3 +1,4 @@
+import { applyHolidayClosedClear } from "@/lib/holiday-closed"
 import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
 import {
@@ -803,7 +804,11 @@ export function applyStructuralConstraints(
   const vacationsReady = opts.vacationsReady !== false
   const isFreshWeek = opts.isFreshWeek !== false
 
-  // 0) Congés d’abord — les règles fixes (Rythmo P/U/A, IRM, …) sautent si absent
+  // 0) Jour férié : activités fermées (sauf ATL / Gardes) — règle absolue,
+  // appliquée ici pour ne rien propager, puis une dernière fois en fin de chaîne.
+  next = applyHolidayClosedClear(next, weekKey)
+
+  // 0bis) Congés d’abord — les règles fixes (Rythmo P/U/A, IRM, …) sautent si absent
   next = mergeVacancesIntoConges(next)
   if (vacationsReady) {
     next = populateCongesRowFromVacations(next, vacations, weekKey)
@@ -920,7 +925,8 @@ export function applyStructuralConstraints(
     next = ensureValOnBothEeRooms(next)
   }
 
-  return next
+  // 13) Jour férié : plus rien hors ATL / Gardes, quoi qu'ait (re)posé la chaîne.
+  return applyHolidayClosedClear(next, weekKey)
 }
 
 /**
