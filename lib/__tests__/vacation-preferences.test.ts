@@ -43,7 +43,7 @@ import {
   preferredPartnerForNurseSlot,
   PREFERENCE_BONUS,
 } from "@/lib/vacation-preferences"
-import { STRESS_PARTNER_POOL } from "@/lib/nurse-rules"
+import { isValidNursePartner, STRESS_PARTNER_POOL } from "@/lib/nurse-rules"
 import { formatPersonLabel } from "@/lib/doctor-code"
 import { isOffSiteRow, offSiteSlotOf, setOffSiteSlot } from "@/lib/off-site-slots"
 import { spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
@@ -174,6 +174,20 @@ function main() {
     pairedFri["Matin - Stress"].VENDREDI.value.includes("S"),
     "S est le partenaire proposé le vendredi matin",
   )
+
+  // Aucun médecin « par défaut » : sans préférence déclarée, Val reste sans binôme imposé
+  sched = generateWeekSchedule(weekKey, [])
+  sched["Matin - EE1"].LUNDI = { value: ["Val"], type: "doctor", status: "validated" }
+  assert.deepEqual(
+    ensureNurseDoctorBinomeProposals(sched, weekKey, [])["Matin - EE1"].LUNDI.value,
+    ["Val"],
+    "pas de médecin (ni Z) ajouté d'office à Val",
+  )
+  // Val peut être en binôme avec n'importe quel médecin ; les pools restent pour Véro/Laura
+  assert.equal(isValidNursePartner("P", "Matin - Stress", "Val"), true)
+  assert.equal(isValidNursePartner("A", "Matin - Stress", "Val"), true)
+  assert.equal(isValidNursePartner("P", "Matin - Stress", "Véro"), false)
+  assert.equal(isValidNursePartner("CH", "Matin - EE1", "Val"), false)
 
   // --- Val en ETT : toujours salle 2 ---
   assert.equal(canNurseTakeRow("Val", "Matin - ETT salle 2"), true)
@@ -797,7 +811,9 @@ function main() {
     assert.ok(ee2.includes("Val"), `Val aussi sur EE2 ${day}`)
     const doc1 = ee1.find((d) => d !== "Val")
     const doc2 = ee2.find((d) => d !== "Val")
-    assert.ok(doc1, `un médecin sur EE1 ${day}`)
+    // Aucun partenaire imposé par défaut (plus de « Z d'office » avec Val) :
+    // le médecin est laissé à l'admin / au solveur, mais reste commun aux deux salles.
+    assert.equal(doc1, undefined, `pas de partenaire automatique sur EE1 ${day}`)
     assert.equal(doc2, doc1, `même médecin sur les deux salles ${day}`)
   }
 
