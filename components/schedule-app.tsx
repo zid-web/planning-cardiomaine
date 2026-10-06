@@ -1087,7 +1087,7 @@ export function ScheduleApp({
     setIsExportingPdf(true)
     try {
       // Génération navigateur : évite le 413 Vercel (cookies auth trop volumineux sur GET API).
-      await downloadPlanningPdf(weekKey, schedule)
+      await downloadPlanningPdf(weekKey, schedule, { isBlocked: isCellBlocked })
       toast.success("PDF exporté")
     } catch (err) {
       console.error("[exportWeekPdf]", err)
