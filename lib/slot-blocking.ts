@@ -26,6 +26,7 @@ import {
   isEttPedWithGardeOrAtlMidi,
 } from "@/lib/special-activity-labels"
 import { closedSlotReason, isSlotClosed } from "@/lib/closed-slots"
+import { holidayClosedReason, holidayNameForIsoDate, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
 import { isRoomUnderMaintenanceOnDate } from "@/lib/room-maintenance"
@@ -562,6 +563,13 @@ export function canAssignDoctorToSlot(
   schedule: ScheduleData,
   vacations: DoctorVacation[],
 ): { allowed: boolean; reason?: string } {
+  // Jour férié : toutes les activités fermées sauf Astreintes ATL / Gardes
+  // (règle absolue, y compris pour un remplaçant en texte libre).
+  const holiday = holidayNameForIsoDate(dateStr)
+  if (isHolidayClosedSlot(rowKey, holiday)) {
+    return { allowed: false, reason: holidayClosedReason(holiday as string) }
+  }
+
   // Remplaçant texte libre : pas de règles listées
   if (!isListedDoctor(doctorId)) {
     return { allowed: true }

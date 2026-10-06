@@ -85,6 +85,7 @@ import {
 } from "@/lib/slot-blocking"
 import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
 import { isSlotClosed } from "@/lib/closed-slots"
+import { holidayNameForWeekDay, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import { isVisiteRow, spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
 import { Switch } from "@/components/ui/switch"
 import { applyOffSiteSlotRestriction, isWeekendDay } from "@/lib/slot-blocking"
@@ -2343,6 +2344,9 @@ export function ScheduleApp({
     if ((day === "SAMEDI" || day === "DIMANCHE") && !isAllowedOnHoliday(row)) {
       return true
     }
+
+    // Jour férié : tout fermé sauf Astreintes ATL et Gardes (règle absolue)
+    if (isHolidayClosedSlot(row, holidayNameForWeekDay(weekKey, day))) return true
 
     // Cases fermées : Stress mercredi/vendredi apm, EE1 matin sauf jeudi
     if (isSlotClosed(row, day)) return true
