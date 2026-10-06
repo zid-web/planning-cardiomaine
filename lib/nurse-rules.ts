@@ -91,8 +91,15 @@ function isEeRow(rowKey: string): boolean {
 
 /**
  * Un médecin donné peut-il être le partenaire d'une infirmière sur cette ligne ?
+ * `nurseId` : l'infirmière concernée — Val n'est soumise à aucun pool.
  */
-export function isValidNursePartner(doctorId: string, rowKey: string): boolean {
+export function isValidNursePartner(
+  doctorId: string,
+  rowKey: string,
+  nurseId?: string,
+): boolean {
+  // Val peut être en binôme avec n'importe quel médecin (consigne 05/10/2026).
+  if (nurseId === "Val") return !isNurse(doctorId) && doctorId !== "CH"
   if (isStressRow(rowKey)) return STRESS_PARTNER_POOL.includes(doctorId)
   if (isEeRow(rowKey)) return EE_PARTNER_POOL.includes(doctorId)
   return false
@@ -397,8 +404,7 @@ export function ensureNurseDoctorBinomeProposals(
           vacations,
           dateStrForDay: dateStrFn,
         })
-        const candidate =
-          preferred && isAvailable(preferred) ? preferred : pool.find(isAvailable)
+        const candidate = preferred && isAvailable(preferred) ? preferred : null
         if (candidate) {
           next = {
             ...next,

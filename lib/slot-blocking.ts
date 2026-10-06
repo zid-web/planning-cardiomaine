@@ -724,7 +724,7 @@ export function canAssignDoctorToSlot(
     const currentListed = schedule[rowKey]?.[day]?.value || []
     if (isNurse(doctorId)) {
       const otherDoctor = currentListed.find((d) => !isNurse(d))
-      if (otherDoctor && !isValidNursePartner(otherDoctor, rowKey)) {
+      if (otherDoctor && !isValidNursePartner(otherDoctor, rowKey, doctorId)) {
         return {
           allowed: false,
           reason: `${otherDoctor} n'est pas un partenaire valide pour ${doctorId} sur cette vacation.`,
@@ -732,7 +732,7 @@ export function canAssignDoctorToSlot(
       }
     } else {
       const otherNurse = currentListed.find((d) => isNurse(d))
-      if (otherNurse && !isValidNursePartner(doctorId, rowKey)) {
+      if (otherNurse && !isValidNursePartner(doctorId, rowKey, otherNurse)) {
         return {
           allowed: false,
           reason: `${doctorId} n'est pas un partenaire valide pour ${otherNurse} sur cette vacation.`,
