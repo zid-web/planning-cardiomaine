@@ -10,6 +10,7 @@ import {
 import {
   applyFixedClinicalAssignments,
   applyNurseFixedAssignments,
+  restoreValFixedAssignments,
   clearFixedAssigneesOnVacation,
   dateStrForWeekDay,
   isDoctorOnVacationForFixed,
@@ -747,7 +748,18 @@ export function applyActivityMaintenanceClear(
   return next
 }
 
+/** Semaine ISO en cours ou à venir (jamais l'historique). */
+function isCurrentOrFutureWeek(weekKey: string, now: Date = new Date()): boolean {
+  const monday = mondayOfIsoWeekKey(weekKey)
+  if (!monday) return false
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  const currentMonday = today - ((new Date(today).getUTCDay() + 6) % 7) * 86400000
+  return monday.getTime() >= currentMonday
+}
+
 export type ApplyStructuralConstraintsOptions = {
+  /** Si false, ne restaure pas le planning fixe de Val sur une semaine déjà chargée (défaut true). */
+  restoreValFixed?: boolean
   previousSundayGuardDoctor?: string | null
   /** Si false, ne touche pas aux ½-off habituelles (défaut true). */
   applyHabitualHalfDays?: boolean
@@ -823,6 +835,13 @@ export function applyStructuralConstraints(
       vacationsReady,
       visiteDoctor: opts.visiteDoctor,
     })
+  }
+
+  // 1ter-bis) Semaine déjà chargée (semaines enregistrées avant, ou dont Val a
+  // été perdue) : Val retrouve son planning fixe dans les cases vides, pour la
+  // semaine en cours et les suivantes (l'historique n'est jamais retouché).
+  if (!isFreshWeek && opts.restoreValFixed !== false && isCurrentOrFutureWeek(weekKey)) {
+    next = restoreValFixedAssignments(next, weekKey, vacations)
   }
 
   // 1bis) Stress fermé Mer/Ven Apm + D jeudi (1er = Stress apm ; sinon EE1+EE2)
