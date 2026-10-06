@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client"
 import { ScheduleApp } from "@/components/schedule-app"
 import { loadFullScheduleFromDb } from "@/app/actions/schedule-actions"
 import { signOut } from "@/app/actions/auth-actions"
+import { isNctOnlyAccount } from "@/lib/nct-only"
 import type { FullSchedule } from "@/lib/types"
 
 async function fetchFullSchedule(): Promise<FullSchedule> {
@@ -73,6 +74,11 @@ export default function PlanningPage() {
           .select("role, doctor_code")
           .eq("id", userData.user.id)
           .single()
+
+        if (isNctOnlyAccount(profile)) {
+          router.replace("/protected/nct")
+          return
+        }
 
         if (profile) {
           setIsAdmin(profile.role === "admin")
