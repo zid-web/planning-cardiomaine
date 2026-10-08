@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Espace réservé aux comptes « NCT seul » (ex. C) : consultation du calendrier
+ * Espace réservé aux comptes « NCT seul » (médecins extérieurs C, E) : consultation du calendrier
  * NCT, sans accès au planning. Les admins peuvent aussi l'ouvrir.
  */
 

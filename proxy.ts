@@ -81,7 +81,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/auth/setup-account", request.url))
   }
 
-  // Compte « NCT seul » (ex. C) : uniquement /protected/nct, /profile et la déconnexion.
+  // Compte « NCT seul » (médecins extérieurs C, E) : uniquement /protected/nct, /profile et la déconnexion.
   if (
     isNctOnlyAccount(profile) &&
     pathname.startsWith("/protected") &&
