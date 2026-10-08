@@ -214,6 +214,31 @@ function appendFixedOccupant(
 }
 
 /**
+ * Restaure le planning fixe de **Val** sur une semaine déjà chargée (non
+ * « fraîche ») : elle est reposée uniquement dans les cases **vides** (ou
+ * tenues par D le jeudi), jamais dans une case vidée à la main
+ * (`manuallyCleared`), jamais si elle est en congés, et jamais par-dessus une
+ * saisie différente. Un binôme médecin déjà posé est conservé.
+ */
+export function restoreValFixedAssignments(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[] = [],
+): ScheduleData {
+  const jeudiDateStr = dateStrForWeekDay(weekKey, "JEUDI")
+  const firstThursday = jeudiDateStr ? isFirstThursdayOfMonth(jeudiDateStr) : false
+  const dAvailableThursday = jeudiDateStr
+    ? !isDoctorAbsentForFixed(schedule, "D", "JEUDI", jeudiDateStr, vacations)
+    : true
+  for (const slot of valFixedSlotsForWeek(weekKey, firstThursday)) {
+    if (!schedule[slot.row]) continue
+    if (slot.day === "JEUDI" && !dAvailableThursday) continue
+    appendFixedOccupant(schedule, slot.row, slot.day, "Val", weekKey, vacations, ["D"])
+  }
+  return schedule
+}
+
+/**
  * Applique le planning fixe de Val et Véro (infirmières) - confirmé
  * utilisateur 31/07/2026. À appliquer APRÈS `applyStressAndDRules` (D) dans
  * le pipeline (voir apply-structural-constraints.ts) : le jeudi, Véro suit
