@@ -154,6 +154,9 @@ import { DoctorVacation } from "@/lib/types"
 const VoiceAndUploadPanel = lazy(() =>
   import("@/components/VoiceAndUploadPanel").then((m) => ({ default: m.VoiceAndUploadPanel })),
 )
+/** Comptes non-admin qui consultent le calendrier NCT (lecture seule). */
+const NCT_VIEWER_CODES: readonly string[] = ["W", "Q"]
+
 const NctCalendarModal = lazy(() =>
   import("@/components/nct-calendar-modal").then((m) => ({ default: m.NctCalendarModal })),
 )
@@ -283,8 +286,8 @@ export function ScheduleApp({
   /** false tant que le calendrier n'est pas chargé — évite de réinjecter une date supprimée. */
   const [nctReady, setNctReady] = useState(false)
   const [nctModalOpen, setNctModalOpen] = useState(false)
-  // Calendrier NCT : édition réservée à l'admin ; consultation seule pour W.
-  const canViewNct = !isAdmin && doctorCode.trim().toUpperCase() === "W"
+  // Calendrier NCT : édition réservée à l'admin ; consultation seule pour W et Q.
+  const canViewNct = !isAdmin && NCT_VIEWER_CODES.includes(doctorCode.trim().toUpperCase())
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
