@@ -149,6 +149,23 @@ function setCellDoctors(
   }
 }
 
+/**
+ * Garde de week-end tenue **par un remplaçant seul** : le remplaçant fait la garde
+ * sans être associé à un médecin listé. Aucun remplissage automatique (préset WOM,
+ * couplages Sam/Dim, miroir ATL…) ne doit donc y ajouter de médecin — seule une
+ * saisie manuelle de l'admin peut l'associer.
+ */
+export function isRemplacantOnlyWeekendGarde(
+  schedule: ScheduleData,
+  row: string,
+  day: string,
+): boolean {
+  if (!row.startsWith("Garde") || (day !== "SAMEDI" && day !== "DIMANCHE")) return false
+  return (
+    remplacantsInCell(schedule, row, day).length > 0 && listedInCell(schedule, row, day).length === 0
+  )
+}
+
 function fillEmptyCell(
   schedule: ScheduleData,
   row: string,
@@ -160,6 +177,7 @@ function fillEmptyCell(
 ): ScheduleData {
   if (!schedule[row]?.[day]) return schedule
   if (hasListedDoctor(schedule, row, day)) return schedule
+  if (isRemplacantOnlyWeekendGarde(schedule, row, day)) return schedule
   const available = doctors.filter(
     (d) => d && (!weekKey || doctorAvailable(d, day, weekKey, vacations)),
   )
@@ -563,6 +581,8 @@ function applyPresetCell(
   // Case explicitement vidée par l'admin : ne jamais la re-remplir avec le
   // préféré du preset (confirmé utilisateur 31/07/2026).
   if (schedule[row]![day]!.manuallyCleared) return schedule
+  // Garde de week-end tenue par un remplaçant seul : jamais d'associé automatique
+  if (isRemplacantOnlyWeekendGarde(schedule, row, day)) return schedule
   const listed = listedInCell(schedule, row, day)
   const remplacants = remplacantsInCell(schedule, row, day)
   const availableListed = listed.filter((d) => doctorAvailable(d, day, weekKey, vacations))

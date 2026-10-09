@@ -49,24 +49,33 @@ export const CLOSED_SLOTS: Record<string, readonly string[]> = {
 export const STRUCTURAL_CLOSED_SLOTS: Record<string, readonly string[]> = {
   "Apm - RÉEDUCATION": ["MARDI", "JEUDI"],
   "Matin - Rythmo": ["LUNDI", "JEUDI"],
-  "Hors site - LFB": ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"],
-  "Hors site - PSSL": ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"],
-  "Hors site - NCT": ["LUNDI", "MARDI", "MERCREDI", "VENDREDI"],
-  "Hors site - CDL": ["LUNDI", "MERCREDI", "JEUDI", "VENDREDI"],
-  "Hors site - Scinti": ["JEUDI", "VENDREDI"],
-  "Hors site - IRM": ["MARDI", "MERCREDI", "JEUDI"],
+  // « Hors site » : plus aucune fermeture structurelle (consigne utilisateur) — toutes ces
+  // cases sont librement modifiables ou vides. Seule exception : « Hors site - NCT »,
+  // ouverte uniquement les dates présentes dans le calendrier NCT (voir lib/nct-calendar.ts).
+}
+
+/**
+ * Jours habituels des vacations hors site. Ne ferme **aucune** case (l'admin peut y
+ * saisir ou vider librement) : sert uniquement à écarter les *propositions du solveur*
+ * posées un jour où la vacation n'a pas lieu d'habitude.
+ */
+export const HORS_SITE_USUAL_DAYS: Record<string, readonly string[]> = {
+  "Hors site - LFB": ["JEUDI"],
+  "Hors site - PSSL": ["JEUDI"],
+  "Hors site - CDL": ["MARDI"],
+  "Hors site - Scinti": ["LUNDI", "MARDI", "MERCREDI"],
+  "Hors site - IRM": ["LUNDI", "VENDREDI"],
+}
+
+export function isOutsideUsualHorsSiteDay(rowKey: string, day: string): boolean {
+  const usual = HORS_SITE_USUAL_DAYS[rowKey]
+  return Boolean(usual) && !usual.includes(day)
 }
 
 /** Motif affiché pour une fermeture structurelle. */
 const STRUCTURAL_CLOSED_REASONS: Record<string, string> = {
   "Apm - RÉEDUCATION": "Pas de rééducation le mardi ni le jeudi.",
   "Matin - Rythmo": "Rythmo non disponible le lundi matin et le jeudi matin.",
-  "Hors site - LFB": "LFB n’a lieu que le jeudi.",
-  "Hors site - PSSL": "PSSL n’a lieu que le jeudi.",
-  "Hors site - NCT": "NCT n’a lieu que le jeudi.",
-  "Hors site - CDL": "CDL n’a lieu que le mardi.",
-  "Hors site - Scinti": "Scintigraphie du lundi au mercredi uniquement.",
-  "Hors site - IRM": "IRM le lundi et le vendredi uniquement.",
 }
 
 /** La vacation est-elle structurellement absente ce jour-là ? */

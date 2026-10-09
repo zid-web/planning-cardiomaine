@@ -116,6 +116,15 @@ export function nctDoctorForDate(date: string): string | null {
   return current.find((e) => e.date === date)?.user ?? null
 }
 
+/**
+ * La case « Hors site - NCT » n'existe qu'aux dates ouvertes dans le calendrier NCT :
+ * sans vacation ce jour-là, elle est grisée (fermée) sur le planning global.
+ */
+export function isNctClosedOnDate(date: string | null | undefined): boolean {
+  if (!date) return false
+  return nctDoctorForDate(date) === null
+}
+
 export type NctCalendarDiff = {
   added: NctEntry[]
   removed: NctEntry[]

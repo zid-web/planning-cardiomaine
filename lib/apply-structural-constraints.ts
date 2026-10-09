@@ -36,7 +36,7 @@ import type { EquityCounts } from "@/lib/equity-tracking"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { applyStressAndDRules } from "@/lib/stress-rules"
 import { ensureNurseDoctorBinomeProposals, ensureValOnBothEeRooms } from "@/lib/nurse-rules"
-import { applyWeekendWomRules } from "@/lib/weekend-wom-rules"
+import { applyWeekendWomRules, isRemplacantOnlyWeekendGarde } from "@/lib/weekend-wom-rules"
 import { chNightWeekdaysForWeek, isChAstreinteWeek } from "@/lib/astreinte-cycle"
 import {
   mergeVacancesIntoConges,
@@ -548,6 +548,8 @@ function fillEmptyFromPriorityListedDoctors(
     // Case explicitement vidée par l'admin : ne jamais la re-remplir
     // (confirmé utilisateur 31/07/2026).
     if (next[row]![day]!.manuallyCleared) continue
+    // Garde de week-end tenue par un remplaçant seul : pas d'associé automatique
+    if (isRemplacantOnlyWeekendGarde(next, row, day)) continue
     const remplacants = remplacantsInCell(next, row, day)
     next = setCellDoctors(next, row, day, [...chosen, ...remplacants], status)
   }
@@ -690,6 +692,17 @@ export function applyNctCalendarConstraints(
     return next
   }
 
+  // Calendrier = seule source de la ligne NCT : une date sans vacation ouverte
+  // (ou suspendue) n'a pas de NCT — la case est vidée (et grisée à l'affichage).
+  for (const day of DAYS) {
+    const iso = dayToDate[day]
+    if (!iso || !next["Hors site - NCT"]?.[day]) continue
+    const open = nctList.some((e) => e.date === iso) && !isActivitySuspendedOnDate(iso, "NCT")
+    if (!open && (next["Hors site - NCT"][day].value || []).length > 0) {
+      next = setValidatedDoctors(next, "Hors site - NCT", day, [])
+    }
+  }
+
   for (const nct of nctList) {
     if (isActivitySuspendedOnDate(nct.date, "NCT")) continue
     const dayName = Object.keys(dayToDate).find((d) => dayToDate[d] === nct.date)
@@ -723,6 +736,8 @@ export function applyLfbThursdayRotation(
     fromOverride || lfbDoctorForWeekNum(weekNum)
   const cell = schedule["Hors site - LFB"].JEUDI
   if ((cell?.value || []).length > 0) return schedule
+  // Case vidée par l'admin : jamais re-remplie (toutes les cases hors site restent libres)
+  if (cell?.manuallyCleared) return schedule
   return setValidatedDoctors(schedule, "Hors site - LFB", "JEUDI", [lfbUser])
 }
 

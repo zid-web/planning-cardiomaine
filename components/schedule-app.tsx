@@ -2465,6 +2465,12 @@ export function ScheduleApp({
     // Jour férié : tout fermé sauf Astreintes ATL et Gardes (règle absolue)
     if (isHolidayClosedSlot(row, holidayNameForWeekDay(weekKey, day))) return true
 
+    // NCT : ouverte uniquement aux dates du calendrier NCT, sinon grisée
+    if (row === "Hors site - NCT") {
+      const nctDate = dateStrForWeekDay(weekKey, day)
+      if (nctDate && !nctCalendar.some((e) => e.date === nctDate)) return true
+    }
+
     // Cases fermées : Stress mercredi/vendredi apm, EE1 matin sauf jeudi
     if (isSlotClosed(row, day)) return true
 
