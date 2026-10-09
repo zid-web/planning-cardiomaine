@@ -19,6 +19,7 @@ import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
 import { toSolverClinicalRulesPayload } from "@/lib/group-clinical-rules";
+import { applyClinicalPriorityRules } from "@/lib/clinical-priority";
 import { applyPreferenceBias } from "@/lib/vacation-preferences";
 import { buildActivityMaintenancePayload, buildDefaultActivityMaintenance2026 } from "@/lib/activity-maintenance";
 import { buildRoomMaintenancePayload } from "@/lib/room-maintenance";
@@ -34,7 +35,6 @@ import { isWomComboWeekend } from "@/lib/weekend-wom-rules";
 import { astreinteWeekTypeForWeek } from "@/lib/astreinte-cycle";
 import { setNctCalendar } from "@/lib/nct-calendar";
 import { loadNctCalendar } from "@/app/actions/nct-calendar-actions";
-import { canAssignDoctorToSlot } from "@/lib/slot-blocking";
 
 // Configuration
 const GUARD_API_URL =
@@ -540,7 +540,8 @@ export async function generateGuardsViaAPI(
     }
 
     try {
-      scheduleData = fillClinicalProposalsForEmptyRows(scheduleData, weekKey, vacations);
+      // Priorités Coro / groupe écho / Cs (lib/clinical-priority.ts), puis Pré-op
+      scheduleData = applyClinicalPriorityRules(scheduleData, weekKey, vacations);
     } catch (propErr) {
       console.warn("[generateGuardsViaAPI] propositions Cs/Pré-op ignorées:", propErr);
     }
@@ -781,86 +782,5 @@ export async function getHistoricalLastWednesdayApmCoroDoctor(): Promise<"M" | "
 // Export pour compatibilité avec l'ancien code
 export { convertAPIResponseToSchedule };
 
-/**
- * Remplisseur intelligent de propositions pour les cases de consultations (Cs PSS, Cs Tessée)
- * et Pré-op si le solveur les a laissées vides.
- */
-function fillClinicalProposalsForEmptyRows(
-  schedule: ScheduleData,
-  weekKey: string,
-  vacations: DoctorVacation[] = [],
-): ScheduleData {
-  let next = schedule
-  const dateStrFn = (day: string) => dateStrForWeekDay(weekKey, day)
-
-  const CLINICAL_PROPOSAL_TARGETS: Array<{
-    row: string
-    pool: readonly string[]
-  }> = [
-    // Cs PSS : H, Z, G, B, A, K + M, O, W, P, U (hors Coro/Astreintes/Rythmo)
-    { row: "Matin - Cs PSS", pool: ["H", "Z", "G", "B", "A", "M", "O", "W", "P", "U", "K"] },
-    { row: "Apm - Cs PSS", pool: ["H", "Z", "G", "B", "A", "M", "O", "W", "P", "U", "K"] },
-    // Cs Tessée : B, S, V, U (P, A, FV, Véro, D, R, DAAS n'en font jamais —
-    // exclusion dure dans CS_TESSE_EXCLUDED)
-    { row: "Matin - Cs Tessée", pool: ["B", "S", "V", "U"] },
-    { row: "Apm - Cs Tessée", pool: ["B", "S", "V", "U"] },
-    // Pré-op
-    { row: "Pré-op", pool: ["A", "H", "W", "B", "Z", "K", "G", "S"] },
-    // Repli de K sur ETT, Stress, EE et Rééducation si les titulaires sont absents
-    { row: "Matin - ETT salle 1", pool: ["A", "H", "B", "Z", "G", "S", "K"] },
-    { row: "Matin - ETT salle 2", pool: ["A", "H", "B", "Z", "G", "S", "K"] },
-    { row: "Apm - ETT salle 1", pool: ["A", "H", "B", "Z", "G", "S", "K"] },
-    { row: "Apm - ETT salle 2", pool: ["A", "H", "B", "Z", "G", "S", "K"] },
-    { row: "Matin - EE1", pool: ["A", "H", "W", "B", "O", "Z", "U", "V", "G", "S", "M", "R", "K"] },
-    { row: "Apm - EE1", pool: ["A", "H", "W", "B", "O", "Z", "U", "V", "G", "S", "M", "R", "K"] },
-    { row: "Matin - EE2", pool: ["A", "H", "W", "B", "O", "Z", "U", "V", "G", "S", "M", "R", "K"] },
-    { row: "Apm - EE2", pool: ["A", "H", "W", "B", "O", "Z", "U", "V", "G", "S", "M", "R", "K"] },
-    { row: "Apm - RÉEDUCATION", pool: ["Z", "B", "S", "G", "H", "R", "K"] },
-  ]
-
-  const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"]
-
-  for (const { row, pool } of CLINICAL_PROPOSAL_TARGETS) {
-    if (!next[row]) continue
-    for (const day of WEEKDAYS) {
-      const cell = next[row][day]
-      const currentValues = cell?.value || []
-
-      // Seulement si la case est vide et non verrouillée manuellement
-      if (currentValues.length === 0 && !cell?.manuallyCleared) {
-        const dateStr = dateStrFn(day)
-        if (!dateStr) continue
-
-        // Trouver le premier médecin disponible du pool
-        const candidate = pool.find((doc) => {
-          if (isDoctorOnVacationForFixed(doc, dateStr, vacations)) return false
-          // Bug corrigé : les arguments étaient passés sous forme d'objet
-          // (5 arguments au lieu de 6) et la valeur de retour n'était pas
-          // déréférencée. `schedule` recevait donc un objet quelconque — aucune
-          // case n'était lue, aucun conflit détecté — et `{ allowed, reason }`
-          // étant toujours truthy, `find` retenait le premier médecin du pool
-          // sans qu'aucune règle ne soit vérifiée.
-          return canAssignDoctorToSlot(doc, dateStr, row, day, next, vacations).allowed
-        })
-
-        if (candidate) {
-          next = {
-            ...next,
-            [row]: {
-              ...next[row],
-              [day]: {
-                value: [candidate],
-                type: "doctor",
-                status: "pending", // Proposition violette Générer !
-              },
-            },
-          }
-        }
-      }
-    }
-  }
-
-  return next
-}
 
 

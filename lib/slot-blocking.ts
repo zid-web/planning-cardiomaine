@@ -570,6 +570,11 @@ export function canAssignDoctorToSlot(
     return { allowed: false, reason: holidayClosedReason(holiday as string) }
   }
 
+  // O ne fait jamais d'ETT (consigne utilisateur).
+  if (doctorId === "O" && rowKey.includes("ETT")) {
+    return { allowed: false, reason: "O ne fait jamais d'ETT." }
+  }
+
   // Remplaçant texte libre : pas de règles listées
   if (!isListedDoctor(doctorId)) {
     return { allowed: true }
