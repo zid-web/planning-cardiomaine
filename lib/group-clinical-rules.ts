@@ -41,7 +41,7 @@ export const DOC022_DOCTOR_NAMES: Record<string, string> = {
  */
 export const DOC022_CLINICAL_ELIGIBILITY = {
   /** Écho simple / ETT */
-  echo: ["A", "H", "W", "B", "Z", "K", "P", "R", "G", "S", "M", "O", "V"],
+  echo: ["A", "H", "W", "B", "Z", "K", "P", "R", "G", "S", "M", "V"], // O ne fait jamais d'ETT
   /** Épreuve d’effort */
   ee: ["A", "H", "W", "B", "O", "T", "Z", "K", "U", "V", "G", "S", "M", "R"],
   /** Echo de stress / EDS — W non éligible ; D = externe jeudi (règle fixe) */

@@ -23,6 +23,7 @@
  * saisie existante ».
  */
 import { DAYS } from "@/lib/constants"
+import { applyClinicalPriorityRules } from "@/lib/clinical-priority"
 import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import { canAssignDoctorToSlot } from "@/lib/slot-blocking"
 import { DOC022_CLINICAL_ELIGIBILITY } from "@/lib/group-clinical-rules"
@@ -181,7 +182,8 @@ export function applyClinicalRotationRules(
   weekKey: string,
   vacations: DoctorVacation[],
 ): ScheduleData {
-  let next = schedule
+  // Priorités Coro / groupe écho / Cs, O jamais en ETT, U lundi-mardi (voir clinical-priority.ts)
+  let next = applyClinicalPriorityRules(schedule, weekKey, vacations)
   next = diversifyStress(next, weekKey, vacations)
   next = diversifyReeduc(next, weekKey, vacations)
   next = fillCsPssFallback(next, weekKey, vacations)
