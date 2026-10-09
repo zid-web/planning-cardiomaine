@@ -1,4 +1,5 @@
 import { applyHolidayClosedClear } from "@/lib/holiday-closed"
+import { INTERN_CODE } from "@/lib/slot-blocking"
 import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
 import {
@@ -748,6 +749,33 @@ export function applyActivityMaintenanceClear(
   return next
 }
 
+/**
+ * L'interne **I** n'est assignable que sur « Garde Matin » (associé à un
+ * médecin). Toute autre case où il apparaît — typiquement une proposition du
+ * solveur externe, qui reçoit I dans la liste des médecins — est vidée de I
+ * (idempotent ; l'éventuel médecin associé est conservé). À appliquer avant les
+ * couplages de gardes, qui recopieraient sinon I d'une case à l'autre.
+ */
+export function stripInternFromOtherRows(schedule: ScheduleData): ScheduleData {
+  let next = schedule
+  for (const [rowKey, row] of Object.entries(schedule)) {
+    if (!row || rowKey === "Garde Matin" || rowKey === "Notes du jour") continue
+    for (const day of DAYS) {
+      const cell = row[day]
+      if (!cell || !(cell.value || []).includes(INTERN_CODE)) continue
+      const kept = cell.value.filter((d) => d !== INTERN_CODE)
+      next = {
+        ...next,
+        [rowKey]: {
+          ...next[rowKey],
+          [day]: { ...cell, value: kept, type: kept.length ? cell.type : "empty" },
+        },
+      }
+    }
+  }
+  return next
+}
+
 /** Semaine ISO en cours ou à venir (jamais l'historique). */
 function isCurrentOrFutureWeek(weekKey: string, now: Date = new Date()): boolean {
   const monday = mondayOfIsoWeekKey(weekKey)
@@ -819,6 +847,9 @@ export function applyStructuralConstraints(
   // 0) Jour férié : activités fermées (sauf ATL / Gardes) — règle absolue,
   // appliquée ici pour ne rien propager, puis une dernière fois en fin de chaîne.
   next = applyHolidayClosedClear(next, weekKey)
+
+  // 0ter) Interne I : Garde Matin uniquement (jamais Garde Nuit / Midi / autres lignes).
+  next = stripInternFromOtherRows(next)
 
   // 0bis) Congés d’abord — les règles fixes (Rythmo P/U/A, IRM, …) sautent si absent
   next = mergeVacancesIntoConges(next)
@@ -945,7 +976,8 @@ export function applyStructuralConstraints(
   }
 
   // 13) Jour férié : plus rien hors ATL / Gardes, quoi qu'ait (re)posé la chaîne.
-  return applyHolidayClosedClear(next, weekKey)
+  // Interne I : jamais hors Garde Matin, quoi qu'ait (re)posé la chaîne.
+  return stripInternFromOtherRows(applyHolidayClosedClear(next, weekKey))
 }
 
 /**
