@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react"
+import React, { useState, useMemo, useCallback, useEffect, useDeferredValue, lazy, Suspense } from "react"
 import { useRouter } from "next/navigation"
 import {
   AlertTriangle,
@@ -245,7 +245,10 @@ export function ScheduleApp({
   onLogout: () => void
   onChangePassword: () => void
 }) {
-  const [activeTab, setActiveTab] = useState<"today" | "week" | "all">("today")
+  // `selectedTab` : surbrillance immédiate du bouton ; `activeTab` : contenu, différé —
+  // le rendu de la grille globale (INP) ne bloque plus le clic sur l'onglet.
+  const [selectedTab, setActiveTab] = useState<"today" | "week" | "all">("today")
+  const activeTab = useDeferredValue(selectedTab)
   const [highlightMyShifts, setHighlightMyShifts] = useState(false)
   const [currentDate, setCurrentDate] = useState(new Date()) // Track current date
   const [selectedCell, setSelectedCell] = useState<{ row: string; day: string } | null>(null)
@@ -2429,7 +2432,7 @@ export function ScheduleApp({
                   onClick={() => setActiveTab("today")}
                   className={cn(
                     "flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all duration-200",
-                    activeTab === "today"
+                    selectedTab === "today"
                       ? "bg-slate-900 text-white shadow-xs"
                       : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
                   )}
@@ -2442,7 +2445,7 @@ export function ScheduleApp({
                   onClick={() => setActiveTab("week")}
                   className={cn(
                     "flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all duration-200",
-                    activeTab === "week"
+                    selectedTab === "week"
                       ? "bg-slate-900 text-white shadow-xs"
                       : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
                   )}
@@ -2455,7 +2458,7 @@ export function ScheduleApp({
                   onClick={() => setActiveTab("all")}
                   className={cn(
                     "flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold transition-all duration-200",
-                    activeTab === "all"
+                    selectedTab === "all"
                       ? "bg-slate-900 text-white shadow-xs"
                       : "text-slate-600 hover:bg-white/60 hover:text-slate-900"
                   )}
@@ -3245,40 +3248,40 @@ export function ScheduleApp({
             variant="ghost"
             className={cn(
               "flex h-auto min-h-12 w-full flex-col items-center gap-1 rounded-xl px-2 py-1.5 transition-all duration-200",
-              activeTab === "today"
+              selectedTab === "today"
                 ? "bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]"
                 : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
             )}
             onClick={() => setActiveTab("today")}
           >
-            <Sun className={cn("size-5 transition-transform", activeTab === "today" ? "text-amber-400 scale-110" : "")} />
+            <Sun className={cn("size-5 transition-transform", selectedTab === "today" ? "text-amber-400 scale-110" : "")} />
             <span className="text-[10px] font-extrabold tracking-tight">Aujourd&apos;hui</span>
           </Button>
           <Button
             variant="ghost"
             className={cn(
               "flex h-auto min-h-12 w-full flex-col items-center gap-1 rounded-xl px-2 py-1.5 transition-all duration-200",
-              activeTab === "week"
+              selectedTab === "week"
                 ? "bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]"
                 : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
             )}
             onClick={() => setActiveTab("week")}
           >
-            <CalendarDays className={cn("size-5 transition-transform", activeTab === "week" ? "text-indigo-400 scale-110" : "")} />
+            <CalendarDays className={cn("size-5 transition-transform", selectedTab === "week" ? "text-indigo-400 scale-110" : "")} />
             <span className="text-[10px] font-extrabold tracking-tight">Semaine</span>
           </Button>
           <Button
             variant="ghost"
             className={cn(
               "flex h-auto min-h-12 w-full flex-col items-center gap-1 rounded-xl px-2 py-1.5 transition-all duration-200",
-              activeTab === "all"
+              selectedTab === "all"
                 ? "bg-slate-900 text-white shadow-md shadow-slate-900/20 scale-[1.02]"
                 : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
             )}
             data-testid="nav-global"
             onClick={() => setActiveTab("all")}
           >
-            <LayoutGrid className={cn("size-5 transition-transform", activeTab === "all" ? "text-blue-400 scale-110" : "")} />
+            <LayoutGrid className={cn("size-5 transition-transform", selectedTab === "all" ? "text-blue-400 scale-110" : "")} />
             <span className="text-[10px] font-extrabold tracking-tight">Global</span>
           </Button>
         </div>
