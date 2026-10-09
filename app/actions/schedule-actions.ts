@@ -138,8 +138,16 @@ async function saveScheduleToDbUnsafe(
 
     if (syncFullBlob) {
       try {
-        const full = ((await loadFullScheduleFromDb()) as Record<string, unknown>) || {}
-        await saveFullScheduleToDb({ ...full, [weekKey]: scheduleData })
+        // Mise à jour d'une seule semaine dans le blob (SQL) ; repli sur
+        // l'ancienne réécriture complète si la fonction n'est pas installée.
+        const { error: rpcErr } = await supabase.rpc("schedule_blob_set_week", {
+          p_week: weekKey,
+          p_data: scheduleData,
+        })
+        if (rpcErr) {
+          const full = ((await loadFullScheduleFromDb()) as Record<string, unknown>) || {}
+          await saveFullScheduleToDb({ ...full, [weekKey]: scheduleData })
+        }
       } catch (blobErr) {
         console.error("[app] full_schedule sync failed:", blobErr)
       }
@@ -213,24 +221,42 @@ export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>
 export async function loadFullScheduleFromDb() {
   const supabase = await createClient()
 
+  // Lignes semaine uniquement (source de vérité) : le blob `full_schedule`
+  // duplique toutes les semaines et doublait le volume téléchargé.
   const { data: rows, error } = await supabase
     .from("schedules")
     .select("week_key, schedule_data")
+    .neq("week_key", "full_schedule")
 
   if (error) {
     console.error("[app] Load error:", error)
     return null
   }
 
-  if (!rows?.length) return null
-
   const assembled: Record<string, unknown> = {}
-  const blob = rows.find((r) => r.week_key === "full_schedule")
-  if (blob?.schedule_data && typeof blob.schedule_data === "object") {
-    Object.assign(assembled, blob.schedule_data as Record<string, unknown>)
+
+  // Semaines présentes seulement dans le blob (héritage) : fonction SQL dédiée
+  // (migration 20261009000000) ; repli sur la lecture complète du blob tant
+  // qu'elle n'est pas installée.
+  const legacy = await supabase.rpc("schedule_blob_only_weeks")
+  if (!legacy.error) {
+    for (const r of (legacy.data as Array<{ week_key: string; schedule_data: unknown }>) || []) {
+      assembled[r.week_key] = r.schedule_data
+    }
+  } else {
+    const { data: blobRow } = await supabase
+      .from("schedules")
+      .select("schedule_data")
+      .eq("week_key", "full_schedule")
+      .maybeSingle()
+    if (blobRow?.schedule_data && typeof blobRow.schedule_data === "object") {
+      Object.assign(assembled, blobRow.schedule_data as Record<string, unknown>)
+    }
   }
-  for (const row of rows) {
-    if (row.week_key === "full_schedule") continue
+
+  if (!rows?.length && Object.keys(assembled).length === 0) return null
+
+  for (const row of rows || []) {
     assembled[row.week_key] = row.schedule_data
   }
 
