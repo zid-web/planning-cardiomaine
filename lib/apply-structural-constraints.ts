@@ -36,7 +36,7 @@ import type { EquityCounts } from "@/lib/equity-tracking"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { applyStressAndDRules } from "@/lib/stress-rules"
 import { ensureNurseDoctorBinomeProposals, ensureValOnBothEeRooms } from "@/lib/nurse-rules"
-import { applyWeekendWomRules } from "@/lib/weekend-wom-rules"
+import { applyWeekendWomRules, isRemplacantOnlyWeekendGarde } from "@/lib/weekend-wom-rules"
 import { chNightWeekdaysForWeek, isChAstreinteWeek } from "@/lib/astreinte-cycle"
 import {
   mergeVacancesIntoConges,
@@ -548,6 +548,8 @@ function fillEmptyFromPriorityListedDoctors(
     // Case explicitement vidée par l'admin : ne jamais la re-remplir
     // (confirmé utilisateur 31/07/2026).
     if (next[row]![day]!.manuallyCleared) continue
+    // Garde de week-end tenue par un remplaçant seul : pas d'associé automatique
+    if (isRemplacantOnlyWeekendGarde(next, row, day)) continue
     const remplacants = remplacantsInCell(next, row, day)
     next = setCellDoctors(next, row, day, [...chosen, ...remplacants], status)
   }
