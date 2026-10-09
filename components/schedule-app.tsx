@@ -82,6 +82,9 @@ import {
 } from "@/lib/slot-blocking"
 import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
 import { isSlotClosed } from "@/lib/closed-slots"
+import { generateGuardsViaAPI } from "@/app/actions/guard-api-actions"
+import { defaultWeekGenerationParams, toSolverWeekGenerationOverrides } from "@/lib/week-generation-params"
+import { mondayOfWeekKey } from "@/lib/semester-guard-slots"
 import { holidayNameForWeekDay, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import { isVisiteRow, spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
 import { Switch } from "@/components/ui/switch"
@@ -803,6 +806,101 @@ export function ScheduleApp({
       toast.error("Retour affiché localement mais la sauvegarde a échoué. Réessayez.")
       console.error("[schedule-app] Échec de sauvegarde après retour:", error)
     }
+  }
+
+
+  /**
+   * « Générer le semestre » : même chaîne que le bouton Générer d'une semaine
+   * (solveur → fusion non destructive → contraintes structurelles → rotations
+   * cliniques → sauvegarde), appliquée semaine après semaine. Les semaines sont
+   * enregistrées au fur et à mesure pour que le dimanche précédent, les repos de
+   * nuit et l'équité tiennent compte des semaines déjà générées. Seules les
+   * cases vides reçoivent des propositions « Prop. » (violet) : tout ce qui est
+   * validé ou saisi à la main est conservé.
+   */
+  const generateSemesterWeek = async (
+    wk: string,
+  ): Promise<{ ok: boolean; proposals?: number; warnings?: string[]; error?: string; before?: ScheduleData }> => {
+    if (!isAdmin) return { ok: false, error: "Admin requis" }
+    const existing = fullScheduleRef.current[wk]
+    const before = existing ? structuredClone(existing) : undefined
+    try {
+      const prevKey = previousIsoWeekKey(wk)
+      const sunday = prevKey ? extractSundayNightGuardDoctor(fullScheduleRef.current[prevKey]) : null
+
+      let start: ScheduleData = existing ?? generateWeekSchedule(wk, vacations)
+      DAYS.forEach((d) => {
+        if (!start["Notes du jour"]) start["Notes du jour"] = {}
+        if (!start["Notes du jour"][d]) {
+          start["Notes du jour"][d] = { value: [], type: "empty", status: "validated" }
+        }
+      })
+      start = applyStructuralConstraints(start, wk, vacations, {
+        vacationsReady,
+        previousSundayGuardDoctor: sunday,
+        isFreshWeek: !existing,
+      })
+
+      const weekNum = Number.parseInt(wk.split("-W")[1] || "1", 10)
+      const overrides = toSolverWeekGenerationOverrides(defaultWeekGenerationParams(weekNum))
+      const result = await generateGuardsViaAPI(
+        mondayOfWeekKey(wk),
+        vacations,
+        "ROTATION",
+        undefined,
+        overrides,
+        start,
+      )
+      if (!result.success || !result.schedule) {
+        return { ok: false, error: result.error || "Aucun planning renvoyé par le solveur", before }
+      }
+
+      let merged = mergeSolverWeekIntoExisting(existing, result.schedule)
+      merged = applyStructuralConstraints(merged, wk, vacations, {
+        vacationsReady,
+        previousSundayGuardDoctor: sunday,
+        isFreshWeek: !existing,
+      })
+      merged = applyClinicalRotationRules(merged, wk, vacations)
+
+      const saved = await saveScheduleToDb(wk, merged, currentUser || "unknown", { source: "solver" })
+      if (saved?.error) return { ok: false, error: saved.error, before }
+
+      fullScheduleRef.current = { ...fullScheduleRef.current, [wk]: merged }
+      setFullSchedule((prev) => ({ ...prev, [wk]: merged }))
+      if (isWomComboWeekend(wk)) {
+        void recordLastComboGardeFromSchedule(wk, merged).catch(() => {})
+      }
+      return {
+        ok: true,
+        proposals: countSolverProposalCells(merged),
+        warnings: (result.warnings as string[] | undefined) ?? [],
+        before,
+      }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "Erreur inconnue", before }
+    }
+  }
+
+  /** Restaure l'état d'avant « Générer le semestre » pour les semaines données. */
+  const restoreSemesterWeeks = async (
+    snapshots: Record<string, ScheduleData | undefined>,
+  ): Promise<{ restored: number; failed: number }> => {
+    let restored = 0
+    let failed = 0
+    for (const [wk, snap] of Object.entries(snapshots)) {
+      // Semaine sans état antérieur : on la ramène au squelette (propositions retirées)
+      const target = snap ?? clearSolverProposals(fullScheduleRef.current[wk] ?? {}).schedule
+      const res = await saveScheduleToDb(wk, target, currentUser || "unknown", { source: "revert" })
+      if (res?.error) {
+        failed++
+        continue
+      }
+      fullScheduleRef.current = { ...fullScheduleRef.current, [wk]: target }
+      setFullSchedule((prev) => ({ ...prev, [wk]: target }))
+      restored++
+    }
+    return { restored, failed }
   }
 
   // Planning affiché = données + contraintes structurelles (sans passer par Générer)
@@ -4425,6 +4523,9 @@ export function ScheduleApp({
             open={showSixMonthProjection}
             onOpenChange={setShowSixMonthProjection}
             currentUser={currentUser || "admin"}
+            minWeekKey={formatWeekKey(new Date())}
+            onGenerateWeek={generateSemesterWeek}
+            onRestoreWeeks={restoreSemesterWeeks}
           />
         </Suspense>
       )}

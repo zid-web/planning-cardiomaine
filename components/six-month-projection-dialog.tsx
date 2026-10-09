@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useCallback } from "react"
+import React, { useState, useMemo, useCallback, useRef } from "react"
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,8 @@ import {
   Users,
   Shield,
   RefreshCw,
+  Undo2,
+  Square,
 } from "lucide-react"
 import {
   BarChart,
@@ -38,6 +40,7 @@ import { toast } from "sonner"
 import { generateGuardsViaAPI } from "@/app/actions/guard-api-actions"
 import { getSemesterGuardSlots, mondayOfWeekKey, monthLabelFromKey } from "@/lib/semester-guard-slots"
 import { formatPersonLabel } from "@/lib/doctor-code"
+import type { ScheduleData } from "@/lib/types"
 
 type Semester = 1 | 2
 
@@ -150,13 +153,31 @@ function EquityBarChart({
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Dialog
 // ─────────────────────────────────────────────────────────────────────────────
+type ApplyOutcome = {
+  ok: boolean
+  proposals?: number
+  warnings?: string[]
+  error?: string
+  before?: ScheduleData
+}
+
+type ApplyWeekResult = { weekKey: string; outcome: ApplyOutcome }
+
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   currentUser: string
+  /** Première semaine modifiable (semaine en cours) : l'historique n'est jamais touché. */
+  minWeekKey?: string
+  /** Génère et enregistre les propositions d'une semaine (même chaîne que « Générer »). */
+  onGenerateWeek?: (weekKey: string) => Promise<ApplyOutcome>
+  /** Restaure l'état d'avant la génération pour les semaines données. */
+  onRestoreWeeks?: (
+    snapshots: Record<string, ScheduleData | undefined>,
+  ) => Promise<{ restored: number; failed: number }>
 }
 
-export function SixMonthProjectionDialog({ open, onOpenChange, currentUser }: Props) {
+export function SixMonthProjectionDialog({ open, onOpenChange, currentUser, minWeekKey, onGenerateWeek, onRestoreWeeks }: Props) {
   const [semester, setSemester] = useState<Semester>(
     new Date().getMonth() < 8 ? 1 : 2,
   )
@@ -167,6 +188,71 @@ export function SixMonthProjectionDialog({ open, onOpenChange, currentUser }: Pr
   const [currentWeekLabel, setCurrentWeekLabel] = useState<string>("")
 
   const weekKeys = useMemo(() => getWeekKeysForSemester(semester, year), [semester, year])
+
+  // --- Génération réelle dans le planning (semaines en cours et à venir uniquement) ---
+  const upcomingWeekKeys = useMemo(
+    () => weekKeys.filter((wk) => !minWeekKey || wk >= minWeekKey),
+    [weekKeys, minWeekKey],
+  )
+  const [applyConfirm, setApplyConfirm] = useState(false)
+  const [isApplying, setIsApplying] = useState(false)
+  const [applyProgress, setApplyProgress] = useState(0)
+  const [applyLabel, setApplyLabel] = useState("")
+  const [applyResults, setApplyResults] = useState<ApplyWeekResult[]>([])
+  const snapshotsRef = useRef<Record<string, ScheduleData | undefined>>({})
+  const cancelRef = useRef(false)
+  const [isRestoring, setIsRestoring] = useState(false)
+
+  const handleApply = useCallback(async () => {
+    if (!onGenerateWeek) return
+    setApplyConfirm(false)
+    setIsApplying(true)
+    setApplyProgress(0)
+    setApplyResults([])
+    snapshotsRef.current = {}
+    cancelRef.current = false
+    const results: ApplyWeekResult[] = []
+
+    for (let i = 0; i < upcomingWeekKeys.length; i++) {
+      if (cancelRef.current) break
+      const wk = upcomingWeekKeys[i]
+      setApplyLabel(`Semaine ${wk} (${i + 1}/${upcomingWeekKeys.length})`)
+      setApplyProgress(Math.round((i / upcomingWeekKeys.length) * 100))
+      const outcome = await onGenerateWeek(wk)
+      // Instantané d'avant, pour « Tout annuler » (même quand la semaine n'existait pas)
+      snapshotsRef.current[wk] = outcome.before
+      results.push({ weekKey: wk, outcome })
+      setApplyResults([...results])
+    }
+
+    setApplyProgress(100)
+    setApplyLabel("")
+    setIsApplying(false)
+    const failed = results.filter((r) => !r.outcome.ok).length
+    const total = results.reduce((n, r) => n + (r.outcome.proposals ?? 0), 0)
+    if (cancelRef.current) {
+      toast.warning(`Génération interrompue après ${results.length} semaine(s).`)
+    } else if (failed === 0) {
+      toast.success(`${results.length} semaines générées — ${total} propositions à valider sur la vue Globale.`)
+    } else {
+      toast.warning(`${results.length - failed} semaines générées, ${failed} en erreur.`)
+    }
+  }, [onGenerateWeek, upcomingWeekKeys])
+
+  const handleRestore = useCallback(async () => {
+    if (!onRestoreWeeks) return
+    if (!confirm("Annuler la génération du semestre et restaurer les semaines concernées dans leur état d'avant ?")) return
+    setIsRestoring(true)
+    const { restored, failed } = await onRestoreWeeks(snapshotsRef.current)
+    setIsRestoring(false)
+    if (failed === 0) {
+      toast.success(`${restored} semaine(s) restaurée(s).`)
+      setApplyResults([])
+      snapshotsRef.current = {}
+    } else {
+      toast.error(`${restored} restaurée(s), ${failed} en échec — réessayez.`)
+    }
+  }, [onRestoreWeeks])
   const semesterLabel = getSemesterLabel(semester, year)
 
   const handleGenerate = useCallback(async () => {
@@ -338,6 +424,116 @@ export function SixMonthProjectionDialog({ open, onOpenChange, currentUser }: Pr
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Génération réelle dans le planning */}
+          {onGenerateWeek && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <p className="text-sm font-bold text-emerald-900">Générer dans le planning</p>
+                  <p className="text-xs text-emerald-800 mt-0.5">
+                    {upcomingWeekKeys.length} semaine(s) en cours et à venir • propositions « Prop. » en violet • l&apos;historique n&apos;est jamais modifié
+                  </p>
+                </div>
+                {isApplying ? (
+                  <Button
+                    onClick={() => { cancelRef.current = true }}
+                    variant="outline"
+                    className="gap-2 border-emerald-300 bg-white text-emerald-900"
+                  >
+                    <Square className="h-4 w-4" /> Arrêter
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => setApplyConfirm(true)}
+                    disabled={isGenerating || isRestoring || upcomingWeekKeys.length === 0}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2"
+                  >
+                    <Play className="h-4 w-4" />
+                    Générer le semestre
+                  </Button>
+                )}
+              </div>
+
+              {applyConfirm && !isApplying && (
+                <div className="rounded-lg border border-emerald-300 bg-white p-3 text-xs text-slate-700 space-y-2">
+                  <p className="font-bold text-slate-900">Confirmer la génération de {upcomingWeekKeys.length} semaines ?</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    <li>Même solveur et mêmes règles que le bouton « Générer » d&apos;une semaine : congés, fériés, binômes, NCT, astreintes.</li>
+                    <li>Seules les cases vides reçoivent des propositions : vos saisies manuelles et cases validées sont conservées.</li>
+                    <li>Chaque semaine est enregistrée avant la suivante (dimanche précédent, repos de nuit, équité).</li>
+                    <li>Rien n&apos;est validé : « Effacer propositions » ou « Tout annuler » ci-dessous les retire.</li>
+                    <li>Durée : plusieurs minutes. Gardez cette fenêtre ouverte.</li>
+                  </ul>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" onClick={() => void handleApply()} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                      Confirmer et générer
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setApplyConfirm(false)}>
+                      Annuler
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {isApplying && (
+                <div className="space-y-1.5">
+                  <div className="h-2 w-full rounded-full bg-emerald-200 overflow-hidden">
+                    <div className="h-full bg-emerald-600 rounded-full transition-all duration-500" style={{ width: `${applyProgress}%` }} />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-emerald-800">
+                    <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />{applyLabel}</span>
+                    <span>{applyProgress}%</span>
+                  </div>
+                </div>
+              )}
+
+              {applyResults.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap text-xs font-semibold">
+                    <span className="rounded-md bg-white border border-emerald-200 px-2 py-1 text-emerald-800">
+                      {applyResults.filter((r) => r.outcome.ok).length} OK
+                    </span>
+                    {applyResults.some((r) => !r.outcome.ok) && (
+                      <span className="rounded-md bg-red-50 border border-red-200 px-2 py-1 text-red-700">
+                        {applyResults.filter((r) => !r.outcome.ok).length} en erreur
+                      </span>
+                    )}
+                    <span className="rounded-md bg-violet-50 border border-violet-200 px-2 py-1 text-violet-800">
+                      {applyResults.reduce((n, r) => n + (r.outcome.proposals ?? 0), 0)} propositions
+                    </span>
+                    {onRestoreWeeks && !isApplying && (
+                      <Button size="sm" variant="outline" onClick={() => void handleRestore()} disabled={isRestoring} className="ml-auto gap-1">
+                        {isRestoring ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+                        Tout annuler
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                    {applyResults.map(({ weekKey: wk, outcome }) => (
+                      <div
+                        key={wk}
+                        className={cn(
+                          "rounded-lg border px-2.5 py-2 text-[11px]",
+                          outcome.ok ? "border-emerald-200 bg-white" : "border-red-200 bg-red-50",
+                        )}
+                      >
+                        <p className="font-bold text-slate-700">{wk}</p>
+                        {outcome.ok ? (
+                          <p className="text-slate-500 mt-0.5">
+                            {outcome.proposals ?? 0} prop.
+                            {outcome.warnings && outcome.warnings.length > 0 ? ` · ${outcome.warnings.length} alerte(s)` : ""}
+                          </p>
+                        ) : (
+                          <p className="text-red-600 mt-0.5 truncate" title={outcome.error}>⚠ {outcome.error?.slice(0, 40)}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Launch area */}
           <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 space-y-3">
             <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -542,7 +738,7 @@ export function SixMonthProjectionDialog({ open, onOpenChange, currentUser }: Pr
           {!summary && !isGenerating && (
             <div className="flex flex-col items-center justify-center py-16 gap-4 text-slate-400">
               <TrendingUp className="h-12 w-12 opacity-30" />
-              <p className="text-sm font-semibold">Cliquez sur « Lancer la Projection » pour générer</p>
+              <p className="text-sm font-semibold">Cliquez sur « Lancer la Projection » pour simuler (sans modifier le planning)</p>
               <p className="text-xs text-center max-w-md">
                 Le solveur traitera chaque semaine du semestre sélectionné et calculera la répartition équitable des gardes par sous-groupe.
               </p>
