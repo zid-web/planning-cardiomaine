@@ -20,6 +20,7 @@ import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
 import { toSolverClinicalRulesPayload } from "@/lib/group-clinical-rules";
 import { applyClinicalPriorityRules, type RejectedProposal } from "@/lib/clinical-priority";
+import { buildPatternStats, type PatternStats } from "@/lib/pattern-replay";
 import { applyPreferenceBias } from "@/lib/vacation-preferences";
 import { buildActivityMaintenancePayload, buildDefaultActivityMaintenance2026 } from "@/lib/activity-maintenance";
 import { buildRoomMaintenancePayload } from "@/lib/room-maintenance";
@@ -253,10 +254,12 @@ export async function generateGuardsViaAPI(
 
     // 4. Historique Cs/ETT/EE/hors site → `historical_patterns` pour le solveur
     // (même exclusions que pattern-analysis : SOLVER_MANAGED + Rythmo + meta).
-    const lookbackWeeks = 12;
+    // 26 semaines (≈ 6 mois) : assez de recul pour apprendre les schémas de remplissage manuel.
+    const lookbackWeeks = 26;
     const currentWeekKey = `${wnEarly.year}-W${String(wnEarly.week).padStart(2, "0")}`;
     let historicalPatterns = buildHistoricalPatternsPayload([]);
     let historicalWeeksScanned = 0;
+    let replayStats: PatternStats | undefined;
     try {
       const supabaseHist = await createClient();
       const { data: histRows, error: histError } = await supabaseHist
@@ -273,6 +276,11 @@ export async function generateGuardsViaAPI(
           .filter((s) => s && typeof s === "object");
         historicalWeeksScanned = historical.length;
         historicalPatterns = buildHistoricalPatternsPayload(historical);
+        // Schémas du remplissage manuel, rejoués localement sur les cases vides après le solveur
+        replayStats = buildPatternStats(
+          histRows.map((r) => ({ weekKey: r.week_key as string, schedule: r.schedule_data as ScheduleData })),
+          lookbackWeeks,
+        );
       } else if (histError) {
         console.warn(
           "[generateGuardsViaAPI] Lecture historique pour patterns:",
@@ -542,7 +550,7 @@ export async function generateGuardsViaAPI(
     try {
       // Priorités Coro / groupe écho / Cs (lib/clinical-priority.ts), puis Pré-op
       const rejectedProposals: RejectedProposal[] = [];
-      scheduleData = applyClinicalPriorityRules(scheduleData, weekKey, vacations, rejectedProposals);
+      scheduleData = applyClinicalPriorityRules(scheduleData, weekKey, vacations, rejectedProposals, replayStats);
       if (rejectedProposals.length > 0) {
         if (!data.warnings) data.warnings = [];
         for (const r of rejectedProposals.slice(0, 12)) {

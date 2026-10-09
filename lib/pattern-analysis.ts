@@ -45,14 +45,20 @@ function collectFrequencyBuckets(
       if (FREQUENCY_EXCLUDED_ROW_KEYS.has(rowKey)) continue
       if (solverOnly && !isSolverHistoricalRowKey(rowKey)) continue
       for (const day of DAYS) {
-        const doctors = days?.[day]?.value || []
+        const cell = days?.[day]
+        const doctors = cell?.value || []
         if (!doctors.length) continue
+        // Payload solveur : on n'apprend que des décisions — jamais des propositions
+        // non validées (`pending`) ni des cases vidées à la main ; une saisie manuelle
+        // compte double par rapport à une case simplement validée.
+        if (solverOnly && (cell?.status === "pending" || cell?.manuallyCleared)) continue
+        const weight = solverOnly && cell?.manualAssignment ? 2 : 1
         const key = `${rowKey}||${day}`
         if (!freq.has(key)) freq.set(key, new Map())
         const bucket = freq.get(key)!
         // Compte chaque médecin une fois par cellule (évite double-comptage P/P)
         for (const doc of new Set(doctors)) {
-          bucket.set(doc, (bucket.get(doc) || 0) + 1)
+          bucket.set(doc, (bucket.get(doc) || 0) + weight)
         }
       }
     }
