@@ -65,9 +65,6 @@ import {
   sortedTaskEntries,
   sortedWorkloadEntries,
 } from "@/lib/scheduler-algo"
-import { StatsDialog } from "./stats-dialog"
-import { GuardCalendarDialog } from "./guard-calendar-dialog"
-import { SixMonthProjectionDialog } from "./six-month-projection-dialog"
 import { canAssignDoctor, detectConflict, isDoctorUnavailable } from "@/lib/assignment-validation"
 import {
   getCellDisplayAssignees,
@@ -154,6 +151,15 @@ import { DoctorVacation } from "@/lib/types"
 const VoiceAndUploadPanel = lazy(() =>
   import("@/components/VoiceAndUploadPanel").then((m) => ({ default: m.VoiceAndUploadPanel })),
 )
+// Dialogues lourds (recharts, etc.) : chargés à la première ouverture, pas au démarrage.
+const StatsDialog = lazy(() => import("./stats-dialog").then((m) => ({ default: m.StatsDialog })))
+const GuardCalendarDialog = lazy(() =>
+  import("./guard-calendar-dialog").then((m) => ({ default: m.GuardCalendarDialog })),
+)
+const SixMonthProjectionDialog = lazy(() =>
+  import("./six-month-projection-dialog").then((m) => ({ default: m.SixMonthProjectionDialog })),
+)
+
 /** Comptes non-admin qui consultent le calendrier NCT (lecture seule). */
 const NCT_VIEWER_CODES: readonly string[] = ["W", "Q"]
 
@@ -185,7 +191,6 @@ import {
   countSolverProposalCells,
 } from "@/lib/guard-api-mapping"
 import { toast } from "sonner"
-import { downloadPlanningPdf } from "@/lib/download-planning-pdf"
 import {
   applyNctAssignmentsToFullSchedule,
   dayNameFromIsoDateLocal,
@@ -1091,6 +1096,8 @@ export function ScheduleApp({
     setIsExportingPdf(true)
     try {
       // Génération navigateur : évite le 413 Vercel (cookies auth trop volumineux sur GET API).
+      // pdf-lib + polices : chargés au premier export seulement
+      const { downloadPlanningPdf } = await import("@/lib/download-planning-pdf")
       await downloadPlanningPdf(weekKey, schedule, { isBlocked: isCellBlocked })
       toast.success("PDF exporté")
     } catch (err) {
@@ -4383,30 +4390,40 @@ export function ScheduleApp({
       {/* Learn More Modal */}
       {learnMoreOpen && <LearnMoreModal onClose={() => setLearnMoreOpen(false)} />}
 
-      <StatsDialog
-        open={showWorkloadStats}
-        onOpenChange={setShowWorkloadStats}
-        fullSchedule={fullSchedule}
-        isAdmin={isAdmin}
-        doctorCode={doctorCode || currentUser || ""}
-      />
+      {showWorkloadStats && (
+        <Suspense fallback={null}>
+          <StatsDialog
+            open={showWorkloadStats}
+            onOpenChange={setShowWorkloadStats}
+            fullSchedule={fullSchedule}
+            isAdmin={isAdmin}
+            doctorCode={doctorCode || currentUser || ""}
+          />
+        </Suspense>
+      )}
 
-      <GuardCalendarDialog
-        open={showGuardPicks}
-        onOpenChange={setShowGuardPicks}
-        isAdmin={isAdmin}
-        fullSchedule={fullSchedule}
-        vacations={vacations}
-        defaultDate={dateStrForWeekDay(weekKey, "SAMEDI") ?? undefined}
-        onSetGuard={setGuardAssignment}
-      />
+      {showGuardPicks && (
+        <Suspense fallback={null}>
+          <GuardCalendarDialog
+            open={showGuardPicks}
+            onOpenChange={setShowGuardPicks}
+            isAdmin={isAdmin}
+            fullSchedule={fullSchedule}
+            vacations={vacations}
+            defaultDate={dateStrForWeekDay(weekKey, "SAMEDI") ?? undefined}
+            onSetGuard={setGuardAssignment}
+          />
+        </Suspense>
+      )}
 
-      {isAdmin && (
-        <SixMonthProjectionDialog
-          open={showSixMonthProjection}
-          onOpenChange={setShowSixMonthProjection}
-          currentUser={currentUser || "admin"}
-        />
+      {isAdmin && showSixMonthProjection && (
+        <Suspense fallback={null}>
+          <SixMonthProjectionDialog
+            open={showSixMonthProjection}
+            onOpenChange={setShowSixMonthProjection}
+            currentUser={currentUser || "admin"}
+          />
+        </Suspense>
       )}
 
       {/* Calendrier NCT */}
