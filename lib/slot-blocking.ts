@@ -26,6 +26,7 @@ import {
   isEttPedWithGardeOrAtlMidi,
 } from "@/lib/special-activity-labels"
 import { closedSlotReason, isSlotClosed } from "@/lib/closed-slots"
+import { isNctClosedOnDate } from "@/lib/nct-calendar"
 import { holidayClosedReason, holidayNameForIsoDate, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
@@ -568,6 +569,11 @@ export function canAssignDoctorToSlot(
   const holiday = holidayNameForIsoDate(dateStr)
   if (isHolidayClosedSlot(rowKey, holiday)) {
     return { allowed: false, reason: holidayClosedReason(holiday as string) }
+  }
+
+  // NCT : pilotée uniquement par le calendrier NCT — fermée aux dates sans vacation ouverte.
+  if (rowKey === "Hors site - NCT" && isNctClosedOnDate(dateStr)) {
+    return { allowed: false, reason: "Pas de vacation NCT ce jour dans le calendrier NCT." }
   }
 
   // O ne fait jamais d'ETT (consigne utilisateur).

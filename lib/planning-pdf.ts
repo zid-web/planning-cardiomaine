@@ -18,6 +18,7 @@ import { formatDoctorWithDoublon } from "@/lib/slot-blocking"
 import { isSolverProposalCell } from "@/lib/guard-api-mapping"
 import { isOffSiteRow, offSiteSlotOf, OFF_SITE_SLOT_BADGES } from "@/lib/off-site-slots"
 import { isSlotClosed } from "@/lib/closed-slots"
+import { isNctClosedOnDate } from "@/lib/nct-calendar"
 import { holidayNameForWeekDay, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import type { CellData, ScheduleData } from "@/lib/types"
 
@@ -259,6 +260,7 @@ export async function buildPlanningPdf(
     ((row: string, day: string) =>
       ((day === "SAMEDI" || day === "DIMANCHE") && !allowedOnHoliday(row)) ||
       isHolidayClosedSlot(row, holidayNameForWeekDay(weekKey, day)) ||
+      (row === "Hors site - NCT" && isNctClosedOnDate(dateStrForWeekDay(weekKey, day))) ||
       isSlotClosed(row, day))
 
   // Dates / fériés / vacances scolaires zone B par jour (mêmes sources que l'écran)

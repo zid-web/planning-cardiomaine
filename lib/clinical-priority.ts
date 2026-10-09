@@ -22,6 +22,7 @@ import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import { canAssignDoctorToSlot } from "@/lib/slot-blocking"
 import { isSolverProposalCell } from "@/lib/guard-api-mapping"
 import { isListedDoctor } from "@/lib/doctor-code"
+import { isOutsideUsualHorsSiteDay } from "@/lib/closed-slots"
 import { DAYS, NURSES } from "@/lib/constants"
 import type { CellData, DoctorVacation, ScheduleData } from "@/lib/types"
 
@@ -300,6 +301,11 @@ export function validateProposalsLikeManual(
     const cell = next[p.row]?.[p.day]
     if (!cell) continue
     const dateStr = dateStrForWeekDay(weekKey, p.day)
+    // Hors site : les cases restent libres, mais le solveur ne propose que les jours habituels
+    if (isOutsideUsualHorsSiteDay(p.row, p.day)) {
+      rejected.push({ row: p.row, day: p.day, doctor: p.doctor, reason: "Jour habituel de cette vacation hors site non respecté." })
+      continue
+    }
     // Doublon voulu (même médecin deux fois dans une case Cs) : conservé tel quel
     const result = p.dup && cell.value.includes(p.doctor)
       ? { allowed: true as const }
