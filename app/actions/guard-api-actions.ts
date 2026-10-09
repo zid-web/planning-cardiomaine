@@ -19,7 +19,7 @@ import { applyStructuralConstraints } from "@/lib/apply-structural-constraints";
 import { mergeAssignmentsIntoSchedule, type GuardAssignment } from "@/lib/guard-api-mapping";
 import { buildHistoricalPatternsPayload } from "@/lib/pattern-analysis";
 import { toSolverClinicalRulesPayload } from "@/lib/group-clinical-rules";
-import { applyClinicalPriorityRules } from "@/lib/clinical-priority";
+import { applyClinicalPriorityRules, type RejectedProposal } from "@/lib/clinical-priority";
 import { applyPreferenceBias } from "@/lib/vacation-preferences";
 import { buildActivityMaintenancePayload, buildDefaultActivityMaintenance2026 } from "@/lib/activity-maintenance";
 import { buildRoomMaintenancePayload } from "@/lib/room-maintenance";
@@ -541,7 +541,17 @@ export async function generateGuardsViaAPI(
 
     try {
       // Priorités Coro / groupe écho / Cs (lib/clinical-priority.ts), puis Pré-op
-      scheduleData = applyClinicalPriorityRules(scheduleData, weekKey, vacations);
+      const rejectedProposals: RejectedProposal[] = [];
+      scheduleData = applyClinicalPriorityRules(scheduleData, weekKey, vacations, rejectedProposals);
+      if (rejectedProposals.length > 0) {
+        if (!data.warnings) data.warnings = [];
+        for (const r of rejectedProposals.slice(0, 12)) {
+          data.warnings.push(`Proposition écartée (${r.doctor} · ${r.row} · ${r.day.toLowerCase()}) : ${r.reason}`);
+        }
+        if (rejectedProposals.length > 12) {
+          data.warnings.push(`… et ${rejectedProposals.length - 12} autre(s) proposition(s) écartée(s) par les règles d'affectation.`);
+        }
+      }
     } catch (propErr) {
       console.warn("[generateGuardsViaAPI] propositions Cs/Pré-op ignorées:", propErr);
     }

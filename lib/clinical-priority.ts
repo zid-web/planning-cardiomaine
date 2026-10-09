@@ -21,6 +21,8 @@
 import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import { canAssignDoctorToSlot } from "@/lib/slot-blocking"
 import { isSolverProposalCell } from "@/lib/guard-api-mapping"
+import { isListedDoctor } from "@/lib/doctor-code"
+import { DAYS, NURSES } from "@/lib/constants"
 import type { CellData, DoctorVacation, ScheduleData } from "@/lib/types"
 
 const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"] as const
@@ -226,13 +228,107 @@ function fillByPriority(schedule: ScheduleData, weekKey: string, vacations: Doct
   return next
 }
 
+export type RejectedProposal = { row: string; day: string; doctor: string; reason: string }
+
+const ROW_PRIORITY = [
+  "Garde Nuit", "Garde Midi", "Garde Matin",
+  "Astreintes ATL Nuit", "Astreintes ATL Midi", "Astreintes ATL Matin",
+  "Matin - Coro", "Apm - Coro",
+  "Hors site - LFB", "Hors site - PSSL", "Hors site - CDL", "Hors site - IRM", "Hors site - Scinti",
+  "Matin - ETT salle 1", "Matin - ETT salle 2", "Apm - ETT salle 1", "Apm - ETT salle 2",
+  "Matin - Stress", "Apm - Stress", "Apm - RÉEDUCATION",
+  "Matin - EE1", "Matin - EE2", "Apm - EE1", "Apm - EE2",
+  "Matin - Cs PSS", "Apm - Cs PSS", "Matin - Cs Tessée", "Apm - Cs Tessée",
+  "Entrées PSS", "Pré-op",
+]
+
+function rowPriority(row: string): number {
+  const i = ROW_PRIORITY.indexOf(row)
+  return i >= 0 ? i : ROW_PRIORITY.length
+}
+
+/**
+ * Toute proposition du solveur doit passer **la même validation que l'affectation
+ * manuelle** (`canAssignDoctorToSlot` : congés, repos après garde de nuit, jamais
+ * deux nuits consécutives, un seul créneau à la fois, Coro / ATL / Rythmo, cases
+ * fermées, jours fériés, binômes infirmières, K, S/IRM…). On retire toutes les
+ * propositions, puis on les remet une à une par ordre de priorité (gardes,
+ * astreintes, Coro, hors site, ETT, Stress, Rééducation, EE, Cs) : chacune n'est
+ * conservée que si un admin pourrait la saisir à la main à cet instant. Les
+ * refus sont consignés avec leur motif ; les cases vidées sont repourvues ensuite
+ * par la passe de priorité, avec des candidats validés par la même logique.
+ */
+export function validateProposalsLikeManual(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[] = [],
+  rejected: RejectedProposal[] = [],
+): ScheduleData {
+  type Pending = { row: string; day: string; doctor: string; dup: boolean }
+  const pending: Pending[] = []
+  let base = schedule
+
+  for (const [row, days] of Object.entries(schedule)) {
+    if (!days) continue
+    for (const day of DAYS) {
+      const cell = days[day]
+      if (!isMovableProposal(row, cell)) continue
+      const seen = new Set<string>()
+      const keep: string[] = []
+      for (const d of cell!.value) {
+        const isProposalDoctor =
+          isListedDoctor(d) && !(NURSES as readonly string[]).includes(d) && d !== "CH" && d !== "FV"
+        if (!isProposalDoctor) {
+          keep.push(d) // infirmières, remplaçants, CH, FV : structurels, jamais retirés
+          continue
+        }
+        pending.push({ row, day, doctor: d, dup: seen.has(d) })
+        seen.add(d)
+      }
+      base = withCell(base, row, day, {
+        ...cell!,
+        value: keep,
+        type: keep.length ? cell!.type : "empty",
+      })
+    }
+  }
+
+  pending.sort((a, b) => rowPriority(a.row) - rowPriority(b.row))
+
+  let next = base
+  for (const p of pending) {
+    const cell = next[p.row]?.[p.day]
+    if (!cell) continue
+    const dateStr = dateStrForWeekDay(weekKey, p.day)
+    // Doublon voulu (même médecin deux fois dans une case Cs) : conservé tel quel
+    const result = p.dup && cell.value.includes(p.doctor)
+      ? { allowed: true as const }
+      : dateStr
+        ? canAssignDoctorToSlot(p.doctor, dateStr, p.row, p.day, next, vacations)
+        : { allowed: false as const, reason: "Date introuvable" }
+    if (result.allowed) {
+      next = withCell(next, p.row, p.day, {
+        ...cell,
+        value: [...cell.value, p.doctor],
+        type: "doctor",
+        status: "pending",
+      })
+    } else {
+      rejected.push({ row: p.row, day: p.day, doctor: p.doctor, reason: ("reason" in result && result.reason) || "Règle d'affectation" })
+    }
+  }
+  return next
+}
+
 /** Point d'entrée : à appeler sur les propositions du solveur (idempotent). */
 export function applyClinicalPriorityRules(
   schedule: ScheduleData,
   weekKey: string,
   vacations: DoctorVacation[] = [],
+  rejected: RejectedProposal[] = [],
 ): ScheduleData {
-  let next = schedule
+  // 0. Mêmes règles que l'affectation manuelle, appliquées à chaque proposition
+  let next = validateProposalsLikeManual(schedule, weekKey, vacations, rejected)
   next = enforceUCsTesseeGuardRule(next)
   next = fillCoroFirst(next, weekKey, vacations)
   next = enforceCoroPrecedenceAndRules(next)

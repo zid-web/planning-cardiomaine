@@ -3,7 +3,8 @@
  * Priorités des propositions : Coro d'abord, O jamais ETT, groupe écho avant Cs, U lundi.
  */
 import assert from "node:assert/strict"
-import { applyClinicalPriorityRules } from "@/lib/clinical-priority"
+import { applyClinicalPriorityRules, validateProposalsLikeManual, type RejectedProposal } from "@/lib/clinical-priority"
+import { applyStructuralConstraints } from "@/lib/apply-structural-constraints"
 import { applyClinicalRotationRules } from "@/lib/clinical-rotation-diversity"
 import { canAssignDoctorToSlot } from "@/lib/slot-blocking"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
@@ -75,6 +76,27 @@ function main() {
   const again = applyClinicalPriorityRules(out, wk, [])
   assert.deepEqual(JSON.stringify(again), JSON.stringify(out))
   assert.ok(applyClinicalRotationRules(s, wk, []))
+
+  // Mêmes règles que l'affectation manuelle : propositions incohérentes écartées avec motif
+  const sv = applyStructuralConstraints(generateWeekSchedule(wk, []), wk, [])
+  for (const r of ["Garde Matin", "Garde Midi", "Garde Nuit"]) sv[r].MARDI = prop(["A"])
+  sv["Garde Nuit"].MERCREDI = prop(["A"]) // deux nuits consécutives
+  sv["Matin - Coro"].LUNDI = prop(["O"])
+  sv["Matin - Cs PSS"].LUNDI = prop(["O"]) // même créneau que la Coro
+  const rejected: RejectedProposal[] = []
+  const ov = validateProposalsLikeManual(sv, wk, [], rejected)
+  assert.deepEqual(vals(ov, "Garde Nuit", "MARDI"), ["A"], "garde couplée valide conservée")
+  assert.deepEqual(vals(ov, "Garde Nuit", "MERCREDI"), [])
+  assert.deepEqual(vals(ov, "Matin - Cs PSS", "LUNDI"), [])
+  assert.deepEqual(vals(ov, "Matin - Coro", "LUNDI"), ["O"])
+  assert.ok(rejected.some((r) => r.row === "Garde Nuit" && /consécutives/.test(r.reason)))
+  assert.ok(rejected.some((r) => r.row === "Matin - Cs PSS" && r.doctor === "O"))
+  // Case validée / manuelle jamais retirée par la validation
+  const keepManual = generateWeekSchedule(wk, [])
+  keepManual["Matin - Cs PSS"].LUNDI = { value: ["W"], type: "doctor", status: "validated", manualAssignment: true }
+  const rm: RejectedProposal[] = []
+  assert.deepEqual(vals(validateProposalsLikeManual(keepManual, wk, [], rm), "Matin - Cs PSS", "LUNDI"), ["W"])
+  assert.equal(rm.length, 0)
 
   console.log("✅ clinical-priority tests passed")
 }
