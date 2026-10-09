@@ -403,7 +403,9 @@ export async function generateGuardsViaAPI(
         end_date: c.end_date,
         type: c.type || "congrès",
       })),
-      medecins: doctors.map((doc) => ({
+      // L'interne I n'est jamais proposé par le solveur : il ne fait pas de garde de nuit
+      // (Garde Matin uniquement, associé à un médecin, saisie manuelle).
+      medecins: doctors.filter((doc) => doc.id !== "I").map((doc) => ({
         id: doc.id,
         statut: doc.statut,
         points_astreinte: doc.points_astreinte,
