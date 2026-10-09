@@ -22,6 +22,8 @@ import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import { canAssignDoctorToSlot } from "@/lib/slot-blocking"
 import { isSolverProposalCell } from "@/lib/guard-api-mapping"
 import { isListedDoctor } from "@/lib/doctor-code"
+import { learnedCandidates, learnedPartners, type PatternStats } from "@/lib/pattern-replay"
+import { DOC022_CLINICAL_ELIGIBILITY } from "@/lib/group-clinical-rules"
 import { DAYS, NURSES } from "@/lib/constants"
 import type { CellData, DoctorVacation, ScheduleData } from "@/lib/types"
 
@@ -159,6 +161,19 @@ function enforceUCsTesseeGuardRule(schedule: ScheduleData): ScheduleData {
   return next
 }
 
+/** Éligibilité DOC022 de la ligne (les schémas appris ne contournent jamais les consignes). */
+function isEligibleForRow(row: string, doctor: string): boolean {
+  const E = DOC022_CLINICAL_ELIGIBILITY
+  const inList = (l: readonly string[]) => l.includes(doctor)
+  if (row.includes("ETT")) return inList(E.echo)
+  if (row.includes("Stress")) return inList(E.stress)
+  if (row.includes("RÉEDUCATION")) return inList(E.reeduc)
+  if (row.includes("EE")) return inList(E.ee)
+  if (row.includes("Cs PSS")) return inList(E.cs_pss) && !CS_PSS_EXCLUDED.includes(doctor)
+  if (row.includes("Cs Tessée")) return inList(E.cs_tesse) || doctor === "U"
+  return true
+}
+
 type FillTarget = { row: string; pool: (k: number) => readonly string[] }
 
 function fillTargets(): FillTarget[] {
@@ -192,7 +207,12 @@ function fillTargets(): FillTarget[] {
 }
 
 /** 3/4. Remplit les cases vides dans l'ordre de priorité : ETT, Stress, Rééducation, EE, Cs. */
-function fillByPriority(schedule: ScheduleData, weekKey: string, vacations: DoctorVacation[]): ScheduleData {
+function fillByPriority(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[],
+  stats?: PatternStats,
+): ScheduleData {
   let next = schedule
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
 
@@ -205,25 +225,32 @@ function fillByPriority(schedule: ScheduleData, weekKey: string, vacations: Doct
           if (isMovableProposal(row, next[row]?.[day]) && cellValues(next, row, day).includes(doc))
             next = removeDoctor(next, row, day, doc)
 
-  for (const { row, pool } of fillTargets()) {
-    if (!next[row]) continue
-    WEEKDAYS.forEach((day, di) => {
-      if (!isEmptyOpen(next, row, day)) return
-      let candidates = [...pool(di + weekNum)]
-      // ETT : deux salles = deux médecins différents quand c'est possible
-      // (le même médecin sur les deux n'est qu'un dernier recours).
-      const sibling = row.endsWith("ETT salle 2")
-        ? row.replace("salle 2", "salle 1")
-        : row.endsWith("ETT salle 1")
-          ? row.replace("salle 1", "salle 2")
-          : null
-      if (sibling) {
-        const taken = cellValues(next, sibling, day)
-        candidates = [...candidates.filter((d) => !taken.includes(d)), ...candidates.filter((d) => taken.includes(d))]
-      }
-      const pick = candidates.find((doc) => canAssign(next, weekKey, doc, row, day, vacations))
-      if (pick) next = setProposal(next, row, day, pick)
-    })
+  // Deux passes : (1) schémas appris du remplissage manuel, sur toutes les lignes, avant
+  // (2) le pool par défaut — sinon une ligne traitée plus tôt (ETT) consommerait le médecin
+  // que l'admin place d'habitude sur une ligne suivante (Stress).
+  for (const learnedOnly of stats ? [true, false] : [false]) {
+    for (const { row, pool } of fillTargets()) {
+      if (!next[row]) continue
+      WEEKDAYS.forEach((day, di) => {
+        if (!isEmptyOpen(next, row, day)) return
+        // Schémas du remplissage manuel d'abord (médecins éligibles à la ligne), puis le pool par défaut.
+        const learned = learnedCandidates(stats, row, day).filter((d) => isEligibleForRow(row, d))
+        let candidates = learnedOnly ? learned : [...new Set([...learned, ...pool(di + weekNum)])]
+        // ETT : deux salles = deux médecins différents quand c'est possible
+        // (le même médecin sur les deux n'est qu'un dernier recours).
+        const sibling = row.endsWith("ETT salle 2")
+          ? row.replace("salle 2", "salle 1")
+          : row.endsWith("ETT salle 1")
+            ? row.replace("salle 1", "salle 2")
+            : null
+        if (sibling) {
+          const taken = cellValues(next, sibling, day)
+          candidates = [...candidates.filter((d) => !taken.includes(d)), ...candidates.filter((d) => taken.includes(d))]
+        }
+        const pick = candidates.find((doc) => canAssign(next, weekKey, doc, row, day, vacations))
+        if (pick) next = setProposal(next, row, day, pick)
+      })
+    }
   }
   return next
 }
@@ -320,18 +347,53 @@ export function validateProposalsLikeManual(
   return next
 }
 
+/**
+ * Binôme d'une infirmière sur Stress / EE : le médecin que l'admin associe d'habitude à
+ * cette infirmière sur cette case (schémas appris). Sans historique : case laissée telle quelle.
+ */
+const NURSE_BINOME_ROWS_REPLAY = ["Matin - Stress", "Apm - Stress", "Matin - EE1", "Apm - EE1", "Matin - EE2", "Apm - EE2"]
+
+function fillNursePartnersFromHistory(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[],
+  stats?: PatternStats,
+): ScheduleData {
+  if (!stats) return schedule
+  let next = schedule
+  for (const row of NURSE_BINOME_ROWS_REPLAY) {
+    for (const day of WEEKDAYS) {
+      const cell = next[row]?.[day]
+      if (!cell || cell.manuallyCleared) continue
+      const values = cell.value || []
+      const nurses = values.filter((v) => (NURSES as readonly string[]).includes(v))
+      if (nurses.length === 0 || values.some((v) => !(NURSES as readonly string[]).includes(v))) continue
+      if (cell.status !== "pending" && cell.manualAssignment) continue
+      const nurse = nurses[0]
+      const partner = learnedPartners(stats, row, day, nurse).find(
+        (d) => isEligibleForRow(row, d) && canAssign(next, weekKey, d, row, day, vacations),
+      )
+      if (!partner) continue
+      next = withCell(next, row, day, { ...cell, value: [...values, partner], type: "doctor", status: "pending" })
+    }
+  }
+  return next
+}
+
 /** Point d'entrée : à appeler sur les propositions du solveur (idempotent). */
 export function applyClinicalPriorityRules(
   schedule: ScheduleData,
   weekKey: string,
   vacations: DoctorVacation[] = [],
   rejected: RejectedProposal[] = [],
+  stats?: PatternStats,
 ): ScheduleData {
   // 0. Mêmes règles que l'affectation manuelle, appliquées à chaque proposition
   let next = validateProposalsLikeManual(schedule, weekKey, vacations, rejected)
   next = enforceUCsTesseeGuardRule(next)
   next = fillCoroFirst(next, weekKey, vacations)
   next = enforceCoroPrecedenceAndRules(next)
-  next = fillByPriority(next, weekKey, vacations)
+  next = fillNursePartnersFromHistory(next, weekKey, vacations, stats)
+  next = fillByPriority(next, weekKey, vacations, stats)
   return next
 }

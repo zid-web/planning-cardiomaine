@@ -85,6 +85,7 @@ import { isSlotClosed } from "@/lib/closed-slots"
 import { generateGuardsViaAPI } from "@/app/actions/guard-api-actions"
 import { defaultWeekGenerationParams, toSolverWeekGenerationOverrides } from "@/lib/week-generation-params"
 import { mondayOfWeekKey } from "@/lib/semester-guard-slots"
+import { buildPatternStatsFromFull } from "@/lib/pattern-replay"
 import { holidayNameForWeekDay, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import { isVisiteRow, spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
 import { Switch } from "@/components/ui/switch"
@@ -747,7 +748,12 @@ export function ScheduleApp({
     // corrige localement les propositions du solveur externe, qui ne
     // connaît pas ces règles fines. Ne touche jamais une case déjà remplie
     // manuellement (voir lib/clinical-rotation-diversity.ts).
-    mergedWeekSchedule = applyClinicalRotationRules(mergedWeekSchedule, currentWeekKey, vacations)
+    mergedWeekSchedule = applyClinicalRotationRules(
+      mergedWeekSchedule,
+      currentWeekKey,
+      vacations,
+      buildPatternStatsFromFull(fullScheduleRef.current, currentWeekKey),
+    )
 
     const updatedFullSchedule = { ...fullSchedule, [currentWeekKey]: mergedWeekSchedule }
     setFullSchedule(updatedFullSchedule)
@@ -861,7 +867,7 @@ export function ScheduleApp({
         previousSundayGuardDoctor: sunday,
         isFreshWeek: !existing,
       })
-      merged = applyClinicalRotationRules(merged, wk, vacations)
+      merged = applyClinicalRotationRules(merged, wk, vacations, buildPatternStatsFromFull(fullScheduleRef.current, wk))
 
       const saved = await saveScheduleToDb(wk, merged, currentUser || "unknown", { source: "solver" })
       if (saved?.error) return { ok: false, error: saved.error, before }
