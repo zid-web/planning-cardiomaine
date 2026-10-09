@@ -40,7 +40,23 @@ export const getWeekDates = (date: Date) => {
   return dates
 }
 
-export const getFrenchPublicHolidays = (year: number) => {
+const holidaysCache = new Map<number, Record<string, string>>()
+
+/**
+ * Jours fériés d'une année (clés `dd/mm/yyyy`). Mis en cache par année : le calcul
+ * (Pâques + trois `toLocaleDateString`) est coûteux et appelé pour chaque case de
+ * la grille globale à chaque rendu. L'objet retourné est partagé : ne pas le modifier.
+ */
+export const getFrenchPublicHolidays = (year: number): Record<string, string> => {
+  let cached = holidaysCache.get(year)
+  if (!cached) {
+    cached = computeFrenchPublicHolidays(year)
+    holidaysCache.set(year, cached)
+  }
+  return cached
+}
+
+const computeFrenchPublicHolidays = (year: number): Record<string, string> => {
   const holidays: Record<string, string> = {
     [`01/01/${year}`]: "Jour de l'an",
     [`01/05/${year}`]: "Fête du travail",

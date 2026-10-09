@@ -25,8 +25,15 @@ export function holidayNameForIsoDate(iso: string | null | undefined): string | 
   return getFrenchPublicHolidays(Number(y))[`${d}/${m}/${y}`] ?? null
 }
 
+const weekDayHolidayCache = new Map<string, string | null>()
+
 export function holidayNameForWeekDay(weekKey: string, day: string): string | null {
-  return holidayNameForIsoDate(dateStrForWeekDay(weekKey, day))
+  const key = `${weekKey}|${day}`
+  const hit = weekDayHolidayCache.get(key)
+  if (hit !== undefined) return hit
+  const name = holidayNameForIsoDate(dateStrForWeekDay(weekKey, day))
+  weekDayHolidayCache.set(key, name)
+  return name
 }
 
 /** La case est-elle fermée parce que c'est un jour férié ? */
