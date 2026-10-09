@@ -44,7 +44,7 @@ export default function PlanningPage() {
     data: fullSchedule,
     isLoading: scheduleLoading,
     mutate,
-  } = useSWR(authReady ? "full-schedule" : null, fetchFullSchedule, {
+  } = useSWR("full-schedule", fetchFullSchedule, {
     revalidateOnFocus: true,
     dedupingInterval: 10_000,
   })
