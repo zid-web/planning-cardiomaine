@@ -257,8 +257,8 @@ function main() {
   r = canAssignDoctorToSlot("H", "2026-07-20", "Matin - EE1", "LUNDI", sched, [])
   assert.equal(r.allowed, false, "EE1 matin non assignable le lundi")
   assert.match(r.reason || "", /EE1 n’ouvre le matin que le jeudi/)
-  // (H est déjà sur LFB le jeudi dans une semaine vierge — on teste avec G)
-  r = canAssignDoctorToSlot("G", "2026-07-23", "Matin - EE1", "JEUDI", sched, [])
+  // (H est déjà sur LFB le jeudi dans une semaine vierge — on teste avec O (seul O, V, DAAS peuvent être seuls en EE))
+  r = canAssignDoctorToSlot("O", "2026-07-23", "Matin - EE1", "JEUDI", sched, [])
   assert.equal(r.allowed, true, `EE1 matin assignable le jeudi: ${r.reason}`)
 
   sched["Matin - EE1"].LUNDI = { value: ["H"], type: "doctor", status: "validated" }

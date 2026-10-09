@@ -19,7 +19,7 @@
 import { NCT_DOCTORS } from "@/lib/nct-calendar"
 import { DAYS } from "@/lib/constants"
 import { isListedDoctor } from "@/lib/doctor-code"
-import { isAtlEligibleForCell, isCoroEligibleDoctor, isCoroEligibleForCell } from "@/lib/group-clinical-rules"
+import { DOC022_FIXED_CLINICAL_SLOTS, isAtlEligibleForCell, isCoroEligibleDoctor, isCoroEligibleForCell } from "@/lib/group-clinical-rules"
 import { HALF_DAY_OFF_APM_ROW, HALF_DAY_OFF_MATIN_ROW, hasHabitualAfternoonOff } from "@/lib/half-day-off"
 import {
   appendSpecialDoctorLabel,
@@ -76,6 +76,9 @@ export const NON_BLOCKING_ROWS: readonly string[] = [
 export function isNonBlockingRow(rowKey: string): boolean {
   return NON_BLOCKING_ROWS.includes(rowKey)
 }
+
+/** Seuls médecins pouvant occuper EE1 / EE2 sans Val ni Véro (consigne utilisateur). */
+export const EE_SOLO_DOCTORS: readonly string[] = ["O", "V", "DAAS"]
 
 /** Code de l’interne (associé à un médecin sur Garde Matin). */
 export const INTERN_CODE = "I"
@@ -755,6 +758,43 @@ export function canAssignDoctorToSlot(
         return {
           allowed: false,
           reason: `${doctorId} n'est pas un partenaire valide pour ${otherNurse} sur cette vacation.`,
+        }
+      }
+    }
+  }
+
+  // EE1 / EE2 : un médecin n'y est qu'en binôme avec Val ou Véro — seuls O, V et DAAS
+  // peuvent occuper une salle EE seuls. Une infirmière présente sur les deux salles n'a
+  // qu'un seul médecin partenaire (le même sur EE1 et EE2).
+  if (/ - EE[12]$/.test(rowKey) && !isNurse(doctorId)) {
+    const here = schedule[rowKey]?.[day]?.value || []
+    const nursesHere = here.filter((d) => isNurse(d))
+    // Exception : créneau EE fixe DOC022 (ex. T, EE1 mercredi après-midi) tenu seul par consigne.
+    const isFixedEeSlot = DOC022_FIXED_CLINICAL_SLOTS.some(
+      (f) => f.row === rowKey && f.day === day && f.doctor === doctorId,
+    )
+    if (nursesHere.length === 0 && !EE_SOLO_DOCTORS.includes(doctorId) && !isFixedEeSlot) {
+      return {
+        allowed: false,
+        reason: `${doctorId} ne peut pas occuper EE seul : seuls O, V et DAAS le peuvent, les autres médecins sont en binôme avec Val ou Véro.`,
+      }
+    }
+    if (nursesHere.length > 0) {
+      const otherDoctor = here.find((d) => !isNurse(d) && d !== doctorId && isListedDoctor(d) && d !== "CH")
+      if (otherDoctor) {
+        return {
+          allowed: false,
+          reason: `${nursesHere[0]} n'a qu'un seul médecin en binôme sur EE (déjà ${otherDoctor}).`,
+        }
+      }
+      const siblingRow = rowKey.endsWith("EE1") ? rowKey.replace("EE1", "EE2") : rowKey.replace("EE2", "EE1")
+      const sibling = schedule[siblingRow]?.[day]?.value || []
+      const sharedNurse = nursesHere.find((n) => sibling.includes(n))
+      const siblingDoctor = sibling.find((d) => !isNurse(d) && isListedDoctor(d) && d !== "CH")
+      if (sharedNurse && siblingDoctor && siblingDoctor !== doctorId) {
+        return {
+          allowed: false,
+          reason: `${sharedNurse} occupe EE1 et EE2 : le même médecin (${siblingDoctor}) sur les deux salles.`,
         }
       }
     }
