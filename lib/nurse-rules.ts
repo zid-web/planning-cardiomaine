@@ -309,6 +309,45 @@ export function ensureValOnBothEeRooms(schedule: ScheduleData): ScheduleData {
   return next
 }
 
+/**
+ * Véro (ou Laura) sur **les deux** salles EE d'un créneau : un seul médecin partenaire, le
+ * même sur EE1 et EE2 — le médecin posé sur une salle est recopié sur l'autre si elle n'en a pas.
+ */
+export function mirrorEeDoctorForSharedNurse(schedule: ScheduleData): ScheduleData {
+  let next = schedule
+  const days = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]
+  for (const day of days) {
+    for (const [roomA, roomB] of EE_ROOM_PAIRS) {
+      const a = next[roomA]?.[day]
+      const b = next[roomB]?.[day]
+      if (!a || !b) continue
+      const nurseA = (a.value || []).filter((d) => isNurse(d))
+      const nurseB = (b.value || []).filter((d) => isNurse(d))
+      const shared = nurseA.find((n) => nurseB.includes(n))
+      if (!shared) continue
+      const docA = (a.value || []).find((d) => !isNurse(d))
+      const docB = (b.value || []).find((d) => !isNurse(d))
+      if (!docA === !docB) continue // les deux ont un médecin, ou aucun
+      const [source, target, targetCell] = docA ? [roomA, roomB, b] : [roomB, roomA, a]
+      if (targetCell.manuallyCleared) continue
+      const doctor = docA || docB
+      next = {
+        ...next,
+        [target]: {
+          ...next[target],
+          [day]: {
+            ...targetCell,
+            value: Array.from(new Set([...(targetCell.value || []), doctor as string])),
+            type: "doctor",
+            status: targetCell.status === "pending" || next[source][day].status === "pending" ? "pending" : "validated",
+          },
+        },
+      }
+    }
+  }
+  return next
+}
+
 export function ensureNurseDoctorBinomeProposals(
   schedule: ScheduleData,
   weekKey: string,

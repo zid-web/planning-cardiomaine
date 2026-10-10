@@ -35,7 +35,7 @@ import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
 import type { EquityCounts } from "@/lib/equity-tracking"
 import { applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { applyStressAndDRules } from "@/lib/stress-rules"
-import { ensureNurseDoctorBinomeProposals, ensureValOnBothEeRooms } from "@/lib/nurse-rules"
+import { ensureNurseDoctorBinomeProposals, ensureValOnBothEeRooms, mirrorEeDoctorForSharedNurse } from "@/lib/nurse-rules"
 import { applyWeekendWomRules, isRemplacantOnlyWeekendGarde } from "@/lib/weekend-wom-rules"
 import { chNightWeekdaysForWeek, isChAstreinteWeek } from "@/lib/astreinte-cycle"
 import {
@@ -988,6 +988,7 @@ export function applyStructuralConstraints(
     // Val sur EE = les deux salles, avec le même médecin. Après le couplage
     // binôme, pour que le médecin recopié soit celui réellement retenu.
     next = ensureValOnBothEeRooms(next)
+    next = mirrorEeDoctorForSharedNurse(next)
   }
 
   // 13) Jour férié : plus rien hors ATL / Gardes, quoi qu'ait (re)posé la chaîne.

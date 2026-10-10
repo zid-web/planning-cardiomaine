@@ -73,15 +73,15 @@ function main() {
 
   // Doublon EE = EE1 + EE2 (comme ETT), pas 2× dans la même case
   schedule = generateWeekSchedule(weekKey, [])
-  schedule["Matin - EE1"].LUNDI.value = ["G"]
-  r = canAssignDoctorToSlot("G", "2026-07-20", "Matin - EE2", "LUNDI", schedule, [])
+  schedule["Matin - EE1"].LUNDI.value = ["O"]
+  r = canAssignDoctorToSlot("O", "2026-07-20", "Matin - EE2", "LUNDI", schedule, [])
   assert.equal(r.allowed, true, r.reason)
-  schedule["Matin - EE2"].LUNDI.value = ["G"]
-  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "G", "Matin - EE1"), "G²")
-  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "G", "Matin - EE2"), "G²")
+  schedule["Matin - EE2"].LUNDI.value = ["O"]
+  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "O", "Matin - EE1"), "O²")
+  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "O", "Matin - EE2"), "O²")
   // Une seule salle → pas encore doublon
   schedule["Matin - EE2"].LUNDI.value = []
-  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "G", "Matin - EE1"), "G")
+  assert.equal(formatDoctorWithDoublon(schedule, "LUNDI", "O", "Matin - EE1"), "O")
   // Apm EE
   schedule["Apm - EE1"].LUNDI.value = ["DAAS"]
   schedule["Apm - EE2"].LUNDI.value = ["DAAS"]
@@ -137,6 +137,8 @@ function main() {
   r = canAssignDoctorToSlot("G", "2026-07-22", "Matin - ETT salle 1", "MERCREDI", schedule, [])
   assert.equal(r.allowed, true, r.reason)
   // EE1 matin est fermée le mercredi → on vérifie le cumul sur EE2
+  // (EE : un médecin n'y est qu'en binôme avec Val/Véro — seuls O, V, DAAS peuvent y être seuls)
+  schedule["Matin - EE2"].MERCREDI.value = ["Val"]
   r = canAssignDoctorToSlot("G", "2026-07-22", "Matin - EE2", "MERCREDI", schedule, [])
   assert.equal(r.allowed, true, r.reason)
   r = canAssignDoctorToSlot("G", "2026-07-22", "Matin - EE1", "MERCREDI", schedule, [])
@@ -167,6 +169,7 @@ function main() {
   schedule = generateWeekSchedule(weekKey, [])
   schedule["Garde Matin"].LUNDI.value = ["S", INTERN_CODE]
   schedule["Hors site - IRM"].LUNDI.value = []
+  schedule["Matin - EE2"].LUNDI.value = ["Véro"]
   r = canAssignDoctorToSlot("S", "2026-07-20", "Matin - EE2", "LUNDI", schedule, [])
   assert.equal(r.allowed, true, `S+I+EE: ${r.reason}`)
 
@@ -313,6 +316,7 @@ function main() {
   // applySlotBlockingStrips ne le retire pas des autres cases.
   schedule = generateWeekSchedule("2026-W40", [])
   schedule["1/2 journée off Après-midi"].MARDI = { value: ["Z"], type: "doctor", status: "validated" }
+  schedule["Apm - EE1"].MARDI = { value: ["Val"], type: "doctor", status: "validated" }
   r = canAssignDoctorToSlot("Z", "2026-09-29", "Apm - EE1", "MARDI", schedule, [])
   assert.equal(r.allowed, true, "½ off apm de récupération n'empêche pas Z d'être affecté")
   schedule["Apm - EE1"].MARDI = { value: ["Z"], type: "doctor", status: "validated" }
