@@ -17,7 +17,7 @@ import { getCellDisplayAssignees, isListedDoctor } from "@/lib/doctor-code"
 import { formatDoctorWithDoublon } from "@/lib/slot-blocking"
 import { isSolverProposalCell } from "@/lib/guard-api-mapping"
 import { isOffSiteRow, offSiteSlotOf, OFF_SITE_SLOT_BADGES } from "@/lib/off-site-slots"
-import { isSlotClosed } from "@/lib/closed-slots"
+import { isIdleHorsSiteGrey, isSlotClosed } from "@/lib/closed-slots"
 import { isNctClosedOnDate } from "@/lib/nct-calendar"
 import { holidayNameForWeekDay, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import type { CellData, ScheduleData } from "@/lib/types"
@@ -389,7 +389,9 @@ export async function buildPlanningPdf(
         page.drawRectangle({ x, y: top - rowH, width: colW, height: rowH, color: tw([0, 0, 0], 0.4) })
         return
       }
-      if (d.holiday) page.drawRectangle({ x, y: top - rowH, width: colW, height: rowH, color: tw([255, 241, 242]) })
+      if (isIdleHorsSiteGrey(rowKey, d.day, assignees.length > 0)) {
+        page.drawRectangle({ x, y: top - rowH, width: colW, height: rowH, color: tw([203, 213, 225], 0.8) })
+      } else if (d.holiday) page.drawRectangle({ x, y: top - rowH, width: colW, height: rowH, color: tw([255, 241, 242]) })
       else if (d.school) page.drawRectangle({ x, y: top - rowH, width: colW, height: rowH, color: tw([255, 251, 235]) })
       if (proposal) {
         page.drawRectangle({

@@ -72,6 +72,22 @@ export function isOutsideUsualHorsSiteDay(rowKey: string, day: string): boolean 
   return Boolean(usual) && !usual.includes(day)
 }
 
+/** Lignes hors site grisées quand elles sont inoccupées hors de leurs jours d'affectation. */
+const IDLE_GREY_ROWS = ["Hors site - CDL", "Hors site - LFB", "Hors site - PSSL", "Hors site - IRM"] as const
+
+/**
+ * Case hors site **inoccupée** un jour hors affectation (CDL mardi, LFB/PSSL jeudi, IRM lundi et
+ * vendredi) : grisée à l'affichage, mais toujours modifiable — dès qu'un médecin y est saisi, elle
+ * redevient normale. (NCT : grisée selon le calendrier NCT, voir `isNctClosedOnDate`.)
+ */
+export function isIdleHorsSiteGrey(rowKey: string, day: string, hasAssignee: boolean): boolean {
+  return (
+    !hasAssignee &&
+    (IDLE_GREY_ROWS as readonly string[]).includes(rowKey) &&
+    isOutsideUsualHorsSiteDay(rowKey, day)
+  )
+}
+
 /** Motif affiché pour une fermeture structurelle. */
 const STRUCTURAL_CLOSED_REASONS: Record<string, string> = {
   "Apm - RÉEDUCATION": "Pas de rééducation le mardi ni le jeudi.",
