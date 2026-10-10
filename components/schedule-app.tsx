@@ -81,7 +81,7 @@ import {
   sisterRoomForDoublon,
 } from "@/lib/slot-blocking"
 import { appendSpecialDoctorLabel } from "@/lib/special-activity-labels"
-import { isSlotClosed } from "@/lib/closed-slots"
+import { isIdleHorsSiteGrey, isSlotClosed } from "@/lib/closed-slots"
 import { generateGuardsViaAPI } from "@/app/actions/guard-api-actions"
 import { defaultWeekGenerationParams, toSolverWeekGenerationOverrides } from "@/lib/week-generation-params"
 import { mondayOfWeekKey } from "@/lib/semester-guard-slots"
@@ -3217,6 +3217,9 @@ export function ScheduleApp({
                                   const schoolHoliday = !isHoliday ? schoolHolidayOfDay(day) : null
                                   const isRestrictedHoliday = isHoliday && !isAllowedOnHoliday(rowKey)
                                   const cellBlocked = isCellBlocked(rowKey, day)
+                                  // Hors site inoccupé hors de ses jours d'affectation : grisé mais modifiable
+                                  const idleHorsSite =
+                                    !cellBlocked && isIdleHorsSiteGrey(rowKey, day, displayAssignees.length > 0)
                                   const isMyShift = Boolean(highlightMyShifts && doctorCode && displayAssignees.includes(doctorCode))
 
                                   return (
@@ -3229,6 +3232,7 @@ export function ScheduleApp({
                                           : "cursor-pointer hover:bg-gray-50",
                                         isHoliday && "bg-rose-50 border-l-4 border-r-4 border-rose-300",
                                         schoolHoliday && !cellBlocked && "bg-amber-50",
+                                        idleHorsSite && "bg-slate-300/80 hover:bg-slate-300",
                                         isMyShift && !cellBlocked && "bg-blue-100/90 ring-2 ring-blue-600 shadow-sm z-10 font-bold",
                                         // Proposition solveur « Générer » — distincte des fixes (validated)
                                         // et des demandes de changement (anneau orange sur badge).
@@ -3250,6 +3254,7 @@ export function ScheduleApp({
                                       title={
                                         holidayName ||
                                         (schoolHoliday ? `Vacances scolaires zone B : ${schoolHoliday.name}` : "") ||
+                                        (idleHorsSite ? "Hors jour d'affectation — cliquer pour saisir" : "") ||
                                         (cellBlocked
                                           ? "Case bloquée"
                                           : isSolverProposal
