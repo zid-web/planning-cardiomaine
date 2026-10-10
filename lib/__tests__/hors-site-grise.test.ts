@@ -25,9 +25,12 @@ async function main() {
   assert.equal(isIdleHorsSiteGrey("Hors site - CDL", "LUNDI", true), false)
   assert.equal(isIdleHorsSiteGrey("Hors site - IRM", "MERCREDI", true), false)
 
-  // Jamais fermées (toujours modifiables) ; Scinti et autres lignes non concernées
+  // Jamais fermées (toujours modifiables) ; autres lignes non concernées
   assert.equal(isSlotClosed("Hors site - CDL", "LUNDI"), false)
-  assert.equal(isIdleHorsSiteGrey("Hors site - Scinti", "JEUDI", false), false)
+  // Scinti : lundi, mardi, mercredi ; grisée jeudi et vendredi si inoccupée
+  for (const d of ["LUNDI", "MARDI", "MERCREDI"]) assert.equal(isIdleHorsSiteGrey("Hors site - Scinti", d, false), false)
+  for (const d of ["JEUDI", "VENDREDI"]) assert.equal(isIdleHorsSiteGrey("Hors site - Scinti", d, false), true)
+  assert.equal(isIdleHorsSiteGrey("Hors site - Scinti", "JEUDI", true), false)
   assert.equal(isIdleHorsSiteGrey("Matin - Cs PSS", "LUNDI", false), false)
   assert.equal(isIdleHorsSiteGrey("Hors site - NCT", "LUNDI", false), false, "NCT : calendrier NCT")
 
