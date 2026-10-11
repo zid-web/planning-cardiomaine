@@ -86,6 +86,7 @@ import { generateGuardsViaAPI } from "@/app/actions/guard-api-actions"
 import { defaultWeekGenerationParams, toSolverWeekGenerationOverrides } from "@/lib/week-generation-params"
 import { mondayOfWeekKey } from "@/lib/semester-guard-slots"
 import { buildPatternStatsFromFull } from "@/lib/pattern-replay"
+import { computeRuleConflicts, ruleConflictKey } from "@/lib/rule-conflicts"
 import { holidayNameForWeekDay, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import { isVisiteRow, spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
 import { Switch } from "@/components/ui/switch"
@@ -753,6 +754,7 @@ export function ScheduleApp({
       currentWeekKey,
       vacations,
       buildPatternStatsFromFull(fullScheduleRef.current, currentWeekKey),
+      { previousSundayGuardDoctor },
     )
 
     const updatedFullSchedule = { ...fullSchedule, [currentWeekKey]: mergedWeekSchedule }
@@ -867,7 +869,9 @@ export function ScheduleApp({
         previousSundayGuardDoctor: sunday,
         isFreshWeek: !existing,
       })
-      merged = applyClinicalRotationRules(merged, wk, vacations, buildPatternStatsFromFull(fullScheduleRef.current, wk))
+      merged = applyClinicalRotationRules(merged, wk, vacations, buildPatternStatsFromFull(fullScheduleRef.current, wk), {
+        previousSundayGuardDoctor: sunday,
+      })
 
       const saved = await saveScheduleToDb(wk, merged, currentUser || "unknown", { source: "solver" })
       if (saved?.error) return { ok: false, error: saved.error, before }
@@ -931,6 +935,16 @@ export function ScheduleApp({
       isFreshWeek: !fullSchedule[weekKey],
     })
   }, [fullSchedule, weekKey, vacations, vacationsReady, previousSundayGuardDoctor, nctCalendar])
+
+  // Incohérences (nuits consécutives, créneau déjà pris, case fermée…) : même validation que la
+  // saisie manuelle, calculée une fois par planning affiché — seulement sur la vue Globale.
+  const ruleConflicts = useMemo(
+    () =>
+      activeTab === "all"
+        ? computeRuleConflicts(schedule, weekKey, vacations, { previousSundayGuardDoctor })
+        : new Map<string, string>(),
+    [activeTab, schedule, weekKey, vacations, previousSundayGuardDoctor],
+  )
 
   // Persiste les contraintes quand la semaine ou les congés changent (debounce court)
   // → toutes les semaines déjà en mémoire + la semaine affichée (répercussion immédiate CRUD)
@@ -1837,6 +1851,7 @@ export function ScheduleApp({
       const validation = canAssignDoctor(doctor, dateStr, selectedCell.row, vacations, {
         schedule,
         day: selectedCell.day,
+        previousSundayGuardDoctor,
       })
       if (!validation.allowed) {
         toast.error(validation.reason || "Assignation impossible")
@@ -3298,9 +3313,17 @@ export function ScheduleApp({
                                             dayDate.setDate(dayDate.getDate() + dayIndex)
                                             const dateStr = dayDate.toISOString().split("T")[0]
                                             const listed = isListedDoctor(doc)
-                                            const conflict = listed
+                                            const vacationConflict = listed
                                               ? detectConflict(doc, dateStr, rowKey, vacations)
                                               : { hasConflict: false as const }
+                                            const ruleReason = listed
+                                              ? ruleConflicts.get(ruleConflictKey(rowKey, day, doc))
+                                              : undefined
+                                            const conflict = vacationConflict.hasConflict
+                                              ? vacationConflict
+                                              : ruleReason
+                                                ? { hasConflict: true as const, message: ruleReason }
+                                                : { hasConflict: false as const }
                                             const label = listed
                                               ? formatDoctorWithDoublon(schedule, day, doc, rowKey)
                                               : doc
