@@ -24,6 +24,7 @@
  */
 import { DAYS } from "@/lib/constants"
 import { applyClinicalPriorityRules } from "@/lib/clinical-priority"
+import { doctorsOnStress } from "@/lib/stress-weekly"
 import type { PatternStats } from "@/lib/pattern-replay"
 import { dateStrForWeekDay } from "@/lib/fixed-assignments"
 import { canAssignDoctorToSlot, type AssignmentContext } from "@/lib/slot-blocking"
@@ -104,15 +105,12 @@ function diversifyStress(schedule: ScheduleData, weekKey: string, vacations: Doc
       const doctor = cellDoctor(next, row, day)
       if (!doctor || !prevDoctors.has(doctor)) continue
       if (!isPending(next, row, day)) continue // jamais toucher une case validée manuellement
-      const replacement = pickReplacement(
-        next,
-        weekKey,
-        row,
-        day,
-        pool,
-        [...prevDoctors],
-        vacations,
-      )
+      // Roulement : on évite aussi les médecins déjà au Stress cette semaine, tant qu'il en reste
+      // de disponibles ; sinon on retombe sur la seule exclusion de la veille.
+      const usedThisWeek = doctorsOnStress(next, { row, day })
+      const replacement =
+        pickReplacement(next, weekKey, row, day, pool, [...prevDoctors, ...usedThisWeek], vacations) ??
+        pickReplacement(next, weekKey, row, day, pool, [...prevDoctors], vacations)
       if (replacement) {
         next = setDoctor(next, row, day, replacement, "pending")
       }
