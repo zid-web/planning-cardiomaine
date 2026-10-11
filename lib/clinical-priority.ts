@@ -26,6 +26,7 @@ import { isOutsideUsualHorsSiteDay } from "@/lib/closed-slots"
 import { learnedCandidates, learnedPartners, type PatternStats } from "@/lib/pattern-replay"
 import { DOC022_CLINICAL_ELIGIBILITY } from "@/lib/group-clinical-rules"
 import { DAYS, NURSES } from "@/lib/constants"
+import { doctorsOnStress, isStressRow, STRESS_ROWS } from "@/lib/stress-weekly"
 import type { CellData, DoctorVacation, ScheduleData } from "@/lib/types"
 
 const WEEKDAYS = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI"] as const
@@ -35,6 +36,7 @@ const CORO_GROUP = ["M", "O", "W"] as const
 const ECHO_GROUP = ["H", "Z", "G", "B", "S"] as const
 const CS_PSS_EXCLUDED = ["U", "B", "S"]
 const GARDE_ROWS = ["Garde Matin", "Garde Midi", "Garde Nuit"] as const
+const PRE_OP_POOL = ["A", "H", "W", "B", "Z", "K", "G", "S"] as const
 
 function rot<T>(arr: readonly T[], k: number): T[] {
   if (arr.length === 0) return []
@@ -188,7 +190,7 @@ function fillTargets(): FillTarget[] {
   const csPssPool = (k: number) =>
     [...rot(CORO_GROUP, k), "P", "A", ...rot(["H", "Z", "G"], k), "K"].filter((d) => !CS_PSS_EXCLUDED.includes(d))
   const csTesseePool = () => ["B", "S", "V", "U"]
-  const preOpPool = () => ["A", "H", "W", "B", "Z", "K", "G", "S"]
+  const preOpPool = (k: number) => rot(PRE_OP_POOL, k)
 
   const targets: FillTarget[] = []
   for (const p of SLOTS) {
@@ -248,12 +250,168 @@ function fillByPriority(
           const taken = cellValues(next, sibling, day)
           candidates = [...candidates.filter((d) => !taken.includes(d)), ...candidates.filter((d) => taken.includes(d))]
         }
+        // Stress : un médecin déjà au Stress cette semaine passe après les autres (roulement) ;
+        // il n'est repris qu'en dernier recours, s'il n'y a pas assez de médecins disponibles.
+        if (isStressRow(row)) {
+          const used = doctorsOnStress(next, { row, day })
+          candidates = [...candidates.filter((d) => !used.has(d)), ...candidates.filter((d) => used.has(d))]
+        }
+        if (row === "Pré-op") {
+          const used = new Set(WEEKDAYS.flatMap((d) => cellValues(next, "Pré-op", d)))
+          candidates = [...candidates.filter((d) => !used.has(d)), ...candidates.filter((d) => used.has(d))]
+        }
         const pick = candidates.find((doc) => canAssign(next, weekKey, doc, row, day, vacations))
         if (pick) next = setProposal(next, row, day, pick)
       })
     }
   }
   return next
+}
+
+/**
+ * Une seule fois par semaine par médecin sur un groupe de lignes (Stress : roulement ; Pré-op :
+ * un médecin différent chaque jour), quand il y a assez de médecins disponibles. Affectation
+ * maximale (chemins augmentants) sur les cases libres — propositions du solveur modifiables et
+ * cases vides ouvertes — avec les mêmes règles que la saisie manuelle ; les propositions déjà
+ * valides et uniques sont conservées (stabilité, idempotent). Sans assez de médecins disponibles
+ * (congés, absences), la répétition est tolérée plutôt que de laisser la case vide.
+ */
+function enforceDistinctPerWeek(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[],
+  cfg: { rows: readonly string[]; order: readonly string[]; stats?: PatternStats },
+): ScheduleData {
+  const isProposalDoctor = (d: string) =>
+    isListedDoctor(d) && !(NURSES as readonly string[]).includes(d) && d !== "CH" && d !== "FV"
+
+  const cells: Array<{ row: string; day: string }> = []
+  for (const day of WEEKDAYS) for (const row of cfg.rows) if (schedule[row]?.[day]) cells.push({ row, day })
+  const free = cells.filter(
+    ({ row, day }) => isMovableProposal(row, schedule[row]?.[day]) || isEmptyOpen(schedule, row, day),
+  )
+  if (free.length === 0) return schedule
+
+  // Base : les médecins proposés sont retirés des cases libres (infirmières, CH, FV conservés).
+  let base = schedule
+  const original = new Map<string, string[]>()
+  for (const { row, day } of free) {
+    const cell = base[row]![day]!
+    const proposed = (cell.value || []).filter(isProposalDoctor)
+    original.set(`${row}||${day}`, proposed)
+    if (proposed.length) {
+      const kept = cell.value.filter((v) => !isProposalDoctor(v))
+      base = withCell(base, row, day, { ...cell, value: kept, type: kept.length ? cell.type : "empty" })
+    }
+  }
+
+  // Médecins tenant une case non libre (validée / manuelle / fixe) : ils comptent d'office.
+  const freeKeys = new Set(free.map((c) => `${c.row}||${c.day}`))
+  const fixedUsed = new Set<string>()
+  for (const { row, day } of cells) {
+    if (freeKeys.has(`${row}||${day}`)) continue
+    for (const d of cellValues(base, row, day)) if (isProposalDoctor(d)) fixedUsed.add(d)
+  }
+
+  // Candidats autorisés (règles de la saisie manuelle) : médecin déjà proposé, schéma appris, puis roulement.
+  const allowed: string[][] = free.map(({ row, day }) => {
+    const current = original.get(`${row}||${day}`) || []
+    const learned = learnedCandidates(cfg.stats, row, day)
+    return [...new Set([...current, ...learned, ...cfg.order])].filter((d) => canAssign(base, weekKey, d, row, day, vacations))
+  })
+
+  const owner = new Map<string, number>() // médecin → index de case
+  const assigned: Array<string | null> = free.map(() => null)
+  // 1. Les propositions valides et uniques sont conservées (stabilité). En cas de conflit entre
+  // deux cases, celle qui correspond au schéma appris du remplissage manuel est servie la première.
+  const matchesLearned = (ci: number) => {
+    const { row, day } = free[ci]
+    const top = learnedCandidates(cfg.stats, row, day)[0]
+    return top !== undefined && (original.get(`${row}||${day}`) || []).includes(top) ? 0 : 1
+  }
+  free
+    .map((_, ci) => ci)
+    .sort((a, b) => matchesLearned(a) - matchesLearned(b) || a - b)
+    .forEach((ci) => {
+      const { row, day } = free[ci]
+      const keep = (original.get(`${row}||${day}`) || []).find(
+        (d) => allowed[ci].includes(d) && !fixedUsed.has(d) && !owner.has(d),
+      )
+      if (keep) {
+        owner.set(keep, ci)
+        assigned[ci] = keep
+      }
+    })
+  // 2. Les autres cases : chemins augmentants (réaffecte au besoin pour que personne ne soit répété).
+  const tryAssign = (ci: number, visited: Set<string>): boolean => {
+    const candidates = allowed[ci].filter((d) => !fixedUsed.has(d) && !visited.has(d))
+    // Médecin libre d'abord ; sinon on réaffecte la case d'un autre (jamais une case conforme au schéma appris).
+    const sorted = [
+      ...candidates.filter((d) => !owner.has(d)),
+      // jamais la case qui suit le schéma appris : mieux vaut tolérer une répétition
+      ...candidates.filter((d) => owner.has(d) && matchesLearned(owner.get(d) as number) === 1),
+    ]
+    for (const d of sorted) {
+      if (visited.has(d)) continue
+      visited.add(d)
+      const holder = owner.get(d)
+      if (holder === undefined || tryAssign(holder, visited)) {
+        owner.set(d, ci)
+        assigned[ci] = d
+        return true
+      }
+    }
+    return false
+  }
+  free.forEach((_, ci) => {
+    if (!assigned[ci]) tryAssign(ci, new Set())
+  })
+
+  // 3. Écritures. Case non affectée (pas assez de médecins) : proposition d'origine conservée, ou
+  // candidat le moins déjà utilisé (répétition tolérée).
+  const usage = new Map<string, number>()
+  assigned.forEach((d) => d && usage.set(d, (usage.get(d) || 0) + 1))
+  for (const d of fixedUsed) usage.set(d, (usage.get(d) || 0) + 1)
+  let next = base
+  free.forEach(({ row, day }, ci) => {
+    let doctor = assigned[ci]
+    if (!doctor) {
+      const cur = (original.get(`${row}||${day}`) || []).find((d) => allowed[ci].includes(d))
+      doctor = cur ?? [...allowed[ci]].sort((a, b) => (usage.get(a) || 0) - (usage.get(b) || 0))[0] ?? null
+      if (doctor) usage.set(doctor, (usage.get(doctor) || 0) + 1)
+    }
+    if (!doctor) return
+    const cell = next[row]![day]!
+    next = withCell(next, row, day, {
+      ...cell,
+      value: [...(cell.value || []), doctor],
+      type: "doctor",
+      status: "pending",
+    })
+  })
+  return next
+}
+
+/** Stress : roulement — un médecin une seule fois par semaine (le moins sollicité récemment d'abord). */
+function enforceStressOncePerWeek(schedule: ScheduleData, weekKey: string, vacations: DoctorVacation[], stats?: PatternStats): ScheduleData {
+  const load = new Map<string, number>()
+  if (stats) {
+    for (const [key, bucket] of stats.slots) {
+      if (!/ - Stress\|\|/.test(key)) continue
+      for (const [doc, w] of bucket) load.set(doc, (load.get(doc) || 0) + w)
+    }
+  }
+  const order = [...DOC022_CLINICAL_ELIGIBILITY.stress]
+    .filter((d) => d !== "D") // D : Stress fixe du jeudi, jamais en roulement
+    .sort((a, b) => (load.get(a) || 0) - (load.get(b) || 0))
+  return enforceDistinctPerWeek(schedule, weekKey, vacations, { rows: STRESS_ROWS, order, stats })
+}
+
+/** Pré-op : un médecin différent chaque jour de la semaine. */
+function enforcePreOpDistinctDays(schedule: ScheduleData, weekKey: string, vacations: DoctorVacation[], stats?: PatternStats): ScheduleData {
+  const weekNum = Number.parseInt(weekKey.split("-W")[1] || "1", 10)
+  const order = rot(PRE_OP_POOL, weekNum)
+  return enforceDistinctPerWeek(schedule, weekKey, vacations, { rows: ["Pré-op"], order, stats })
 }
 
 export type RejectedProposal = { row: string; day: string; doctor: string; reason: string }
@@ -401,5 +559,7 @@ export function applyClinicalPriorityRules(
   next = enforceCoroPrecedenceAndRules(next)
   next = fillNursePartnersFromHistory(next, weekKey, vacations, stats)
   next = fillByPriority(next, weekKey, vacations, stats)
+  next = enforceStressOncePerWeek(next, weekKey, vacations, stats)
+  next = enforcePreOpDistinctDays(next, weekKey, vacations, stats)
   return next
 }
