@@ -559,6 +559,9 @@ function periodsConflict(target: DayPeriod, occupied: DayPeriod): boolean {
 /**
  * Vérifie toutes les règles bloquantes pour une assignation manuelle.
  */
+/** Médecins éligibles à la garde de nuit du vendredi (miroir de `NIGHT_GUARD_DAY_RULES.VENDREDI.only`). */
+export const FRIDAY_NIGHT_GUARD_POOL: readonly string[] = ["B", "G", "A", "P", "Z", "H", "S"]
+
 /** Contexte hors de la semaine affichée (ex. garde de nuit du dimanche précédent). */
 export type AssignmentContext = {
   previousSundayGuardDoctor?: string | null
@@ -611,6 +614,13 @@ export function canAssignDoctorToSlot(
       return {
         allowed: false,
         reason: `${doctorId} est déjà de garde la nuit du dimanche précédent — jamais deux nuits consécutives.`,
+      }
+    }
+    // Vendredi nuit : pool exclusif (O, W, M, U… jamais) — aligné `NIGHT_GUARD_DAY_RULES.VENDREDI`.
+    if (day === "VENDREDI" && isListedDoctor(doctorId) && doctorId !== "FV" && !FRIDAY_NIGHT_GUARD_POOL.includes(doctorId)) {
+      return {
+        allowed: false,
+        reason: `${doctorId} ne fait pas la garde de nuit du vendredi (réservée à ${FRIDAY_NIGHT_GUARD_POOL.join(", ")}).`,
       }
     }
     const conflict = adjacentWeekdayNightGuard(schedule, day, doctorId)

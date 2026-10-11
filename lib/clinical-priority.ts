@@ -344,10 +344,18 @@ function validateProposalsLikeManualInner(
   pending.sort((a, b) => rowPriority(a.row) - rowPriority(b.row))
 
   let next = base
+  // Bloc de garde du jour : Matin / Midi / Nuit vont ensemble — si la Garde Nuit d'un médecin est
+  // écartée, ses Garde Matin / Midi du même jour le sont aussi (sinon le couplage de la structure
+  // recopierait sa garde sur la nuit refusée).
+  const blockedGuardDays = new Set<string>()
   for (const p of pending) {
     const cell = next[p.row]?.[p.day]
     if (!cell) continue
     const dateStr = dateStrForWeekDay(weekKey, p.day)
+    if ((p.row === "Garde Matin" || p.row === "Garde Midi") && blockedGuardDays.has(`${p.day}|${p.doctor}`)) {
+      rejected.push({ row: p.row, day: p.day, doctor: p.doctor, reason: "Garde de nuit du jour refusée : le bloc de garde est écarté." })
+      continue
+    }
     // Hors site : les cases restent libres, mais le solveur ne propose que les jours habituels
     if (isOutsideUsualHorsSiteDay(p.row, p.day)) {
       rejected.push({ row: p.row, day: p.day, doctor: p.doctor, reason: "Jour habituel de cette vacation hors site non respecté." })
@@ -367,6 +375,7 @@ function validateProposalsLikeManualInner(
         status: "pending",
       })
     } else {
+      if (p.row === "Garde Nuit") blockedGuardDays.add(`${p.day}|${p.doctor}`)
       rejected.push({ row: p.row, day: p.day, doctor: p.doctor, reason: ("reason" in result && result.reason) || "Règle d'affectation" })
     }
   }
