@@ -34,6 +34,7 @@ import {
 } from "@/lib/weekend-combo-solver";
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules";
 import { astreinteWeekTypeForWeek } from "@/lib/astreinte-cycle";
+import { buildSolverRulesPayload, solverAcknowledgedRules } from "@/lib/solver-rules";
 import { setNctCalendar } from "@/lib/nct-calendar";
 import { loadNctCalendar } from "@/app/actions/nct-calendar-actions";
 
@@ -442,6 +443,12 @@ export async function generateGuardsViaAPI(
       // les consignes vocales portant sur plusieurs semaines n'étaient
       // jamais reprises par les générations normales ultérieures.
       room_maintenance: buildRoomMaintenancePayload(),
+      // Consignes de l'app (cases fermées, règles de garde, limites hebdo, cases saisies)
+      app_rules: buildSolverRulesPayload(currentWeekKey, {
+        previousSundayGuardDoctor,
+        schedule: currentScheduleForPrefs,
+        rows: currentScheduleForPrefs ? undefined : Object.keys(generateWeekSchedule(currentWeekKey)),
+      }),
       // Week-end combo M/O/W (uniquement semaines calendrier — sinon absent)
       ...(weekendComboFields ?? {}),
       // Rotations désignées admin (VISITE / LFB / PSSL) — optionnels
@@ -462,10 +469,6 @@ export async function generateGuardsViaAPI(
         : {}),
     };
 
-    require('fs').writeFileSync('/tmp/payload_s44.json', JSON.stringify(payload, null, 2));
-
-
-
     // 6. Appel à l'API Render (avec tentative de repli sans patterns si échec)
     let response = await fetch(`${GUARD_API_URL}/generate-week`, {
       method: "POST",
@@ -475,6 +478,21 @@ export async function generateGuardsViaAPI(
       },
       body: JSON.stringify(payload),
     });
+
+    // Un solveur à validation stricte peut refuser la clé inconnue `app_rules` : on retente sans.
+    let appRulesDropped = false;
+    if ((response.status === 400 || response.status === 422) && "app_rules" in payload) {
+      const { app_rules: _drop, ...payloadNoRules } = payload as Record<string, unknown>;
+      response = await fetch(`${GUARD_API_URL}/generate-week`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(GUARD_API_KEY ? { "X-API-Key": GUARD_API_KEY } : {}),
+        },
+        body: JSON.stringify(payloadNoRules),
+      });
+      appRulesDropped = true;
+    }
 
     let usingFallback = false;
     let data: any = null;
@@ -491,6 +509,7 @@ export async function generateGuardsViaAPI(
       
       const payloadFallback = {
         ...payload,
+        ...(appRulesDropped ? { app_rules: undefined } : {}),
         historical_patterns: {}, // On retire les contraintes de patterns historiques pour libérer des degrés de liberté
       };
 
@@ -516,6 +535,15 @@ export async function generateGuardsViaAPI(
         success: false,
         error: `Erreur ${response.status}: ${errorText}`,
       };
+    }
+
+    if (data) {
+      if (!data.warnings) data.warnings = [];
+      if (appRulesDropped) {
+        data.warnings.push("Le solveur a refusé le bloc de consignes (app_rules) : règles appliquées uniquement après génération.");
+      } else if (!solverAcknowledgedRules(data)) {
+        data.warnings.push("Consignes envoyées au solveur sans accusé de réception : règles appliquées après génération.");
+      }
     }
 
     if (usingFallback && data) {
