@@ -103,6 +103,10 @@ export function buildSolverRulesPayload(
       echo_rows_before_cs: ["ETT", "Stress", "Rééduc"],
       cs_filled_by: "médecins sans tâche principale",
     },
+    coro_one_each_per_day: {
+      doctors: ["M", "O", "W"], // si les trois sont présents : chacun une seule vacation (Coro matin, Coro apm ou nuit)
+      penalty: 80,
+    },
     entrees_pss: {
       row: "Entrées PSS",
       pair_days: ["LUNDI", "MARDI"], // médecin de garde d'après-midi (Garde Midi) + 1 autre médecin
