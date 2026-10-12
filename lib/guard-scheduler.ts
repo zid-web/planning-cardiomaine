@@ -60,7 +60,7 @@ export const NIGHT_GUARD_DAY_RULES: Record<
 > = {
   LUNDI: { prefer: ["U"] }, // uniquement si FV absent
   MARDI: { prefer: ["G", "B", "M", "W"] }, // consigne 13/10/2026
-  MERCREDI: { prefer: ["S", "U", "P"] },
+  MERCREDI: { prefer: ["S", "P"] }, // S prioritaire avec P (consigne 13/10/2026)
   JEUDI: { prefer: ["O", "G"] },
   VENDREDI: { only: ["B", "G", "A", "P", "Z", "H", "S", "U"] }, // tout le monde sauf O/W/M, à égalité
 }

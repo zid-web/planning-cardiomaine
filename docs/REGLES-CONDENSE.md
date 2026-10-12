@@ -14,7 +14,7 @@ Légende : **S** = envoyée au solveur dans `app_rules` (`lib/solver-rules.ts`) 
 - Jamais deux nuits consécutives pour un médecin, y compris dimanche → lundi (S+A).
 - Après une garde de nuit : demi-journée off le lendemain, pas de Coro / ATL / Rythmo (S+A).
 - Vendredi nuit : tout le monde sauf O, W, M (B, G, A, P, Z, H, S, U), à égalité sur 26 semaines (S+A). L'interne I : Garde Matin uniquement (S+A).
-- Préférences par jour (lun U, mar G/B/M/W, mer S/U/P, jeu O/G) (S).
+- Préférences par jour (lun U, mar G/B/M/W, mer S/P (à égalité ; S cumule garde et ETT pédiatrique), jeu O/G) (S).
 - Week-end : remplaçant seul possible sans médecin associé (A) ; roulement CH / W-O-M (solveur).
 
 ## Coronarographistes M, O, W

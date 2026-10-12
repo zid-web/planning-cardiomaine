@@ -263,6 +263,8 @@ export async function generateGuardsViaAPI(
     let replayStats: PatternStats | undefined;
     // Nombre de gardes de nuit du vendredi par médecin (26 sem.) : égalité du vendredi
     const fridayGuardCounts: Record<string, number> = {};
+    // Gardes de nuit par jour de semaine et par médecin (26 sem.) : égalité entre médecins préférés du jour
+    const nightGuardDayCounts: Record<string, Record<string, number>> = {};
     try {
       const supabaseHist = await createClient();
       const { data: histRows, error: histError } = await supabaseHist
@@ -281,6 +283,13 @@ export async function generateGuardsViaAPI(
         for (const sch of historical) {
           for (const d of sch["Garde Nuit"]?.VENDREDI?.value ?? []) {
             if (d && d !== "I") fridayGuardCounts[d] = (fridayGuardCounts[d] ?? 0) + 1;
+          }
+          for (const day of ["LUNDI", "MARDI", "MERCREDI", "JEUDI"]) {
+            for (const d of sch["Garde Nuit"]?.[day]?.value ?? []) {
+              if (!d || d === "I") continue;
+              const byDoc = (nightGuardDayCounts[day] ??= {});
+              byDoc[d] = (byDoc[d] ?? 0) + 1;
+            }
           }
         }
         historicalPatterns = buildHistoricalPatternsPayload(historical);
@@ -454,6 +463,7 @@ export async function generateGuardsViaAPI(
       app_rules: buildSolverRulesPayload(currentWeekKey, {
         previousSundayGuardDoctor,
         fridayGuardCounts,
+        nightGuardDayCounts,
         schedule: currentScheduleForPrefs,
         rows: currentScheduleForPrefs ? undefined : Object.keys(generateWeekSchedule(currentWeekKey)),
       }),
