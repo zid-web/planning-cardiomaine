@@ -261,6 +261,8 @@ export async function generateGuardsViaAPI(
     let historicalPatterns = buildHistoricalPatternsPayload([]);
     let historicalWeeksScanned = 0;
     let replayStats: PatternStats | undefined;
+    // Nombre de gardes de nuit du vendredi par médecin (26 sem.) : égalité du vendredi
+    const fridayGuardCounts: Record<string, number> = {};
     try {
       const supabaseHist = await createClient();
       const { data: histRows, error: histError } = await supabaseHist
@@ -276,6 +278,11 @@ export async function generateGuardsViaAPI(
           .map((r) => r.schedule_data as ScheduleData)
           .filter((s) => s && typeof s === "object");
         historicalWeeksScanned = historical.length;
+        for (const sch of historical) {
+          for (const d of sch["Garde Nuit"]?.VENDREDI?.value ?? []) {
+            if (d && d !== "I") fridayGuardCounts[d] = (fridayGuardCounts[d] ?? 0) + 1;
+          }
+        }
         historicalPatterns = buildHistoricalPatternsPayload(historical);
         // Schémas du remplissage manuel, rejoués localement sur les cases vides après le solveur
         replayStats = buildPatternStats(
@@ -446,6 +453,7 @@ export async function generateGuardsViaAPI(
       // Consignes de l'app (cases fermées, règles de garde, limites hebdo, cases saisies)
       app_rules: buildSolverRulesPayload(currentWeekKey, {
         previousSundayGuardDoctor,
+        fridayGuardCounts,
         schedule: currentScheduleForPrefs,
         rows: currentScheduleForPrefs ? undefined : Object.keys(generateWeekSchedule(currentWeekKey)),
       }),

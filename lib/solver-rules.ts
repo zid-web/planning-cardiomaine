@@ -24,7 +24,7 @@ export type SolverRulesPayload = ReturnType<typeof buildSolverRulesPayload>
 
 export function buildSolverRulesPayload(
   weekKey: string,
-  opts: { previousSundayGuardDoctor?: string | null; schedule?: ScheduleData; rows?: string[] } = {},
+  opts: { previousSundayGuardDoctor?: string | null; fridayGuardCounts?: Record<string, number>; schedule?: ScheduleData; rows?: string[] } = {},
 ) {
   const schedule = opts.schedule
   const rows = opts.rows ?? Object.keys(schedule ?? {})
@@ -74,6 +74,8 @@ export function buildSolverRulesPayload(
       no_consecutive_nights: true,
       previous_sunday_guard_doctor: opts.previousSundayGuardDoctor ?? null,
       friday_pool: [...FRIDAY_NIGHT_GUARD_POOL],
+      // gardes de nuit du vendredi déjà faites (26 sem.) : le solveur égalise entre les médecins du pool
+      friday_counts: opts.fridayGuardCounts ?? {},
       never_friday: [...NO_FRIDAY_NIGHT_GUARD],
       day_preferences: NIGHT_GUARD_DAY_RULES,
       never_doctors: ["I"],

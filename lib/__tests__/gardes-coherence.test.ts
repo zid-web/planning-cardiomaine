@@ -95,9 +95,9 @@ function main() {
   const asm = applyStructuralConstraints(sm, wk, [], { previousSundayGuardDoctor: "A" })
   assert.ok(!asm["Garde Nuit"].LUNDI.value.includes("A"), "pas de nuit lundi pour le médecin de garde dimanche")
 
-  // Garde de nuit du vendredi : pool exclusif, aligné sur le planificateur (U, O, W, M jamais)
+  // Garde de nuit du vendredi : pool exclusif, aligné sur le planificateur (O, W, M jamais ; tout le monde sinon)
   assert.deepEqual([...FRIDAY_NIGHT_GUARD_POOL], [...(NIGHT_GUARD_DAY_RULES.VENDREDI.only as readonly string[])])
-  for (const d of ["U", "O", "W", "M"]) {
+  for (const d of ["O", "W", "M"]) {
     assert.equal(canAssignDoctorToSlot(d, "2026-10-30", "Garde Nuit", "VENDREDI", generateWeekSchedule(wk, []), []).allowed, false, d)
   }
   assert.equal(canAssignDoctorToSlot("B", "2026-10-30", "Garde Nuit", "VENDREDI", generateWeekSchedule(wk, []), []).allowed, true)
