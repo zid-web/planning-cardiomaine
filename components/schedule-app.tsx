@@ -86,6 +86,7 @@ import { generateGuardsViaAPI } from "@/app/actions/guard-api-actions"
 import { defaultWeekGenerationParams, toSolverWeekGenerationOverrides } from "@/lib/week-generation-params"
 import { mondayOfWeekKey } from "@/lib/semester-guard-slots"
 import { buildPatternStatsFromFull } from "@/lib/pattern-replay"
+import { stressRepeatWarning } from "@/lib/stress-weekly"
 import { holidayNameForWeekDay, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import { isVisiteRow, spreadVisiteAcrossWeek } from "@/lib/visite-rotation"
 import { Switch } from "@/components/ui/switch"
@@ -1842,6 +1843,9 @@ export function ScheduleApp({
         toast.error(validation.reason || "Assignation impossible")
         return
       }
+      // Stress : roulement hebdomadaire — avertissement non bloquant
+      const stressWarning = stressRepeatWarning(schedule, weekKey, selectedCell.row, selectedCell.day, doctor, vacations)
+      if (stressWarning) toast.warning(stressWarning)
     }
 
     const newStatus = adminEditsAreValidated(currentUser) ? "validated" : "pending"
