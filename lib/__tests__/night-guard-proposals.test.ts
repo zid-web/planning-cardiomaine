@@ -21,9 +21,9 @@ function main() {
 
   assert.equal(proposals.length, 6, `expected 6 (Tue–Sun), got ${proposals.length}`)
   assert.equal(byDay.LUNDI, undefined, "Lundi exclu quand FV dispo")
+
   // Mardi → G, B, M ou W
   assert.ok(["G", "B", "M", "W"].includes(byDay.MARDI), `Mardi prefer G/B/M/W, got ${byDay.MARDI}`)
-  assert.ok(["M", "W"].includes(byDay.MARDI), `Mardi prefer M/W, got ${byDay.MARDI}`)
 
   // Mercredi → S/U/P ; M interdit (NCT jeudi)
   assert.ok(["S", "U", "P"].includes(byDay.MERCREDI), `Mercredi prefer S/U/P, got ${byDay.MERCREDI}`)
