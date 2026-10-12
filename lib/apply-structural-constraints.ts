@@ -33,7 +33,7 @@ import type { CellData, DoctorVacation, ScheduleData } from "@/lib/types"
 import { applyClosedSlotsClear } from "@/lib/closed-slots"
 import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
 import type { EquityCounts } from "@/lib/equity-tracking"
-import { applySlotBlockingStrips } from "@/lib/slot-blocking"
+import { adjacentWeekdayNightGuard, applySlotBlockingStrips } from "@/lib/slot-blocking"
 import { applyStressAndDRules } from "@/lib/stress-rules"
 import { ensureNurseDoctorBinomeProposals, ensureValOnBothEeRooms, mirrorEeDoctorForSharedNurse } from "@/lib/nurse-rules"
 import { applyWeekendWomRules, isRemplacantOnlyWeekendGarde } from "@/lib/weekend-wom-rules"
@@ -529,6 +529,7 @@ function fillEmptyFromPriorityListedDoctors(
   rows: readonly string[],
   day: string,
   priorityRows: readonly string[],
+  canPlace?: (row: string, doctor: string) => boolean,
 ): ScheduleData {
   let chosen: string[] | null = null
   for (const row of priorityRows) {
@@ -550,8 +551,11 @@ function fillEmptyFromPriorityListedDoctors(
     if (next[row]![day]!.manuallyCleared) continue
     // Garde de week-end tenue par un remplaçant seul : pas d'associé automatique
     if (isRemplacantOnlyWeekendGarde(next, row, day)) continue
+    // Le couplage ne doit pas recréer une incohérence (ex. deux nuits de garde consécutives)
+    const placeable = canPlace ? chosen.filter((d) => canPlace(row, d)) : chosen
+    if (placeable.length === 0) continue
     const remplacants = remplacantsInCell(next, row, day)
-    next = setCellDoctors(next, row, day, [...chosen, ...remplacants], status)
+    next = setCellDoctors(next, row, day, [...placeable, ...remplacants], status)
   }
   return next
 }
@@ -571,7 +575,10 @@ function fillEmptyFromPriorityListedDoctors(
  */
 const GARDE_COUPLING_EXCLUDED = ["FV"] as const
 
-export function applyWeekdayGardeCoupling(schedule: ScheduleData): ScheduleData {
+export function applyWeekdayGardeCoupling(
+  schedule: ScheduleData,
+  previousSundayGuardDoctor?: string | null,
+): ScheduleData {
   let next = schedule
   for (const day of WEEKDAYS) {
     const anchor = ["Garde Nuit", "Garde Midi", "Garde Matin"].find((row) => {
@@ -584,7 +591,15 @@ export function applyWeekdayGardeCoupling(schedule: ScheduleData): ScheduleData 
     if (listed.every((d) => (GARDE_COUPLING_EXCLUDED as readonly string[]).includes(d))) {
       continue
     }
-    next = fillEmptyFromPriorityListedDoctors(next, GARDE_PERIOD_ROWS, day, [anchor])
+    // Jamais deux nuits consécutives : le couplage ne recopie pas un médecin sur la Garde Nuit
+    // si lui-même est déjà de garde la nuit voisine (veille / lendemain, ou dimanche précédent).
+    const canPlace = (row: string, doctor: string) => {
+      if (row !== "Garde Nuit") return true
+      if (adjacentWeekdayNightGuard(next, day, doctor)) return false
+      if (day === "LUNDI" && previousSundayGuardDoctor === doctor) return false
+      return true
+    }
+    next = fillEmptyFromPriorityListedDoctors(next, GARDE_PERIOD_ROWS, day, [anchor], canPlace)
   }
   return next
 }
@@ -980,7 +995,7 @@ export function applyStructuralConstraints(
   next = applyWeekendGardeAtlCoupling(next)
 
   // 11bis) Couplage gardes de semaine (Matin/Midi/Nuit = même médecin)
-  next = applyWeekdayGardeCoupling(next)
+  next = applyWeekdayGardeCoupling(next, opts.previousSundayGuardDoctor)
 
   // 12) Binômes infirmière-médecin (D+Véro le jeudi matin + couplage médecin systématique pour Véro/Val sur Stress/EE)
   if (weekKey) {

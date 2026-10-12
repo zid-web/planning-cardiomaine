@@ -19,7 +19,7 @@
  * applique à ses propositions, avant affichage.
  */
 import { dateStrForWeekDay } from "@/lib/fixed-assignments"
-import { canAssignDoctorToSlot } from "@/lib/slot-blocking"
+import { canAssignDoctorToSlot, type AssignmentContext } from "@/lib/slot-blocking"
 import { isSolverProposalCell } from "@/lib/guard-api-mapping"
 import { isListedDoctor } from "@/lib/doctor-code"
 import { isOutsideUsualHorsSiteDay } from "@/lib/closed-slots"
@@ -103,10 +103,14 @@ function releaseProposals(schedule: ScheduleData, rows: string[], day: string, d
   return next
 }
 
+// Contexte hors semaine (garde de nuit du dimanche précédent) : posé pendant l'appel synchrone
+// d'un point d'entrée, puis retiré — évite de le passer à chaque fonction interne.
+let activeContext: AssignmentContext | undefined
+
 function canAssign(schedule: ScheduleData, weekKey: string, doctor: string, row: string, day: string, vacations: DoctorVacation[]) {
   const dateStr = dateStrForWeekDay(weekKey, day)
   if (!dateStr) return false
-  return canAssignDoctorToSlot(doctor, dateStr, row, day, schedule, vacations).allowed
+  return canAssignDoctorToSlot(doctor, dateStr, row, day, schedule, vacations, activeContext).allowed
 }
 
 /** 1. Coro d'abord : pourvoit les Coro vides par M/O/W, au besoin en libérant leurs propositions. */
@@ -449,6 +453,22 @@ export function validateProposalsLikeManual(
   weekKey: string,
   vacations: DoctorVacation[] = [],
   rejected: RejectedProposal[] = [],
+  ctx?: AssignmentContext,
+): ScheduleData {
+  const previous = activeContext
+  if (ctx) activeContext = ctx
+  try {
+    return validateProposalsLikeManualInner(schedule, weekKey, vacations, rejected)
+  } finally {
+    activeContext = previous
+  }
+}
+
+function validateProposalsLikeManualInner(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[],
+  rejected: RejectedProposal[],
 ): ScheduleData {
   type Pending = { row: string; day: string; doctor: string; dup: boolean }
   const pending: Pending[] = []
@@ -482,10 +502,18 @@ export function validateProposalsLikeManual(
   pending.sort((a, b) => rowPriority(a.row) - rowPriority(b.row))
 
   let next = base
+  // Bloc de garde du jour : Matin / Midi / Nuit vont ensemble — si la Garde Nuit d'un médecin est
+  // écartée, ses Garde Matin / Midi du même jour le sont aussi (sinon le couplage de la structure
+  // recopierait sa garde sur la nuit refusée).
+  const blockedGuardDays = new Set<string>()
   for (const p of pending) {
     const cell = next[p.row]?.[p.day]
     if (!cell) continue
     const dateStr = dateStrForWeekDay(weekKey, p.day)
+    if ((p.row === "Garde Matin" || p.row === "Garde Midi") && blockedGuardDays.has(`${p.day}|${p.doctor}`)) {
+      rejected.push({ row: p.row, day: p.day, doctor: p.doctor, reason: "Garde de nuit du jour refusée : le bloc de garde est écarté." })
+      continue
+    }
     // Hors site : les cases restent libres, mais le solveur ne propose que les jours habituels
     if (isOutsideUsualHorsSiteDay(p.row, p.day)) {
       rejected.push({ row: p.row, day: p.day, doctor: p.doctor, reason: "Jour habituel de cette vacation hors site non respecté." })
@@ -495,7 +523,7 @@ export function validateProposalsLikeManual(
     const result = p.dup && cell.value.includes(p.doctor)
       ? { allowed: true as const }
       : dateStr
-        ? canAssignDoctorToSlot(p.doctor, dateStr, p.row, p.day, next, vacations)
+        ? canAssignDoctorToSlot(p.doctor, dateStr, p.row, p.day, next, vacations, activeContext)
         : { allowed: false as const, reason: "Date introuvable" }
     if (result.allowed) {
       next = withCell(next, p.row, p.day, {
@@ -505,6 +533,7 @@ export function validateProposalsLikeManual(
         status: "pending",
       })
     } else {
+      if (p.row === "Garde Nuit") blockedGuardDays.add(`${p.day}|${p.doctor}`)
       rejected.push({ row: p.row, day: p.day, doctor: p.doctor, reason: ("reason" in result && result.reason) || "Règle d'affectation" })
     }
   }
@@ -550,6 +579,23 @@ export function applyClinicalPriorityRules(
   weekKey: string,
   vacations: DoctorVacation[] = [],
   rejected: RejectedProposal[] = [],
+  stats?: PatternStats,
+  ctx?: AssignmentContext,
+): ScheduleData {
+  const previous = activeContext
+  if (ctx) activeContext = ctx
+  try {
+    return applyClinicalPriorityRulesInner(schedule, weekKey, vacations, rejected, stats)
+  } finally {
+    activeContext = previous
+  }
+}
+
+function applyClinicalPriorityRulesInner(
+  schedule: ScheduleData,
+  weekKey: string,
+  vacations: DoctorVacation[],
+  rejected: RejectedProposal[],
   stats?: PatternStats,
 ): ScheduleData {
   // 0. Mêmes règles que l'affectation manuelle, appliquées à chaque proposition

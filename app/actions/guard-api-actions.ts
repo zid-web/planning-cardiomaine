@@ -550,7 +550,7 @@ export async function generateGuardsViaAPI(
     try {
       // Priorités Coro / groupe écho / Cs (lib/clinical-priority.ts), puis Pré-op
       const rejectedProposals: RejectedProposal[] = [];
-      scheduleData = applyClinicalPriorityRules(scheduleData, weekKey, vacations, rejectedProposals, replayStats);
+      scheduleData = applyClinicalPriorityRules(scheduleData, weekKey, vacations, rejectedProposals, replayStats, { previousSundayGuardDoctor });
       if (rejectedProposals.length > 0) {
         if (!data.warnings) data.warnings = [];
         for (const r of rejectedProposals.slice(0, 12)) {

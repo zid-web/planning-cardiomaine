@@ -36,7 +36,7 @@ export function canAssignDoctor(
   dateStr: string,
   activity: string,
   vacations: DoctorVacation[],
-  opts?: { schedule?: ScheduleData; day?: string },
+  opts?: { schedule?: ScheduleData; day?: string; previousSundayGuardDoctor?: string | null },
 ): {
   allowed: boolean
   reason?: string
@@ -54,6 +54,7 @@ export function canAssignDoctor(
       opts.day,
       opts.schedule,
       vacations,
+      { previousSundayGuardDoctor: opts.previousSundayGuardDoctor },
     )
   }
 
