@@ -26,7 +26,7 @@ function main() {
   assert.ok(["G", "B", "M", "W"].includes(byDay.MARDI), `Mardi prefer G/B/M/W, got ${byDay.MARDI}`)
 
   // Mercredi → S/U/P ; M interdit (NCT jeudi)
-  assert.ok(["S", "U", "P"].includes(byDay.MERCREDI), `Mercredi prefer S/U/P, got ${byDay.MERCREDI}`)
+  assert.ok(["S", "P"].includes(byDay.MERCREDI), `Mercredi prefer S/P, got ${byDay.MERCREDI}`)
   assert.notEqual(byDay.MERCREDI, "M", "M ne doit pas avoir garde la veille de son NCT")
 
   // Jeudi → O ou G
