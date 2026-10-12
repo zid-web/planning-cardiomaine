@@ -103,6 +103,11 @@ export function buildSolverRulesPayload(
       echo_rows_before_cs: ["ETT", "Stress", "Rééduc"],
       cs_filled_by: "médecins sans tâche principale",
     },
+    entrees_pss: {
+      row: "Entrées PSS",
+      pair_days: ["LUNDI", "MARDI"], // médecin de garde d'après-midi (Garde Midi) + 1 autre médecin
+      solo_days: ["MERCREDI", "JEUDI", "VENDREDI"], // uniquement le médecin de garde d'après-midi
+    },
     hors_site_usual_days: HORS_SITE_USUAL_DAYS,
   }
 }

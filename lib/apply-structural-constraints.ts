@@ -1,3 +1,4 @@
+import { applyEntreesPssRules } from "@/lib/entrees-pss"
 import { applyHolidayClosedClear } from "@/lib/holiday-closed"
 import { INTERN_CODE } from "@/lib/slot-blocking"
 import { DAYS } from "@/lib/constants"
@@ -996,6 +997,9 @@ export function applyStructuralConstraints(
 
   // 11bis) Couplage gardes de semaine (Matin/Midi/Nuit = même médecin)
   next = applyWeekdayGardeCoupling(next, opts.previousSundayGuardDoctor)
+
+  // 11ter) Entrées PSS : lun/mar = médecin de garde d'après-midi + 1 autre ; mer-ven = garde seul
+  next = applyEntreesPssRules(next)
 
   // 12) Binômes infirmière-médecin (D+Véro le jeudi matin + couplage médecin systématique pour Véro/Val sur Stress/EE)
   if (weekKey) {
