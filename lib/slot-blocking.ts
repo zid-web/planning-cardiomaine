@@ -560,7 +560,7 @@ function periodsConflict(target: DayPeriod, occupied: DayPeriod): boolean {
  * Vérifie toutes les règles bloquantes pour une assignation manuelle.
  */
 /** Médecins éligibles à la garde de nuit du vendredi (miroir de `NIGHT_GUARD_DAY_RULES.VENDREDI.only`). */
-export const FRIDAY_NIGHT_GUARD_POOL: readonly string[] = ["B", "G", "A", "P", "Z", "H", "S"]
+export const FRIDAY_NIGHT_GUARD_POOL: readonly string[] = ["B", "G", "A", "P", "Z", "H", "S", "U"]
 
 /** Contexte hors de la semaine affichée (ex. garde de nuit du dimanche précédent). */
 export type AssignmentContext = {

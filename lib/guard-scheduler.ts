@@ -59,10 +59,10 @@ export const NIGHT_GUARD_DAY_RULES: Record<
   { prefer?: readonly string[]; only?: readonly string[] }
 > = {
   LUNDI: { prefer: ["U"] }, // uniquement si FV absent
-  MARDI: { prefer: ["M", "W"] },
+  MARDI: { prefer: ["G", "B", "M", "W"] }, // consigne 13/10/2026
   MERCREDI: { prefer: ["S", "U", "P"] },
   JEUDI: { prefer: ["O", "G"] },
-  VENDREDI: { only: ["B", "G", "A", "P", "Z", "H", "S"] }, // O/W/M jamais
+  VENDREDI: { only: ["B", "G", "A", "P", "Z", "H", "S", "U"] }, // tout le monde sauf O/W/M, à égalité
 }
 
 /** O, W, M ne font jamais de garde vendredi nuit */
