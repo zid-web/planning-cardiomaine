@@ -14,6 +14,7 @@ généré par `lib/solver-rules.ts` à partir des constantes de l'app — jamais
 | `weekly_limits.pre_op` | un médecin différent chaque jour |
 | `eligibility` | ETT interdit à O ; EE : un médecin par infirmière, identique EE1/EE2, O/V/DAAS seuls ; I = Garde Matin uniquement |
 | `priorities` | Coro d'abord (M/O/W) ; groupe écho H,Z,G,B,S sur ETT/Stress/Rééduc avant Cs |
+| `entrees_pss` | Entrées PSS : lun/mar = médecin de Garde Midi + 1 autre ; mer-ven = Garde Midi seul |
 | `hors_site_usual_days` | jours habituels CDL/LFB/PSSL/IRM/Scinti (propositions hors de ces jours écartées) |
 
 ## Accusé de réception
