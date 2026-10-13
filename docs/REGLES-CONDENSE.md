@@ -24,6 +24,10 @@ Légende : **S** = envoyée au solveur dans `app_rules` (`lib/solver-rules.ts`) 
 - Nuits W/O/M : le médecin d'ATL Midi fait la nuit dans la mesure du possible (S souple + A).
 - FV ne fait jamais d'astreinte ATL Nuit (S+A) ; jamais le médecin de garde de nuit le même soir (S+A) :
   jeudi avec FV présent → W ou M si O est de garde, sinon M, W ou O.
+- M, W, O : jamais le même médecin deux nuits consécutives du lundi au jeudi (A ; CH non concerné).
+- Week-end (vendredi, samedi, dimanche, semaines W/O/M) : **combo automatique dès qu'un M/W/O est de garde**
+  le samedi et/ou le dimanche — garde samedi → astreinte dimanche ; garde dimanche → astreinte vendredi nuit + samedi (A).
+  Sinon week-end mono : le même médecin du vendredi soir au dimanche (A).
 - Nuits restées vides après génération : proposition par l'appli (roulement, ATL Midi, équité) (A).
 
 ## Coronarographistes M, O, W

@@ -30,7 +30,7 @@ import {
   applyNightGuardRecoveryOffs,
 } from "@/lib/half-day-off"
 import { getNctCalendar } from "@/lib/nct-calendar"
-import { applyAtlNightCalendarToWeek } from "@/lib/atl-night-calendar"
+import { applyAtlNightCalendarToWeek, applyWeekendComboFromGardes } from "@/lib/atl-night-calendar"
 import type { CellData, DoctorVacation, ScheduleData } from "@/lib/types"
 import { applyClosedSlotsClear } from "@/lib/closed-slots"
 import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
@@ -1004,6 +1004,10 @@ export function applyStructuralConstraints(
 
   // 11bis-a) Calendrier ATL Nuit ré-appliqué après les strips / couplages week-end
   next = applyAtlNightCalendarToWeek(next, weekKey)
+
+  // 11bis-b) Week-end combo automatique dès qu'un M/W/O est de garde samedi et/ou dimanche
+  // (semaines W/O/M) ; les saisies admin et les entrées manuelles du calendrier priment.
+  next = applyWeekendComboFromGardes(next, weekKey, vacations)
 
   // 11ter) Entrées PSS : lun/mar = médecin de garde d'après-midi + 1 autre ; mer-ven = garde seul
   next = applyEntreesPssRules(next)
