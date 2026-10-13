@@ -170,7 +170,7 @@ const SixMonthProjectionDialog = lazy(() =>
 const NCT_VIEWER_CODES: readonly string[] = ["W", "Q"]
 
 /** Comptes non-admin qui consultent le calendrier des astreintes de nuit (lecture seule). M est admin : il le modifie. */
-const ATL_NIGHT_VIEWER_CODES: readonly string[] = ["W", "O"]
+const ATL_NIGHT_VIEWER_CODES: readonly string[] = ["W", "O"] // toujours en lecture seule
 
 const AtlNightCalendarModal = lazy(() =>
   import("@/components/atl-night-calendar-modal").then((m) => ({ default: m.AtlNightCalendarModal })),
@@ -324,6 +324,8 @@ export function ScheduleApp({
   const [atlNightCalendar, setAtlNightCalendarState] = useState<AtlNightEntry[]>([])
   const [atlNightModalOpen, setAtlNightModalOpen] = useState(false)
   const canViewAtlNight = !isAdmin && ATL_NIGHT_VIEWER_CODES.includes(doctorCode.trim().toUpperCase())
+  // W et O : calendrier « Astreinte nuit » en lecture seule, même avec un compte admin.
+  const atlNightReadOnly = !isAdmin || ATL_NIGHT_VIEWER_CODES.includes(doctorCode.trim().toUpperCase())
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
@@ -1867,7 +1869,7 @@ export function ScheduleApp({
     }
 
     // Case ATL Nuit modifiée à la main : le calendrier ATL Nuit suit (entrée manuelle).
-    if (row === ATL_NIGHT_ROW) {
+    if (row === ATL_NIGHT_ROW && !atlNightReadOnly) {
       const date = dateStrForWeekDay(weekKey, day)
       if (date) {
         const user = (nextCell.value || []).find((d) => isListedDoctor(d)) ?? null
@@ -4747,7 +4749,7 @@ export function ScheduleApp({
       {(isAdmin || canViewAtlNight) && (
         <Suspense fallback={null}>
           <AtlNightCalendarModal
-            readOnly={!isAdmin}
+            readOnly={atlNightReadOnly}
             isOpen={atlNightModalOpen}
             onClose={() => setAtlNightModalOpen(false)}
             calendar={atlNightCalendar}
