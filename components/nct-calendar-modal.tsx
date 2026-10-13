@@ -5,6 +5,7 @@ import { CalendarRange, ChevronLeft, ChevronRight, RotateCcw, Trash2, X } from '
 import {
   buildMonthGrid,
   cycleNctUser,
+  isNctWeekday,
   normalizeNctCalendar,
   NCT_DOCTORS,
   shiftMonth,
@@ -161,7 +162,7 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
               {view === 'month'
                 ? readOnly
                   ? 'Consultation seule'
-                  : 'Cliquez un jour : W → M → supprimer'
+                  : 'Jeudis uniquement — cliquez : W → M → supprimer'
                 : 'Choisissez un mois pour le modifier'}
             </p>
           </div>
@@ -260,6 +261,8 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
               <div className="mt-1 grid grid-cols-7 gap-1">
                 {grid.flat().map((cell) => {
                   const user = byDate.get(cell.date) ?? null
+                  // Pas d'activité NCT hors jeudi : jour grisé (une ancienne date reste visible pour la supprimer)
+                  const offDay = !isNctWeekday(cell.date)
                   const isToday = cell.date === today
                   const ferie = publicHolidayName(cell.date)
                   const vacances = schoolHolidayZoneB(cell.date)
@@ -273,10 +276,12 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                     <button
                       key={cell.date}
                       type="button"
-                      onClick={() => setUser(cell.date, cycleNctUser(user))}
-                      disabled={readOnly}
+                      onClick={() => setUser(cell.date, offDay ? null : cycleNctUser(user))}
+                      disabled={readOnly || (offDay && !user)}
                       title={
-                        (user
+                        offDay && !user
+                          ? 'Pas de NCT ce jour : uniquement le jeudi'
+                          : (user
                           ? `NCT ${user} — cliquer pour changer / supprimer`
                           : `Ajouter un NCT le ${formatFr(cell.date)}`) + (hint ? ` (${hint})` : '')
                       }
@@ -285,7 +290,9 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                         !cell.inMonth && 'opacity-35',
                         user
                           ? cn('border-transparent font-bold', USER_STYLE[user] ?? 'bg-slate-700 text-white')
-                          : ferie
+                          : offDay
+                            ? 'cursor-not-allowed border-slate-200 bg-slate-200 text-slate-400'
+                            : ferie
                             ? 'border-rose-300 bg-rose-100 font-semibold text-rose-800 hover:border-blue-400'
                             : vacances
                               ? 'border-amber-200 bg-amber-100 text-amber-900 hover:border-blue-400'
@@ -313,6 +320,9 @@ export function NctCalendarModal({ isOpen, onClose, calendar, defaultDate, onSav
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="h-3 w-3 rounded-sm border border-amber-200 bg-amber-100" /> Vacances scolaires (zone B)
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="h-3 w-3 rounded-sm border border-slate-200 bg-slate-200" /> Pas de NCT (hors jeudi)
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="h-3 w-3 rounded-sm bg-blue-600" /> NCT W
