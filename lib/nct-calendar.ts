@@ -111,6 +111,13 @@ export function setNctCalendar(list: readonly NctEntry[] | null | undefined): vo
   current = list ? normalizeNctCalendar(list) : normalizeNctCalendar(DEFAULT_NCT_CALENDAR)
 }
 
+/** Le NCT n'a lieu que le jeudi : les autres jours sont grisés dans le calendrier. */
+export function isNctWeekday(date: string): boolean {
+  if (!isRealIsoDate(date)) return false
+  const [y, m, d] = date.split("-").map(Number)
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 4
+}
+
 /** Médecin NCT d'une date (`YYYY-MM-DD`), ou null si pas de NCT ce jour-là. */
 export function nctDoctorForDate(date: string): string | null {
   return current.find((e) => e.date === date)?.user ?? null

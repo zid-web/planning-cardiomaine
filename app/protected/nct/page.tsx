@@ -11,7 +11,7 @@ import { ChevronLeft, ChevronRight, LogOut } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { loadNctCalendar } from "@/app/actions/nct-calendar-actions"
 import { signOut } from "@/app/actions/auth-actions"
-import { buildMonthGrid, shiftMonth, type NctEntry } from "@/lib/nct-calendar"
+import { buildMonthGrid, isNctWeekday, shiftMonth, type NctEntry } from "@/lib/nct-calendar"
 import { isNctOnlyAccount } from "@/lib/nct-only"
 import { publicHolidayName, schoolHolidayZoneB } from "@/lib/french-calendar"
 import { cn } from "@/lib/utils"
@@ -152,7 +152,9 @@ export default function NctOnlyPage() {
                   !cell.inMonth && "opacity-35",
                   user
                     ? cn("border-transparent font-bold", USER_STYLE[user] ?? "bg-slate-700 text-white")
-                    : ferie
+                    : !isNctWeekday(cell.date)
+                      ? "border-slate-200 bg-slate-200 text-slate-400"
+                      : ferie
                       ? "border-rose-300 bg-rose-100 font-semibold text-rose-800"
                       : vacances
                         ? "border-amber-200 bg-amber-100 text-amber-900"
