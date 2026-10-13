@@ -4,6 +4,7 @@
 import assert from "node:assert/strict"
 import {
   applyAtlNightCalendarToWeek,
+  applyWeekendComboFromGardes,
   autoFillAtlNightMonth,
   cycleAtlNightUser,
   expectedAtlNightGroup,
@@ -94,7 +95,55 @@ function main() {
   assert.deepEqual(month.find((e) => e.date === "2026-11-02"), { date: "2026-11-02", user: "O", manual: true })
   const wom = month.filter((e) => e.user !== "CH").map((e) => e.user)
   const counts = ["M", "W", "O"].map((d) => wom.filter((u) => u === d).length)
-  assert.ok(Math.max(...counts) - Math.min(...counts) <= 1, String(counts))
+  // week-ends mono = 3 nuits d'affilée au même médecin : écart toléré d'un week-end
+  assert.ok(Math.max(...counts) - Math.min(...counts) <= 3, String(counts))
+  // Lun → jeu : jamais deux nuits consécutives pour le même M/W/O
+  const byDate = new Map(month.map((e) => [e.date, e.user]))
+  for (const e of month) {
+    const [y, m, d] = e.date.split("-").map(Number)
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
+    if (dow < 1 || dow > 3 || e.user === "CH") continue // lun, mar, mer → comparer au lendemain
+    const next = `${y}-${String(m).padStart(2, "0")}-${String(d + 1).padStart(2, "0")}`
+    assert.notEqual(byDate.get(next), e.user, `${e.date} et ${next}`)
+  }
+
+  // Week-end combo : M de garde samedi → M astreinte dimanche ; O de garde dimanche → O vendredi + samedi
+  const wc = blankWeek("2026-W44") // semaine W/O/M
+  wc["Garde Midi"].SAMEDI = c(["M"])
+  wc["Garde Nuit"].DIMANCHE = c(["O"])
+  assert.equal(proposeAtlNightDoctor("2026-10-30", { schedule: wc }), "O") // vendredi
+  assert.equal(proposeAtlNightDoctor("2026-10-31", { schedule: wc }), "O") // samedi
+  assert.equal(proposeAtlNightDoctor("2026-11-01", { schedule: wc }), "M") // dimanche
+  // Un seul M/W/O de garde (samedi W) : W fait le dimanche, un autre fait vendredi + samedi
+  const w1 = blankWeek("2026-W44")
+  w1["Garde Matin"].SAMEDI = c(["W"])
+  assert.equal(proposeAtlNightDoctor("2026-11-01", { schedule: w1 }), "W")
+  const friSat = proposeAtlNightDoctor("2026-10-30", { schedule: w1 })
+  assert.ok(friSat && friSat !== "W" && friSat === proposeAtlNightDoctor("2026-10-31", { schedule: w1 }))
+  // Combo posé automatiquement dans le planning (cases non saisies)
+  const planned = applyWeekendComboFromGardes(wc, "2026-W44")
+  assert.deepEqual(planned["Astreintes ATL Nuit"].VENDREDI.value, ["O"])
+  assert.deepEqual(planned["Astreintes ATL Matin"].SAMEDI.value, ["O"])
+  assert.deepEqual(planned["Astreintes ATL Nuit"].DIMANCHE.value, ["M"])
+  // … sauf une saisie admin
+  wc["Astreintes ATL Nuit"].DIMANCHE = { ...c(["W"]), manualAssignment: true }
+  assert.deepEqual(applyWeekendComboFromGardes(wc, "2026-W44")["Astreintes ATL Nuit"].DIMANCHE.value, ["W"])
+  // Semaine CH : pas de combo W/O/M
+  const ch = blankWeek("2026-W45")
+  ch["Garde Midi"].SAMEDI = c(["M"])
+  assert.equal(applyWeekendComboFromGardes(ch, "2026-W45"), ch)
+
+  // Mono (aucun M/W/O de garde) : même médecin vendredi → dimanche
+  const mono = blankWeek("2026-W44")
+  mono["Astreintes ATL Nuit"].VENDREDI = c(["W"])
+  assert.equal(proposeAtlNightDoctor("2026-10-31", { schedule: mono }), "W")
+  assert.equal(proposeAtlNightDoctor("2026-11-01", { schedule: mono }), "W")
+
+  // Consécutives : mardi = M → ni lundi ni mercredi pour M
+  const cons = blankWeek("2026-W45") // semaine CH : nuits W/O/M = mercredi, jeudi
+  cons["Astreintes ATL Nuit"].MERCREDI = c(["M"])
+  cons["Astreintes ATL Midi"].JEUDI = c(["M"])
+  assert.notEqual(proposeAtlNightDoctor("2026-11-05", { schedule: cons }), "M")
 
   // Divers
   assert.equal(cycleAtlNightUser(null), "M")
