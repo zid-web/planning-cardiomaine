@@ -1131,7 +1131,7 @@ export function ScheduleApp({
     const prev = atlNightCalendar
     const res = await saveAtlNightCalendar(nextList)
     if (!res.success || !res.calendar) {
-      return { ok: false, error: res.error || "Échec de l'enregistrement du calendrier ATL Nuit" }
+      return { ok: false, error: res.error || "Échec de l'enregistrement du calendrier des astreintes de nuit" }
     }
     const next = res.calendar
     setAtlNightCalendar(next)
@@ -1167,11 +1167,11 @@ export function ScheduleApp({
           }
         } catch (err) {
           console.error("[atl-nuit] nettoyage des semaines en échec:", err)
-          toast.error("Calendrier ATL Nuit enregistré mais le nettoyage de certaines semaines a échoué.")
+          toast.error("Calendrier des astreintes de nuit enregistré mais le nettoyage de certaines semaines a échoué.")
         }
       }
     }
-    toast.success("Calendrier ATL Nuit enregistré")
+    toast.success("Calendrier des astreintes de nuit enregistré")
     return { ok: true }
   }
 
@@ -1861,7 +1861,7 @@ export function ScheduleApp({
           setAtlNightCalendar(nextCal)
           setAtlNightCalendarState(nextCal)
           void saveAtlNightCalendar(nextCal).then((res) => {
-            if (!res.success) toast.error(`Calendrier ATL Nuit non enregistré : ${res.error}`)
+            if (!res.success) toast.error(`Calendrier des astreintes de nuit non enregistré : ${res.error}`)
           })
         }
       }
@@ -2831,10 +2831,10 @@ export function ScheduleApp({
                         size="sm"
                         className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                         onClick={() => setAtlNightModalOpen(true)}
-                        title="Consulter le calendrier des astreintes ATL Nuit"
+                        title="Consulter le calendrier des astreintes de nuit"
                       >
                         <Moon className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
-                        <span className="hidden sm:inline">ATL nuit</span>
+                        <span className="hidden sm:inline">Astreinte nuit</span>
                       </Button>
                     )}
 
@@ -2990,10 +2990,10 @@ export function ScheduleApp({
                           size="sm"
                           className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                           onClick={() => setAtlNightModalOpen(true)}
-                          title="Calendrier des astreintes ATL Nuit (saisie manuelle ou remplissage automatique)"
+                          title="Calendrier des astreintes de nuit (saisie manuelle ou remplissage automatique)"
                         >
                           <Moon className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
-                          <span className="hidden md:inline">ATL nuit</span>
+                          <span className="hidden md:inline">Astreinte nuit</span>
                         </Button>
 
                         <Button

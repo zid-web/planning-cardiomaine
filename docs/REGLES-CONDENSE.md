@@ -17,7 +17,7 @@ Légende : **S** = envoyée au solveur dans `app_rules` (`lib/solver-rules.ts`) 
 - Préférences par jour (lun U, mar G/B/M/W, mer S/P (à égalité ; S cumule garde et ETT pédiatrique), jeu O/G) (S).
 - Week-end : remplaçant seul possible sans médecin associé (A) ; roulement CH / W-O-M (solveur).
 
-## Astreintes ATL Nuit (calendrier « ATL nuit »)
+## Astreintes ATL Nuit (calendrier « Astreinte nuit »)
 - Calendrier dédié, comme le calendrier NCT : saisie manuelle, « Remplir auto le mois » ou reprise du planning ;
   une case ATL Nuit modifiée dans le planning met le calendrier à jour, et inversement (A).
 - Roulement habituel CH / W-O-M (S+A) ; une saisie manuelle prime sur le roulement (A).

@@ -161,7 +161,7 @@ export function AtlNightCalendarModal({
       <div className="flex h-[92dvh] max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white text-slate-900 shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Astreintes ATL Nuit</h2>
+            <h2 className="text-lg font-bold text-gray-900">Astreinte nuit</h2>
             <p className="text-xs text-gray-500">
               {readOnly ? 'Consultation seule' : 'Cliquez un jour : M → W → O → CH → supprimer'}
             </p>
@@ -230,7 +230,7 @@ export function AtlNightCalendarModal({
                   disabled={readOnly}
                   title={
                     (entry
-                      ? `ATL nuit ${entry.user} (${entry.manual ? 'saisie manuelle' : 'proposition automatique'})`
+                      ? `Astreinte nuit ${entry.user} (${entry.manual ? 'saisie manuelle' : 'proposition automatique'})`
                       : planned
                         ? `Planning : ${planned} — cliquer pour fixer dans le calendrier`
                         : `Roulement : ${group === 'CH' ? 'CH' : 'W / O / M'}`) + (ferie ? ` · Férié : ${ferie}` : '')
