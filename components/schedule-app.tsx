@@ -169,6 +169,12 @@ const SixMonthProjectionDialog = lazy(() =>
 /** Comptes non-admin qui consultent le calendrier NCT (lecture seule). */
 const NCT_VIEWER_CODES: readonly string[] = ["W", "Q"]
 
+/** Comptes non-admin qui consultent le calendrier des astreintes ATL Nuit (lecture seule). */
+const ATL_NIGHT_VIEWER_CODES: readonly string[] = ["M", "W", "O"]
+
+const AtlNightCalendarModal = lazy(() =>
+  import("@/components/atl-night-calendar-modal").then((m) => ({ default: m.AtlNightCalendarModal })),
+)
 const NctCalendarModal = lazy(() =>
   import("@/components/nct-calendar-modal").then((m) => ({ default: m.NctCalendarModal })),
 )
@@ -211,6 +217,17 @@ import {
   type NctEntry,
 } from "@/lib/nct-calendar"
 import { loadNctCalendar, saveNctCalendar } from "@/app/actions/nct-calendar-actions"
+import {
+  ATL_NIGHT_ROW,
+  autoFillAtlNightMonth,
+  dayNameOfDate,
+  isoWeekKeyOfDate,
+  normalizeAtlNightCalendar,
+  setAtlNightCalendar,
+  withAtlNightEntry,
+  type AtlNightEntry,
+} from "@/lib/atl-night-calendar"
+import { loadAtlNightCalendar, saveAtlNightCalendar } from "@/app/actions/atl-night-calendar-actions"
 import { schoolHolidayZoneB } from "@/lib/french-calendar"
 
 type ChangeRequest = {
@@ -302,6 +319,10 @@ export function ScheduleApp({
   const [nctModalOpen, setNctModalOpen] = useState(false)
   // Calendrier NCT : édition réservée à l'admin ; consultation seule pour W et Q.
   const canViewNct = !isAdmin && NCT_VIEWER_CODES.includes(doctorCode.trim().toUpperCase())
+  // Calendrier des astreintes ATL Nuit (settings.atl_night_calendar) — voir lib/atl-night-calendar.ts
+  const [atlNightCalendar, setAtlNightCalendarState] = useState<AtlNightEntry[]>([])
+  const [atlNightModalOpen, setAtlNightModalOpen] = useState(false)
+  const canViewAtlNight = !isAdmin && ATL_NIGHT_VIEWER_CODES.includes(doctorCode.trim().toUpperCase())
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
@@ -552,6 +573,21 @@ export function ScheduleApp({
     }
   }, [supabase, isAdmin, currentUser, setFullSchedule])
 
+  /** Recharge le calendrier ATL Nuit depuis la base (chargement + modification par un autre admin). */
+  const reloadAtlNightCalendar = useCallback(async () => {
+    try {
+      const list = await loadAtlNightCalendar()
+      setAtlNightCalendar(list)
+      setAtlNightCalendarState(list)
+    } catch (err) {
+      console.warn("[schedule-app] Calendrier ATL Nuit non chargé:", err)
+    }
+  }, [])
+
+  useEffect(() => {
+    void reloadAtlNightCalendar()
+  }, [reloadAtlNightCalendar])
+
   /** Recharge le calendrier NCT depuis la base (modifié par un autre admin). */
   const reloadNctCalendar = useCallback(async () => {
     try {
@@ -578,6 +614,7 @@ export function ScheduleApp({
         (payload: { new?: { key?: string } | null; old?: { key?: string } | null }) => {
           const key = payload.new?.key ?? payload.old?.key
           if (!key || key === "nct_calendar") void reloadNctCalendar()
+          if (!key || key === "atl_night_calendar") void reloadAtlNightCalendar()
         },
       )
       .subscribe()
@@ -585,7 +622,7 @@ export function ScheduleApp({
       void supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, reloadNctCalendar])
+  }, [supabase, reloadNctCalendar, reloadAtlNightCalendar])
 
   // Retour dans l'app (téléphone sorti de veille, onglet réactivé, réseau
   // revenu) : les websockets sont coupés en arrière-plan, surtout sur iOS, et
@@ -603,6 +640,7 @@ export function ScheduleApp({
           loadFullScheduleFromDb(),
           loadVacations(),
           reloadNctCalendar(),
+          reloadAtlNightCalendar(),
           refreshRequests(),
         ])
         if (full && typeof full === "object") {
@@ -935,7 +973,7 @@ export function ScheduleApp({
       previousSundayGuardDoctor,
       isFreshWeek: !fullSchedule[weekKey],
     })
-  }, [fullSchedule, weekKey, vacations, vacationsReady, previousSundayGuardDoctor, nctCalendar])
+  }, [fullSchedule, weekKey, vacations, vacationsReady, previousSundayGuardDoctor, nctCalendar, atlNightCalendar])
 
   // Incohérences (nuits consécutives, créneau déjà pris, case fermée…) : même validation que la
   // saisie manuelle, calculée une fois par planning affiché — seulement sur la vue Globale.
@@ -1021,7 +1059,7 @@ export function ScheduleApp({
     }
     // Pas de dépendance à l’identité de fullSchedule (évite courses à l’ajout congés)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekKey, vacationsSig, weekLoaded, currentUser, vacationsReady, previousSundayGuardDoctor, nctReady, nctCalendar])
+  }, [weekKey, vacationsSig, weekLoaded, currentUser, vacationsReady, previousSundayGuardDoctor, nctReady, nctCalendar, atlNightCalendar])
 
   const openWorkloadStats = () => {
     setShowWorkloadStats(true)
@@ -1081,6 +1119,82 @@ export function ScheduleApp({
     toast.success("Calendrier NCT enregistré")
     return { ok: true }
   }
+
+  /**
+   * Enregistre le calendrier ATL Nuit. Les dates ajoutées / réaffectées sont posées dans le
+   * planning par applyStructuralConstraints ; une date retirée vide la case correspondante
+   * (déjà chargée) pour qu'elle puisse être reproposée.
+   */
+  const commitAtlNightCalendar = async (
+    nextList: AtlNightEntry[],
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const prev = atlNightCalendar
+    const res = await saveAtlNightCalendar(nextList)
+    if (!res.success || !res.calendar) {
+      return { ok: false, error: res.error || "Échec de l'enregistrement du calendrier des astreintes de nuit" }
+    }
+    const next = res.calendar
+    setAtlNightCalendar(next)
+    setAtlNightCalendarState(next)
+
+    const nextDates = new Set(next.map((e) => e.date))
+    const removed = prev.filter((e) => !nextDates.has(e.date))
+    if (removed.length > 0) {
+      let nextFull: FullSchedule = { ...fullSchedule }
+      const touched = new Set<string>()
+      for (const entry of removed) {
+        const wk = isoWeekKeyOfDate(entry.date)
+        const day = dayNameOfDate(entry.date)
+        const cell = nextFull[wk]?.[ATL_NIGHT_ROW]?.[day]
+        if (!cell || (cell.value || []).length === 0) continue
+        nextFull = {
+          ...nextFull,
+          [wk]: {
+            ...nextFull[wk],
+            [ATL_NIGHT_ROW]: {
+              ...nextFull[wk][ATL_NIGHT_ROW],
+              [day]: { ...cell, value: [], type: "empty", status: "validated", manualAssignment: false },
+            },
+          },
+        }
+        touched.add(wk)
+      }
+      if (touched.size > 0) {
+        setFullSchedule(nextFull)
+        try {
+          for (const wk of touched) {
+            await saveScheduleToDb(wk, nextFull[wk], currentUser || "unknown", { source: "constraints" })
+          }
+        } catch (err) {
+          console.error("[atl-nuit] nettoyage des semaines en échec:", err)
+          toast.error("Calendrier des astreintes de nuit enregistré mais le nettoyage de certaines semaines a échoué.")
+        }
+      }
+    }
+    toast.success("Calendrier des astreintes de nuit enregistré")
+    return { ok: true }
+  }
+
+  /** Médecin posé dans le planning (semaines chargées) pour la nuit ATL d'une date. */
+  const atlNightPlanningValue = useCallback(
+    (date: string): string | null => {
+      const wk = isoWeekKeyOfDate(date)
+      const day = dayNameOfDate(date)
+      const v = (fullSchedule[wk]?.[ATL_NIGHT_ROW]?.[day]?.value || []) as string[]
+      return v.find((d) => isListedDoctor(d)) ?? null
+    },
+    [fullSchedule],
+  )
+
+  /** Remplissage auto d'un mois du calendrier (roulement, ATL Midi → nuit, équité). */
+  const atlNightAutoFill = useCallback(
+    (draft: AtlNightEntry[], year: number, month0: number): AtlNightEntry[] =>
+      autoFillAtlNightMonth(draft, year, month0, (date) => ({
+        schedule: fullSchedule[isoWeekKeyOfDate(date)],
+        vacations,
+      })),
+    [fullSchedule, vacations],
+  )
 
   /**
    * « Gardes WE » : pose les initiales d'une garde (Matin / Nuit) sur une
@@ -1733,6 +1847,22 @@ export function ScheduleApp({
           }
         } else {
           newSchedule = syncRecoveryOffsAfterNightGuardChange(newSchedule, day)
+        }
+      }
+    }
+
+    // Case ATL Nuit modifiée à la main : le calendrier ATL Nuit suit (entrée manuelle).
+    if (row === ATL_NIGHT_ROW) {
+      const date = dateStrForWeekDay(weekKey, day)
+      if (date) {
+        const user = (nextCell.value || []).find((d) => isListedDoctor(d)) ?? null
+        const nextCal = withAtlNightEntry(atlNightCalendar, date, user, true)
+        if (JSON.stringify(nextCal) !== JSON.stringify(normalizeAtlNightCalendar(atlNightCalendar))) {
+          setAtlNightCalendar(nextCal)
+          setAtlNightCalendarState(nextCal)
+          void saveAtlNightCalendar(nextCal).then((res) => {
+            if (!res.success) toast.error(`Calendrier des astreintes de nuit non enregistré : ${res.error}`)
+          })
         }
       }
     }
@@ -2695,6 +2825,19 @@ export function ScheduleApp({
                       </Button>
                     )}
 
+                    {canViewAtlNight && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
+                        onClick={() => setAtlNightModalOpen(true)}
+                        title="Consulter le calendrier des astreintes de nuit"
+                      >
+                        <Moon className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
+                        <span className="hidden sm:inline">Astreinte nuit</span>
+                      </Button>
+                    )}
+
                     {canViewNct && (
                       <Button
                         variant="outline"
@@ -2840,6 +2983,17 @@ export function ScheduleApp({
                         >
                           <CalendarDays className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                           <span className="hidden md:inline">NCT</span>
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
+                          onClick={() => setAtlNightModalOpen(true)}
+                          title="Calendrier des astreintes de nuit (saisie manuelle ou remplissage automatique)"
+                        >
+                          <Moon className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
+                          <span className="hidden md:inline">Astreinte nuit</span>
                         </Button>
 
                         <Button
@@ -4570,6 +4724,22 @@ export function ScheduleApp({
             minWeekKey={formatWeekKey(new Date())}
             onGenerateWeek={generateSemesterWeek}
             onRestoreWeeks={restoreSemesterWeeks}
+          />
+        </Suspense>
+      )}
+
+      {/* Calendrier des astreintes ATL Nuit */}
+      {(isAdmin || canViewAtlNight) && (
+        <Suspense fallback={null}>
+          <AtlNightCalendarModal
+            readOnly={!isAdmin}
+            isOpen={atlNightModalOpen}
+            onClose={() => setAtlNightModalOpen(false)}
+            calendar={atlNightCalendar}
+            defaultDate={dateStrForWeekDay(weekKey, "LUNDI") ?? undefined}
+            onSave={commitAtlNightCalendar}
+            planningValue={atlNightPlanningValue}
+            autoFill={atlNightAutoFill}
           />
         </Suspense>
       )}

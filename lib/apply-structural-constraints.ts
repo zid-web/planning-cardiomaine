@@ -30,6 +30,7 @@ import {
   applyNightGuardRecoveryOffs,
 } from "@/lib/half-day-off"
 import { getNctCalendar } from "@/lib/nct-calendar"
+import { applyAtlNightCalendarToWeek } from "@/lib/atl-night-calendar"
 import type { CellData, DoctorVacation, ScheduleData } from "@/lib/types"
 import { applyClosedSlotsClear } from "@/lib/closed-slots"
 import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
@@ -920,6 +921,9 @@ export function applyStructuralConstraints(
   // 2) CH astreintes (nuit semaine + ATL weekend selon roulement)
   next = applyChAstreinteConstraints(next, weekKey)
 
+  // 2a) Calendrier ATL Nuit : ses entrées priment sur le roulement (saisie manuelle protégée)
+  next = applyAtlNightCalendarToWeek(next, weekKey)
+
   // 2bis) ATL/Coro : uniquement coronarographistes (filtre Prop. solveur hors pool)
   next = applyAtlCoronarographisteEligibility(next)
 
@@ -997,6 +1001,9 @@ export function applyStructuralConstraints(
 
   // 11bis) Couplage gardes de semaine (Matin/Midi/Nuit = même médecin)
   next = applyWeekdayGardeCoupling(next, opts.previousSundayGuardDoctor)
+
+  // 11bis-a) Calendrier ATL Nuit ré-appliqué après les strips / couplages week-end
+  next = applyAtlNightCalendarToWeek(next, weekKey)
 
   // 11ter) Entrées PSS : lun/mar = médecin de garde d'après-midi + 1 autre ; mer-ven = garde seul
   next = applyEntreesPssRules(next)
