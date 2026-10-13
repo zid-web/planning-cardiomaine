@@ -111,6 +111,11 @@ export function buildSolverRulesPayload(
       doctors: ["M", "O", "W"], // si les trois sont présents : chacun une seule vacation (Coro matin, Coro apm ou nuit)
       penalty: 80,
     },
+    atl_night: {
+      never: ["FV"], // FV ne fait jamais d'astreinte ATL Nuit
+      follow_midi: true, // le médecin d'ATL Midi fait la nuit dans la mesure du possible
+      not_with_night_guard: true, // jamais le médecin de garde de nuit le même soir (jeudi : W/M si O de garde)
+    },
     entrees_pss: {
       row: "Entrées PSS",
       pair_days: ["LUNDI", "MARDI"], // médecin de garde d'après-midi (Garde Midi) + 1 autre médecin

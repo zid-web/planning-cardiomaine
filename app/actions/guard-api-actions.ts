@@ -37,6 +37,8 @@ import { astreinteWeekTypeForWeek } from "@/lib/astreinte-cycle";
 import { buildSolverRulesPayload, solverAcknowledgedRules } from "@/lib/solver-rules";
 import { setNctCalendar } from "@/lib/nct-calendar";
 import { loadNctCalendar } from "@/app/actions/nct-calendar-actions";
+import { countAtlNights, fillEmptyAtlNights, getAtlNightCalendar, setAtlNightCalendar } from "@/lib/atl-night-calendar";
+import { loadAtlNightCalendar } from "@/app/actions/atl-night-calendar-actions";
 
 // Configuration
 const GUARD_API_URL =
@@ -238,6 +240,7 @@ export async function generateGuardsViaAPI(
     // Calendrier NCT personnalisé (settings) — lu par applyStructuralConstraints
     // côté serveur pour ne pas réinjecter une date supprimée par l'admin.
     setNctCalendar(await loadNctCalendar());
+    setAtlNightCalendar(await loadAtlNightCalendar());
 
     // 2. Récupère le dernier médecin NCT + dernier combo garde (espacement 15 j.)
     const [lastNctDoctor, lastComboGarde] = await Promise.all([
@@ -608,6 +611,14 @@ export async function generateGuardsViaAPI(
       }
     } catch (propErr) {
       console.warn("[generateGuardsViaAPI] propositions Cs/Pré-op ignorées:", propErr);
+    }
+
+    // 7bis-b. Astreintes ATL Nuit : nuits restées vides → proposition (roulement CH,
+    // ATL Midi → nuit, jamais FV ni le médecin de garde de nuit, équité).
+    try {
+      scheduleData = fillEmptyAtlNights(scheduleData, weekKey, vacations, countAtlNights(getAtlNightCalendar()));
+    } catch (atlErr) {
+      console.warn("[generateGuardsViaAPI] propositions ATL Nuit ignorées:", atlErr);
     }
 
     // 7ter. Post-nettoyage des médecins virtuels injectés pour éviter le crash solveur

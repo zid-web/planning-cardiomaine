@@ -17,6 +17,15 @@ Légende : **S** = envoyée au solveur dans `app_rules` (`lib/solver-rules.ts`) 
 - Préférences par jour (lun U, mar G/B/M/W, mer S/P (à égalité ; S cumule garde et ETT pédiatrique), jeu O/G) (S).
 - Week-end : remplaçant seul possible sans médecin associé (A) ; roulement CH / W-O-M (solveur).
 
+## Astreintes ATL Nuit (calendrier « ATL nuit »)
+- Calendrier dédié, comme le calendrier NCT : saisie manuelle, « Remplir auto le mois » ou reprise du planning ;
+  une case ATL Nuit modifiée dans le planning met le calendrier à jour, et inversement (A).
+- Roulement habituel CH / W-O-M (S+A) ; une saisie manuelle prime sur le roulement (A).
+- Nuits W/O/M : le médecin d'ATL Midi fait la nuit dans la mesure du possible (S souple + A).
+- FV ne fait jamais d'astreinte ATL Nuit (S+A) ; jamais le médecin de garde de nuit le même soir (S+A) :
+  jeudi avec FV présent → W ou M si O est de garde, sinon M, W ou O.
+- Nuits restées vides après génération : proposition par l'appli (roulement, ATL Midi, équité) (A).
+
 ## Coronarographistes M, O, W
 - Si les trois sont présents un jour : **chacun une seule vacation** (Coro matin, Coro après-midi ou nuit) (S souple `coro_one_each_per_day` + A).
 - Coro d'abord pour M/O/W (S+A) ; jeudi après-midi : FV. ATL Matin/Midi suit Coro.
