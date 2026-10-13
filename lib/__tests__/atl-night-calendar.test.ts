@@ -77,6 +77,21 @@ function main() {
     [{ date: "2026-10-26", user: "O" }],
   )
   assert.deepEqual(auto["Astreintes ATL Nuit"].LUNDI.value, ["M"])
+  // … ni une nuit déjà validée (même sans marque de saisie admin)
+  const keepValidated = applyAtlNightCalendarToWeek(
+    { "Astreintes ATL Nuit": { LUNDI: c(["W"]), MARDI: c(["W"], "pending") } } as any,
+    "2026-W44",
+    [{ date: "2026-10-26", user: "O" }, { date: "2026-10-27", user: "O" }],
+  )
+  assert.deepEqual(keepValidated["Astreintes ATL Nuit"].LUNDI.value, ["W"])
+  assert.deepEqual(keepValidated["Astreintes ATL Nuit"].MARDI.value, ["O"]) // une proposition, elle, est remplacée
+  // une saisie manuelle du calendrier remplace la nuit validée
+  const manual = applyAtlNightCalendarToWeek(
+    { "Astreintes ATL Nuit": { LUNDI: c(["W"]) } } as any,
+    "2026-W44",
+    [{ date: "2026-10-26", user: "O", manual: true }],
+  )
+  assert.deepEqual(manual["Astreintes ATL Nuit"].LUNDI.value, ["O"])
   setAtlNightCalendar([])
 
   // Remplissage des nuits vides : pending, jamais FV

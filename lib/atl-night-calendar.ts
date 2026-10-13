@@ -340,6 +340,8 @@ export function applyAtlNightCalendarToWeek(
     const curValue = (cell?.value ?? []) as string[]
     const adminOwned = Boolean(cell?.manuallyCleared) || (Boolean(cell?.manualAssignment) && curValue.length > 0)
     if (!entry.manual && adminOwned) continue
+    // Une proposition automatique ne remplace jamais une nuit déjà validée dans le planning.
+    if (!entry.manual && curValue.length > 0 && cell?.status === "validated") continue
     if (curValue.length === 1 && curValue[0] === entry.user && (!entry.manual || cell?.status === "validated")) continue
     next = {
       ...next,

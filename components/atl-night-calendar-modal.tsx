@@ -78,6 +78,7 @@ export function AtlNightCalendarModal({
   const [draft, setDraft] = useState<AtlNightEntry[]>([])
   const [cursor, setCursor] = useState<{ year: number; month0: number }>({ year: 2026, month0: 0 })
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -86,6 +87,7 @@ export function AtlNightCalendarModal({
     const base = defaultDate && /^\d{4}-\d{2}-\d{2}$/.test(defaultDate) ? defaultDate : todayIso()
     setCursor({ year: Number(base.slice(0, 4)), month0: Number(base.slice(5, 7)) - 1 })
     setError(null)
+    setInfo(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
@@ -103,7 +105,10 @@ export function AtlNightCalendarModal({
     [draft, calendar],
   )
 
-  const goMonth = useCallback((delta: number) => setCursor((c) => shiftMonth(c.year, c.month0, delta)), [])
+  const goMonth = useCallback((delta: number) => {
+    setInfo(null)
+    setCursor((c) => shiftMonth(c.year, c.month0, delta))
+  }, [])
 
   const setUser = (date: string, user: string | null) => {
     if (readOnly) return
@@ -123,19 +128,34 @@ export function AtlNightCalendarModal({
     return () => window.removeEventListener('keydown', onKey)
   }, [isOpen, goMonth])
 
-  /** Reprend dans le calendrier les nuits déjà posées dans le planning (dates vides du mois). */
+  /**
+   * Reprend dans le calendrier les nuits posées dans le planning pour le mois affiché :
+   * dates sans entrée et propositions automatiques (les saisies manuelles du calendrier priment).
+   */
   const importFromPlanning = () => {
-    setDraft((prev) => {
-      let next = prev
-      const last = new Date(Date.UTC(cursor.year, cursor.month0 + 1, 0)).getUTCDate()
-      for (let d = 1; d <= last; d++) {
-        const date = `${monthPrefix}${String(d).padStart(2, '0')}`
-        if (next.some((e) => e.date === date)) continue
-        const v = planningValue(date)
-        if (v && (ATL_NIGHT_DOCTORS as readonly string[]).includes(v)) next = withAtlNightEntry(next, date, v, true)
-      }
-      return next
-    })
+    let changed = 0
+    let found = 0
+    let next = draft
+    const last = new Date(Date.UTC(cursor.year, cursor.month0 + 1, 0)).getUTCDate()
+    for (let d = 1; d <= last; d++) {
+      const date = `${monthPrefix}${String(d).padStart(2, '0')}`
+      const v = planningValue(date)
+      if (!v || !(ATL_NIGHT_DOCTORS as readonly string[]).includes(v)) continue
+      found++
+      const existing = next.find((e) => e.date === date)
+      if (existing?.manual) continue
+      next = withAtlNightEntry(next, date, v, true)
+      changed++
+    }
+    setDraft(next)
+    setError(null)
+    setInfo(
+      found === 0
+        ? `Aucune nuit trouvée dans le planning pour ${MONTHS[cursor.month0].toLowerCase()}.`
+        : changed === 0
+          ? `Les ${found} nuit(s) du planning sont déjà au calendrier (saisies manuelles).`
+          : `${changed} nuit(s) reprise(s) du planning — pensez à enregistrer.`,
+    )
   }
 
   const handleSave = async () => {
@@ -286,7 +306,7 @@ export function AtlNightCalendarModal({
                 type="button"
                 onClick={importFromPlanning}
                 className="flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                title="Fixe dans le calendrier les nuits déjà posées dans le planning"
+                title="Reprend les nuits du planning pour ce mois (remplace les propositions automatiques, garde les saisies manuelles)"
               >
                 <Download className="h-3.5 w-3.5" /> Reprendre du planning
               </button>
@@ -345,6 +365,7 @@ export function AtlNightCalendarModal({
           </div>
         </div>
 
+        {info && !error && <p className="px-4 pb-2 text-sm text-emerald-700">{info}</p>}
         {error && <p className="px-4 pb-2 text-sm text-red-600">{error}</p>}
 
         <div className="flex justify-end gap-2 border-t border-slate-200 px-4 py-3">
