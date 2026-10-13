@@ -169,8 +169,8 @@ const SixMonthProjectionDialog = lazy(() =>
 /** Comptes non-admin qui consultent le calendrier NCT (lecture seule). */
 const NCT_VIEWER_CODES: readonly string[] = ["W", "Q"]
 
-/** Comptes non-admin qui consultent le calendrier des astreintes ATL Nuit (lecture seule). */
-const ATL_NIGHT_VIEWER_CODES: readonly string[] = ["M", "W", "O"]
+/** Comptes non-admin qui consultent le calendrier des astreintes de nuit (lecture seule). M est admin : il le modifie. */
+const ATL_NIGHT_VIEWER_CODES: readonly string[] = ["W", "O"]
 
 const AtlNightCalendarModal = lazy(() =>
   import("@/components/atl-night-calendar-modal").then((m) => ({ default: m.AtlNightCalendarModal })),
