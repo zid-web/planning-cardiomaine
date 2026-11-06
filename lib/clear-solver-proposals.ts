@@ -17,9 +17,13 @@ export type ClearSolverProposalsResult = {
  * - les cases validées (saisies manuelles, contraintes structurelles, propositions
  *   déjà validées par l'admin) ;
  * - les cases en demande de changement (`request`) ;
- * - les cases saisies à la main (`manualAssignment`) ;
  * - les remplaçants texte libre et les infirmières présentes dans une case
  *   proposée (seul le médecin proposé est retiré).
+ *
+ * Une proposition retouchée par l'admin mais restée en attente (`manualAssignment` +
+ * `pending`, case encore violette) est effacée elle aussi : tout ce que le bouton compte
+ * comme proposition doit pouvoir être effacé (S45, 06/11/2026). Seules les cases validées
+ * protègent une saisie.
  *
  * Les cases vidées ne sont **pas** marquées `manuallyCleared` : les contraintes
  * structurelles (rotation LFB, CH, couplages gardes/ATL…) peuvent les
@@ -35,7 +39,7 @@ export function clearSolverProposals(schedule: ScheduleData): ClearSolverProposa
 
     for (const day of DAYS) {
       const cell = row[day]
-      if (!isSolverProposalCell(rowKey, cell) || cell.manualAssignment) continue
+      if (!isSolverProposalCell(rowKey, cell)) continue
 
       const kept = (cell.value || []).filter(
         (d) => d && (!isListedDoctor(d) || (NURSES as readonly string[]).includes(d)),
@@ -48,6 +52,8 @@ export function clearSolverProposals(schedule: ScheduleData): ClearSolverProposa
         // Une case qui ne garde que remplaçant / infirmière n'est plus une proposition.
         status: "validated",
         remplacant: kept.includes(cell.remplacant ?? "") ? cell.remplacant : undefined,
+        // La proposition retirée ne protège plus la case contre les remplissages structurels.
+        manualAssignment: kept.length > 0 ? cell.manualAssignment : false,
       }
       cleared++
     }

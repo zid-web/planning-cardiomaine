@@ -1670,7 +1670,8 @@ export function ScheduleApp({
       return copy
     })
     try {
-      await saveScheduleToDb(wk, next, currentUser || "unknown", { source: "revert" })
+      const res = await saveScheduleToDb(wk, next, currentUser || "unknown", { source: "revert" })
+      if (res?.error) throw new Error(res.error)
       toast.success(
         `${cleared} proposition${cleared > 1 ? "s" : ""} effacée${cleared > 1 ? "s" : ""} — vous pouvez relancer « Générer ».`,
       )
@@ -1798,6 +1799,10 @@ export function ScheduleApp({
     // structurels souples (roulement CH / W-O-M, etc.).
     if ((nextCell.value?.length || 0) > 0) {
       nextCell = { ...nextCell, manualAssignment: true }
+    } else if (nextCell.manualAssignment) {
+      // Case vidée : plus de saisie à protéger (la marque restait et faisait passer une
+      // future proposition du solveur pour une saisie manuelle).
+      nextCell = { ...nextCell, manualAssignment: false }
     }
     let newSchedule: ScheduleData = {
       ...schedule,
