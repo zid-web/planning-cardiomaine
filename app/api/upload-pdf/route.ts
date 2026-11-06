@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminCaller } from '@/lib/server-auth';
 
 // Fallback uniquement : le client uploade de préférence en direct vers Render
 // (multi-pages Claude Vision ≫ 60s → 504 si on passe par ce proxy).
@@ -37,6 +38,10 @@ function formatUpstreamError(data: unknown): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Appel payant du backend (Claude) : réservé aux admins.
+  if (!(await getAdminCaller())) {
+    return NextResponse.json({ error: 'Droits administrateur requis' }, { status: 403 });
+  }
   try {
     const formData = await req.formData();
     const file = formData.get('file');

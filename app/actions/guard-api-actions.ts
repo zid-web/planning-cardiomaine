@@ -2,6 +2,7 @@
 
 import { parseISO, subDays } from "date-fns";
 import { createClient } from "@/lib/supabase/server";
+import { getAdminCaller } from "@/lib/server-auth";
 import { DoctorVacation, ScheduleData } from "@/lib/types";
 import { DAYS } from "@/lib/constants";
 import { generateWeekSchedule, getWeekNumber } from "@/lib/schedule-utils";
@@ -220,6 +221,10 @@ export async function generateGuardsViaAPI(
    */
   currentScheduleParam?: ScheduleData,
 ) {
+  // Génération (appel du solveur, lecture de l'historique) : réservée aux admins.
+  if (!(await getAdminCaller())) {
+    return { success: false as const, error: "Droits administrateur requis" };
+  }
   try {
     // 1. Récupère la liste des médecins depuis Supabase
     const doctors = await getDoctorsFromSupabase();
@@ -753,6 +758,7 @@ export async function recordLastComboGardeFromSchedule(
   schedule: ScheduleData,
 ): Promise<{ ok: boolean; doctor?: string; date?: string }> {
   try {
+    if (!(await getAdminCaller())) return { ok: false }
     if (!isWomComboWeekend(weekKey)) return { ok: false }
     const saved = await persistLastComboGardeFromSchedule(weekKey, schedule)
     if (!saved?.doctor || !saved.date) return { ok: false }

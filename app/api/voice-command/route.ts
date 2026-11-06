@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminCaller } from '@/lib/server-auth';
 
 // GUARD_API_BASE_URL is the preferred name; GUARD_API_URL is already used elsewhere in the repo.
 const RENDER_API_URL = (
@@ -29,6 +30,10 @@ function formatUpstreamError(data: unknown): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Appel payant du backend (Claude) : réservé aux admins.
+  if (!(await getAdminCaller())) {
+    return NextResponse.json({ error: 'Droits administrateur requis' }, { status: 403 });
+  }
   try {
     const body = await req.json();
 

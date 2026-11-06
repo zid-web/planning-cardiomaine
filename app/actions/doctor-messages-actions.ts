@@ -40,12 +40,8 @@ async function getCallerProfile() {
   const doctorCode = profile?.doctor_code?.toUpperCase() || '';
   const userEmail = user.email?.toLowerCase() || '';
 
-  const isAdmin = profileRole === 'admin' ||
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') ||
-                  ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
+  // Admin = rôle en base uniquement (jamais l'e-mail ni l'initiale : n'importe qui peut créer « admin@… »).
+  const isAdmin = profileRole === 'admin';
 
   return { user, doctorCode, userEmail, isAdmin };
 }

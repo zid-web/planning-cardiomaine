@@ -5,6 +5,7 @@ import type { ScheduleData } from "@/lib/types"
 import { revalidatePath } from "next/cache"
 import { diffScheduleCells, type ScheduleSaveSource } from "@/lib/schedule-diff"
 import { upsertWeeklyEquity } from "@/lib/equity-tracking"
+import { getCaller } from "@/lib/server-auth"
 
 export type SaveScheduleOptions = {
   source?: ScheduleSaveSource
@@ -37,6 +38,12 @@ async function saveScheduleToDbUnsafe(
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  // Action appelable directement (y compris sans session) : personne de non connecté
+  // n'écrit dans le planning.
+  if (!user) {
+    return { data: null, error: "Non authentifié" }
+  }
 
   const source = options?.source || "ui"
   const syncFullBlob = options?.syncFullBlob !== false
@@ -71,7 +78,9 @@ async function saveScheduleToDbUnsafe(
     .select()
     .single()
 
-  if (error && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  // Repli service_role (contourne la sécurité de la base) : réservé aux admins. Avant,
+  // n'importe quel appelant refusé par la base passait par ce repli et écrivait quand même.
+  if (error && process.env.SUPABASE_SERVICE_ROLE_KEY && (await getCaller())?.isAdmin) {
     try {
       const { createAdminClient } = await import("@/lib/supabase/admin")
       const adminClient = createAdminClient()
@@ -186,6 +195,7 @@ export async function getAllSchedulesFromDb() {
 }
 
 export async function saveFullScheduleToDb(fullSchedule: Record<string, unknown>) {
+  if (!(await getCaller())?.isAdmin) throw new Error("Droits administrateur requis")
   const supabase = await createClient()
 
   const scheduleKey = "full_schedule"

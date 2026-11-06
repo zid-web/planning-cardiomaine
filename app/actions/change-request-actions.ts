@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
 import { saveScheduleToDb } from '@/app/actions/schedule-actions';
 import type { ScheduleData } from '@/lib/types';
+import { getCaller } from '@/lib/server-auth';
 
 const MAX_PROCESSED_REQUESTS = 10;
 
@@ -57,6 +58,8 @@ async function archiveOldProcessedRequests() {
  * Récupère l'historique archivé des demandes traitées (lecture pour tous).
  */
 export async function getChangeRequestsHistory(limit = 50) {
+  // Action appelable directement : réservée aux utilisateurs connectés.
+  if (!(await getCaller())) return [];
   const adminDb = createAdminClient();
   const { data } = await adminDb
     .from('change_requests_history')
@@ -71,6 +74,7 @@ export async function getChangeRequestsHistory(limit = 50) {
  */
 export async function getChangeRequestsForWeek(weekKey: string) {
   try {
+    if (!(await getCaller())) return [];
     const adminDb = createAdminClient();
     const { data } = await adminDb
       .from('change_requests')
@@ -103,14 +107,9 @@ export async function applyChangeRequest(requestId: string) {
 
   const profileRole = profile?.role?.toLowerCase() || '';
   const doctorCode = profile?.doctor_code?.toUpperCase() || '';
-  const userEmail = user.email?.toLowerCase() || '';
 
-  const isAdmin = profileRole === 'admin' || 
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') || 
-                  ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
+  // Admin = rôle en base uniquement (jamais l'e-mail ni l'initiale : n'importe qui peut créer « admin@… »).
+  const isAdmin = profileRole === 'admin';
 
   const { data: request, error: fetchError } = await adminDb
     .from('change_requests')
@@ -231,14 +230,9 @@ export async function rejectChangeRequest(requestId: string, comment?: string) {
 
   const profileRole = profile?.role?.toLowerCase() || '';
   const doctorCode = profile?.doctor_code?.toUpperCase() || '';
-  const userEmail = user.email?.toLowerCase() || '';
 
-  const isAdmin = profileRole === 'admin' || 
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') || 
-                  ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
+  // Admin = rôle en base uniquement (jamais l'e-mail ni l'initiale : n'importe qui peut créer « admin@… »).
+  const isAdmin = profileRole === 'admin';
 
   const { data: request, error: fetchError } = await adminDb
     .from('change_requests')
@@ -297,12 +291,23 @@ export async function deleteChangeRequest(requestId: string) {
 
   const { data: request } = await adminDb
     .from('change_requests')
-    .select('id')
+    .select('id, requester_id, current_doctor, requested_doctor')
     .eq('id', requestId)
     .maybeSingle();
 
   if (!request) {
     return { success: false, error: 'Demande introuvable' };
+  }
+
+  // Seuls un admin, l'auteur de la demande ou un médecin concerné peuvent la supprimer.
+  const caller = await getCaller();
+  const code = caller?.doctorCode || '';
+  const mayDelete =
+    Boolean(caller?.isAdmin) ||
+    request.requester_id === user.id ||
+    Boolean(code && (request.current_doctor?.toUpperCase() === code || request.requested_doctor?.toUpperCase() === code));
+  if (!mayDelete) {
+    return { success: false, error: 'Droits insuffisants pour supprimer cette demande' };
   }
 
   const { error } = await adminDb
