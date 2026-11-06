@@ -28,7 +28,6 @@ export async function proxy(request: NextRequest) {
     "/confidentialite",
     "/api/ping-solver", // keep-alive cron (cron-job.org / Vercel Cron) — no login
     "/api/version", // version du déploiement (AppUpdateWatcher) — monté aussi sur la page de connexion
-    "/api/test-s44",
   ]
 
   // Public routes: skip auth entirely (needed for external keep-alive cron)

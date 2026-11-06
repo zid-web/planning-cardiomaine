@@ -26,14 +26,9 @@ export async function POST(req: NextRequest) {
 
   const profileRole = profile?.role?.toLowerCase() || '';
   const doctorCode = profile?.doctor_code?.toUpperCase() || '';
-  const userEmail = user.email?.toLowerCase() || '';
 
-  const isAdmin = profileRole === 'admin' || 
-                  profileRole === 'administrateur' ||
-                  userEmail.includes('admin') || 
-                  ['M', 'Z', 'L'].includes(doctorCode) ||
-                  userEmail.includes('lucie') ||
-                  userEmail.includes('ouissem');
+  // Admin = rôle en base uniquement (jamais l'e-mail ni l'initiale : n'importe qui peut créer « admin@… »).
+  const isAdmin = profileRole === 'admin';
 
   // Si l'utilisateur n'est pas admin, vérifier qu'il est bien l'occupant (locataire) de la case
   if (!isAdmin) {
