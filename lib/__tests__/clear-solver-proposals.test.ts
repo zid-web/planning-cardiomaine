@@ -26,11 +26,14 @@ function main() {
   }
   s["Garde Midi"].LUNDI = { value: ["U"], type: "doctor", status: "pending", manualAssignment: true }
 
-  assert.equal(countSolverProposalCells(s), 4) // 3 propositions + 1 manuelle pending sans demande
+  assert.equal(countSolverProposalCells(s), 4) // 3 propositions + 1 retouchée restée en attente
 
+  // Tout ce que le bouton compte est effacé, y compris une case violette retouchée (S45)
   const { schedule: out, cleared } = clearSolverProposals(s)
-  assert.equal(cleared, 3)
-  assert.equal(countSolverProposalCells(out), 1) // la saisie manuelle reste
+  assert.equal(cleared, 4)
+  assert.equal(countSolverProposalCells(out), 0)
+  assert.deepEqual(out["Garde Midi"].LUNDI.value, [])
+  assert.equal(out["Garde Midi"].LUNDI.manualAssignment, false)
 
   assert.deepEqual(out["Garde Nuit"].MARDI.value, [])
   assert.equal(out["Garde Nuit"].MARDI.type, "empty")
@@ -43,7 +46,6 @@ function main() {
   assert.deepEqual(out["Garde Nuit"].JEUDI.value, ["S"])
   assert.deepEqual(out["Apm - Coro"].VENDREDI.value, ["W"])
   assert.equal(out["Apm - Coro"].VENDREDI.status, "pending")
-  assert.deepEqual(out["Garde Midi"].LUNDI.value, ["U"])
   // Entrée non mutée
   assert.deepEqual(s["Garde Nuit"].MARDI.value, ["B"])
 

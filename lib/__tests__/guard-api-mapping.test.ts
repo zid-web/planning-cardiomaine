@@ -332,6 +332,17 @@ function main() {
     "merge week préserve le doublon Cs",
   )
 
+  // Case vidée par l'admin (ancienne marque manualAssignment) : la proposition du solveur
+  // ne doit pas hériter de cette marque, sinon « Effacer » la prend pour une saisie (S45).
+  const stale = generateWeekSchedule("2026-W45")
+  stale["Matin - Cs Tessée"].LUNDI = { value: [], type: "empty", status: "validated", manualAssignment: true }
+  const genStale = generateWeekSchedule("2026-W45")
+  genStale["Matin - Cs Tessée"].LUNDI = { value: ["B"], type: "doctor", status: "pending" }
+  const afterStale = mergeSolverWeekIntoExisting(stale, genStale)
+  assert.deepEqual(afterStale["Matin - Cs Tessée"].LUNDI.value, ["B"])
+  assert.equal(afterStale["Matin - Cs Tessée"].LUNDI.status, "pending")
+  assert.equal(afterStale["Matin - Cs Tessée"].LUNDI.manualAssignment, false)
+
   console.log("✅ guard-api-mapping vacation/coro tests passed")
 }
 

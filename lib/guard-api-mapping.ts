@@ -581,6 +581,9 @@ export function mergeSolverWeekIntoExisting(
           remplacant: merged.remplacant,
           type: "doctor",
           status: genCell.status === "validated" ? "validated" : "pending",
+          // Une proposition n'est pas une saisie : ne pas hériter d'une ancienne marque
+          // `manualAssignment` restée sur la case (sinon « Effacer » la croyait manuelle — S45).
+          manualAssignment: genCell.status === "validated" ? existingCell?.manualAssignment : false,
         };
       }
       next[rowKey] = mergedRow;
