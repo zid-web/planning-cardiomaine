@@ -7,7 +7,7 @@ const sched: any = {
   "Hors site - NCT": {},
 }
 const p = buildSolverRulesPayload("2026-W44", { previousSundayGuardDoctor: "B", schedule: sched })
-assert.equal(p.version, 1)
+assert.equal(p.version, 2)
 assert.equal(p.night_guard.previous_sunday_guard_doctor, "B")
 assert.ok(p.night_guard.friday_pool.includes("B"))
 assert.ok(p.closed_slots.some((c) => c.row === "Matin - Rythmo" && c.day === "LUNDI"))

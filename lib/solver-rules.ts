@@ -16,15 +16,16 @@ import { isNctClosedOnDate } from "@/lib/nct-calendar"
 import { NIGHT_GUARD_DAY_RULES, NO_FRIDAY_NIGHT_GUARD } from "@/lib/guard-scheduler"
 import { EE_SOLO_DOCTORS, FRIDAY_NIGHT_GUARD_POOL } from "@/lib/slot-blocking"
 import { STRESS_ROWS } from "@/lib/stress-weekly"
-import type { ScheduleData } from "@/lib/types"
+import type { DoctorVacation, ScheduleData } from "@/lib/types"
+import { buildForbiddenAssignments, type ForbiddenAssignments } from "@/lib/solver-forbidden"
 
-export const SOLVER_RULES_VERSION = 1
+export const SOLVER_RULES_VERSION = 2 // 2 : + `forbidden` (validation de l'appli case × jour × médecin)
 
 export type SolverRulesPayload = ReturnType<typeof buildSolverRulesPayload>
 
 export function buildSolverRulesPayload(
   weekKey: string,
-  opts: { previousSundayGuardDoctor?: string | null; fridayGuardCounts?: Record<string, number>; nightGuardDayCounts?: Record<string, Record<string, number>>; schedule?: ScheduleData; rows?: string[] } = {},
+  opts: { previousSundayGuardDoctor?: string | null; fridayGuardCounts?: Record<string, number>; nightGuardDayCounts?: Record<string, Record<string, number>>; schedule?: ScheduleData; rows?: string[]; vacations?: DoctorVacation[]; forbidden?: ForbiddenAssignments } = {},
 ) {
   const schedule = opts.schedule
   const rows = opts.rows ?? Object.keys(schedule ?? {})
@@ -63,8 +64,17 @@ export function buildSolverRulesPayload(
     }
   }
 
+  // Toutes les règles de validation de l'appli, évaluées case × jour × médecin
+  const interdits = opts.forbidden ?? (schedule
+    ? buildForbiddenAssignments(weekKey, schedule, opts.vacations ?? [], {
+        previousSundayGuardDoctor: opts.previousSundayGuardDoctor ?? null,
+      })
+    : null)
+
   return {
     version: SOLVER_RULES_VERSION,
+    // ligne → jour → médecins que l'appli refuserait (validation de la saisie manuelle)
+    forbidden: interdits?.forbidden ?? {},
     week_key: weekKey,
     holidays,
     closed_slots: closed,
