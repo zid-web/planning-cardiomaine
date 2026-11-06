@@ -5,7 +5,8 @@ généré par `lib/solver-rules.ts` à partir des constantes de l'app — jamais
 
 | Clé | Sens attendu côté solveur |
 |---|---|
-| `holidays` | jour → nom du férié |
+| `forbidden` | **(v2)** ligne → jour → médecins que la validation de l'appli (`canAssignDoctorToSlot`, celle de la saisie manuelle) refuserait, calculé sur le planning sans les propositions en attente. Le solveur les pénalise très fortement et renvoie les écarts restants dans `applied_rules.forbidden_violations`. Toute nouvelle règle de l'appli y est transmise automatiquement. |
+| `holidays` | jour → nom du férié ; le solveur n'y impose aucun créneau fixe (Rythmo, ETT ped, Coro mercredi) et n'y place que gardes et astreintes |
 | `closed_slots[]` | `{row, day, reason}` : ne rien affecter (fériés, vacations fermées, NCT sans vacation au calendrier) |
 | `fixed_assignments[]` | `{row, day, doctors}` : cases validées, à conserver |
 | `cleared_cells[]` | cases vidées volontairement : ne pas remplir |

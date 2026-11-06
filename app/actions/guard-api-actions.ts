@@ -36,6 +36,7 @@ import {
 import { isWomComboWeekend } from "@/lib/weekend-wom-rules";
 import { astreinteWeekTypeForWeek } from "@/lib/astreinte-cycle";
 import { buildSolverRulesPayload, solverAcknowledgedRules } from "@/lib/solver-rules";
+import { buildForbiddenAssignments, type ForbiddenAssignments } from "@/lib/solver-forbidden";
 import { setNctCalendar } from "@/lib/nct-calendar";
 import { loadNctCalendar } from "@/app/actions/nct-calendar-actions";
 import { countAtlNights, fillEmptyAtlNights, getAtlNightCalendar, setAtlNightCalendar } from "@/lib/atl-night-calendar";
@@ -372,6 +373,8 @@ export async function generateGuardsViaAPI(
     // Planning courant : positions infirmières + contexte des préférences
     // souples (congés déjà posés, garde de nuit de la veille).
     let currentScheduleForPrefs: ScheduleData | undefined
+    // Interdits calculés avec la validation de l'appli (envoyés au solveur, motifs gardés ici)
+    let forbiddenAssignments: ForbiddenAssignments | undefined
 
     try {
       // Priorité au planning transmis directement par le front
@@ -470,6 +473,10 @@ export async function generateGuardsViaAPI(
       // Consignes de l'app (cases fermées, règles de garde, limites hebdo, cases saisies)
       app_rules: buildSolverRulesPayload(currentWeekKey, {
         previousSundayGuardDoctor,
+        vacations,
+        forbidden: (forbiddenAssignments = currentScheduleForPrefs
+          ? buildForbiddenAssignments(currentWeekKey, currentScheduleForPrefs, vacations, { previousSundayGuardDoctor })
+          : undefined),
         fridayGuardCounts,
         nightGuardDayCounts,
         schedule: currentScheduleForPrefs,
@@ -565,6 +572,18 @@ export async function generateGuardsViaAPI(
 
     if (data) {
       if (!data.warnings) data.warnings = [];
+      // Le solveur n'a pu respecter certains interdits de l'appli (pénalités, pas d'infaisabilité) :
+      // on l'explique ; ces propositions sont de toute façon écartées par les règles après génération.
+      const violations: unknown = data.applied_rules?.forbidden_violations;
+      if (Array.isArray(violations) && violations.length > 0 && forbiddenAssignments) {
+        const lines = violations.slice(0, 8).map((v: unknown) => {
+          const [row, day, doc] = Array.isArray(v) ? (v as string[]) : [];
+          const why = forbiddenAssignments?.reasons[`${row}|${day}|${doc}`] ?? "interdit par les règles de l'appli";
+          return `Le solveur n'a pas pu éviter ${doc} · ${row} · ${String(day).toLowerCase()} : ${why}`;
+        });
+        data.warnings.push(...lines);
+        if (violations.length > 8) data.warnings.push(`… et ${violations.length - 8} autre(s) écart(s) aux règles de l'appli.`);
+      }
       if (appRulesDropped) {
         data.warnings.push("Le solveur a refusé le bloc de consignes (app_rules) : règles appliquées uniquement après génération.");
       } else if (
