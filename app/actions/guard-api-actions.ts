@@ -567,7 +567,11 @@ export async function generateGuardsViaAPI(
       if (!data.warnings) data.warnings = [];
       if (appRulesDropped) {
         data.warnings.push("Le solveur a refusé le bloc de consignes (app_rules) : règles appliquées uniquement après génération.");
-      } else if (!solverAcknowledgedRules(data)) {
+      } else if (
+        !solverAcknowledgedRules(data) &&
+        // Le solveur a déjà signalé qu'il a généré sans les consignes : pas de second avertissement.
+        !data.warnings.some((w: unknown) => typeof w === "string" && w.includes("app_rules"))
+      ) {
         data.warnings.push("Consignes envoyées au solveur sans accusé de réception : règles appliquées après génération.");
       }
     }
