@@ -283,6 +283,15 @@ export function applyWeekendComboFromGardes(
 ): ScheduleData {
   const combo = weekendComboFromGardes(schedule, weekKey, vacations)
   if (!combo) return schedule
+  // Combo déduit de gardes validées → astreintes validées (règle automatique, comme le roulement
+  // CH). En « proposition », « Effacer » les retirait puis le combo les reposait (S1 2027).
+  const fromPendingGarde = ["SAMEDI", "DIMANCHE"].some((day) =>
+    ["Garde Matin", "Garde Midi", "Garde Nuit"].some((row) => {
+      const c = schedule[row]?.[day]
+      return c?.status === "pending" && ((c.value ?? []) as string[]).some(isWomDoctor)
+    }),
+  )
+  const status: "validated" | "pending" = fromPendingGarde ? "pending" : "validated"
   const targets: Array<[string, string, string]> = [
     [ATL_NIGHT_ROW, "VENDREDI", combo.atlSat],
     ...["Astreintes ATL Matin", "Astreintes ATL Midi", ATL_NIGHT_ROW].flatMap(
@@ -297,11 +306,11 @@ export function applyWeekendComboFromGardes(
     if (cell.manuallyCleared || (cell.manualAssignment && cur.length > 0)) continue
     const date = dateStrForWeekDay(weekKey, day)
     if (date && isDoctorOnVacationForFixed(doc, date, vacations)) continue
-    if (cur.length === 1 && cur[0] === doc) continue
+    if (cur.length === 1 && cur[0] === doc && cell.status === status) continue
     const keep = cur.filter((d) => !isWomDoctor(d) && d !== "CH" && d !== "FV")
     next = {
       ...next,
-      [row]: { ...next[row], [day]: { ...cell, value: [doc, ...keep], type: "doctor", status: "pending" } },
+      [row]: { ...next[row], [day]: { ...cell, value: [doc, ...keep], type: "doctor", status } },
     }
   }
   return next

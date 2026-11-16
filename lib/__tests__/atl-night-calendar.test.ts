@@ -143,6 +143,19 @@ function main() {
   // … sauf une saisie admin
   wc["Astreintes ATL Nuit"].DIMANCHE = { ...c(["W"]), manualAssignment: true }
   assert.deepEqual(applyWeekendComboFromGardes(wc, "2026-W44")["Astreintes ATL Nuit"].DIMANCHE.value, ["W"])
+  // Gardes validées → astreintes du combo validées (« Effacer » ne doit pas les voir revenir en proposition)
+  const wv = blankWeek("2027-W01") // semaine W/O/M (roulement inversé 2027)
+  wv["Garde Midi"].SAMEDI = c(["W"])
+  wv["Garde Nuit"].DIMANCHE = c(["O"])
+  wv["Astreintes ATL Nuit"].DIMANCHE = c(["W"], "pending")
+  const vComb = applyWeekendComboFromGardes(wv, "2027-W01")
+  assert.deepEqual(vComb["Astreintes ATL Nuit"].DIMANCHE.value, ["W"])
+  assert.equal(vComb["Astreintes ATL Nuit"].DIMANCHE.status, "validated")
+  assert.equal(vComb["Astreintes ATL Matin"].DIMANCHE.status, "validated")
+  // Garde en proposition → combo en proposition
+  wv["Garde Midi"].SAMEDI = c(["W"], "pending")
+  assert.equal(applyWeekendComboFromGardes(wv, "2027-W01")["Astreintes ATL Matin"].DIMANCHE.status, "pending")
+
   // Semaine CH : pas de combo W/O/M
   const ch = blankWeek("2026-W45")
   ch["Garde Midi"].SAMEDI = c(["M"])
