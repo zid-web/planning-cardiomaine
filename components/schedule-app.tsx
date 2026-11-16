@@ -934,6 +934,47 @@ export function ScheduleApp({
     }
   }
 
+  /**
+   * « Effacer les propositions du semestre » (rubrique Projection) : même effet que le bouton
+   * « Effacer propositions » sur chacune des semaines données — seules les propositions
+   * (cases violettes) partent ; saisies manuelles, cases validées et contraintes restent.
+   */
+  const clearSemesterProposals = async (
+    weekKeys: string[],
+  ): Promise<{ cleared: number; weeks: number; failed: number }> => {
+    let cleared = 0
+    let weeks = 0
+    let failed = 0
+    for (const wk of weekKeys) {
+      const current = fullScheduleRef.current[wk]
+      if (!current) continue
+      const { schedule: stripped, cleared: n } = clearSolverProposals(current)
+      if (n === 0) continue
+      const prevKey = previousIsoWeekKey(wk)
+      const next = applyStructuralConstraints(stripped, wk, vacations, {
+        vacationsReady,
+        previousSundayGuardDoctor: prevKey ? extractSundayNightGuardDoctor(fullScheduleRef.current[prevKey]) : null,
+        isFreshWeek: false,
+      })
+      const res = await saveScheduleToDb(wk, next, currentUser || "unknown", { source: "revert" })
+      if (res?.error) {
+        failed++
+        continue
+      }
+      fullScheduleRef.current = { ...fullScheduleRef.current, [wk]: next }
+      setFullSchedule((prev) => ({ ...prev, [wk]: next }))
+      setPreGenerationSnapshot((prev) => {
+        if (!(wk in prev)) return prev
+        const copy = { ...prev }
+        delete copy[wk]
+        return copy
+      })
+      cleared += n
+      weeks++
+    }
+    return { cleared, weeks, failed }
+  }
+
   /** Restaure l'état d'avant « Générer le semestre » pour les semaines données. */
   const restoreSemesterWeeks = async (
     snapshots: Record<string, ScheduleData | undefined>,
@@ -4746,6 +4787,7 @@ export function ScheduleApp({
             minWeekKey={formatWeekKey(new Date())}
             onGenerateWeek={generateSemesterWeek}
             onRestoreWeeks={restoreSemesterWeeks}
+            onClearWeeks={clearSemesterProposals}
           />
         </Suspense>
       )}

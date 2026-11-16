@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Undo2,
   Square,
+  Eraser,
 } from "lucide-react"
 import {
   BarChart,
@@ -175,9 +176,11 @@ type Props = {
   onRestoreWeeks?: (
     snapshots: Record<string, ScheduleData | undefined>,
   ) => Promise<{ restored: number; failed: number }>
+  /** Efface les propositions (cases violettes) des semaines données — comme « Effacer propositions ». */
+  onClearWeeks?: (weekKeys: string[]) => Promise<{ cleared: number; weeks: number; failed: number }>
 }
 
-export function SixMonthProjectionDialog({ open, onOpenChange, currentUser, minWeekKey, onGenerateWeek, onRestoreWeeks }: Props) {
+export function SixMonthProjectionDialog({ open, onOpenChange, currentUser, minWeekKey, onGenerateWeek, onRestoreWeeks, onClearWeeks }: Props) {
   const [semester, setSemester] = useState<Semester>(
     new Date().getMonth() < 8 ? 1 : 2,
   )
@@ -253,6 +256,29 @@ export function SixMonthProjectionDialog({ open, onOpenChange, currentUser, minW
       toast.error(`${restored} restaurée(s), ${failed} en échec — réessayez.`)
     }
   }, [onRestoreWeeks])
+  const [isClearing, setIsClearing] = useState(false)
+  const handleClearSemester = useCallback(async () => {
+    if (!onClearWeeks) return
+    if (
+      !confirm(
+        `Effacer toutes les propositions (cases violettes) des ${upcomingWeekKeys.length} semaines en cours et à venir du semestre ?\n\nVos saisies manuelles et les cases validées sont conservées.`,
+      )
+    )
+      return
+    setIsClearing(true)
+    const { cleared, weeks, failed } = await onClearWeeks(upcomingWeekKeys)
+    setIsClearing(false)
+    if (failed > 0) {
+      toast.error(`${cleared} proposition(s) effacée(s) sur ${weeks} semaine(s), ${failed} semaine(s) en échec — réessayez.`)
+    } else if (cleared === 0) {
+      toast.info("Aucune proposition à effacer sur ce semestre.")
+    } else {
+      toast.success(`${cleared} proposition(s) effacée(s) sur ${weeks} semaine(s).`)
+      setApplyResults([])
+      snapshotsRef.current = {}
+    }
+  }, [onClearWeeks, upcomingWeekKeys])
+
   const semesterLabel = getSemesterLabel(semester, year)
 
   const handleGenerate = useCallback(async () => {
@@ -443,14 +469,28 @@ export function SixMonthProjectionDialog({ open, onOpenChange, currentUser, minW
                     <Square className="h-4 w-4" /> Arrêter
                   </Button>
                 ) : (
-                  <Button
-                    onClick={() => setApplyConfirm(true)}
-                    disabled={isGenerating || isRestoring || upcomingWeekKeys.length === 0}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2"
-                  >
-                    <Play className="h-4 w-4" />
-                    Générer le semestre
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    {onClearWeeks && (
+                      <Button
+                        onClick={() => void handleClearSemester()}
+                        disabled={isGenerating || isRestoring || isClearing || upcomingWeekKeys.length === 0}
+                        variant="outline"
+                        className="gap-2 border-violet-300 bg-white text-violet-800 hover:bg-violet-50"
+                        title="Effacer les propositions (cases violettes) des semaines en cours et à venir de ce semestre"
+                      >
+                        {isClearing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eraser className="h-4 w-4" />}
+                        Effacer les propositions du semestre
+                      </Button>
+                    )}
+                    <Button
+                      onClick={() => setApplyConfirm(true)}
+                      disabled={isGenerating || isRestoring || isClearing || upcomingWeekKeys.length === 0}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-2"
+                    >
+                      <Play className="h-4 w-4" />
+                      Générer le semestre
+                    </Button>
+                  </div>
                 )}
               </div>
 
@@ -461,7 +501,7 @@ export function SixMonthProjectionDialog({ open, onOpenChange, currentUser, minW
                     <li>Même solveur et mêmes règles que le bouton « Générer » d&apos;une semaine : congés, fériés, binômes, NCT, astreintes.</li>
                     <li>Seules les cases vides reçoivent des propositions : vos saisies manuelles et cases validées sont conservées.</li>
                     <li>Chaque semaine est enregistrée avant la suivante (dimanche précédent, repos de nuit, équité).</li>
-                    <li>Rien n&apos;est validé : « Effacer propositions » ou « Tout annuler » ci-dessous les retire.</li>
+                    <li>Rien n&apos;est validé : « Effacer les propositions du semestre », « Effacer propositions » (semaine) ou « Tout annuler » les retirent.</li>
                     <li>Durée : plusieurs minutes. Gardez cette fenêtre ouverte.</li>
                   </ul>
                   <div className="flex gap-2 pt-1">
