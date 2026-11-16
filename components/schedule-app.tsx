@@ -975,6 +975,7 @@ export function ScheduleApp({
       vacationsReady,
       previousSundayGuardDoctor,
       isFreshWeek: !fullSchedule[weekKey],
+      fill: false, // tâches (Entrées PSS) uniquement avec « Générer »
     })
   }, [fullSchedule, weekKey, vacations, vacationsReady, previousSundayGuardDoctor, nctCalendar, atlNightCalendar])
 
@@ -1038,6 +1039,7 @@ export function ScheduleApp({
               vacationsReady: true,
               previousSundayGuardDoctor: sundayDoc,
               isFreshWeek: !source,
+              fill: false, // tâches (Entrées PSS) uniquement avec « Générer »
             })
             if (!schedulesDiffer(source, injected)) continue
 
@@ -1661,6 +1663,7 @@ export function ScheduleApp({
     const next = applyStructuralConstraints(stripped, wk, vacations, {
       vacationsReady,
       previousSundayGuardDoctor,
+      fill: false, // « Effacer » ne repropose pas de tâches
     })
     setFullSchedule((prev) => ({ ...prev, [wk]: next }))
     // « Retour » n'a plus de sens : l'instantané d'avant génération est périmé.

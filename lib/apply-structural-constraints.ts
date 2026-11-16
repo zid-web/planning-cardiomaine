@@ -854,6 +854,12 @@ export type ApplyStructuralConstraintsOptions = {
    * 31/07/2026 : règle absolue, seule exception à la libre modification).
    */
   isFreshWeek?: boolean
+  /**
+   * false = n'ajoute pas les **tâches** proposées (Entrées PSS) : réservé à « Générer »
+   * (consigne 16/11/2026). Les créneaux fixes, gardes, astreintes, roulement CH,
+   * couplages, week-ends W/O/M, binômes et calendriers restent appliqués. Défaut true.
+   */
+  fill?: boolean
 }
 
 /**
@@ -1010,7 +1016,7 @@ export function applyStructuralConstraints(
   next = applyWeekendComboFromGardes(next, weekKey, vacations)
 
   // 11ter) Entrées PSS : lun/mar = médecin de garde d'après-midi + 1 autre ; mer-ven = garde seul
-  next = applyEntreesPssRules(next)
+  if (opts.fill !== false) next = applyEntreesPssRules(next)
 
   // 12) Binômes infirmière-médecin (D+Véro le jeudi matin + couplage médecin systématique pour Véro/Val sur Stress/EE)
   if (weekKey) {
