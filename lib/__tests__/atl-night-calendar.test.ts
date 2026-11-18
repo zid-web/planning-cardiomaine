@@ -5,6 +5,8 @@ import assert from "node:assert/strict"
 import {
   applyAtlNightCalendarToWeek,
   applyWeekendComboFromGardes,
+  isUnavailableForWeekendAstreinte,
+  countAtlNightsInSchedules,
   autoFillAtlNightMonth,
   cycleAtlNightUser,
   expectedAtlNightGroup,
@@ -25,7 +27,7 @@ function blankWeek(wk: string) {
 }
 const c = (value: string[], status: "validated" | "pending" = "validated") => ({ value, type: "doctor" as const, status })
 
-function main() {
+async function main() {
   // Roulement : S44 2026 (paire) = semaine WOM → CH les nuits mer/jeu ; S45 = semaine CH → CH lun/mar/ven + WE
   assert.equal(expectedAtlNightGroup("2026-10-26"), "WOM") // lundi S44
   assert.equal(expectedAtlNightGroup("2026-10-28"), "CH") // mercredi S44
@@ -159,6 +161,33 @@ function main() {
   cons["Astreintes ATL Nuit"].MERCREDI = c(["M"])
   cons["Astreintes ATL Midi"].JEUDI = c(["M"])
   assert.notEqual(proposeAtlNightDoctor("2026-11-05", { schedule: cons }), "M")
+
+  // Week-end : pas d'astreinte en semaine de vacances ni la veille des vacances
+  const v = (doc: string, a: string, b: string) => ({ id: doc + a, doctor_id: doc, start_date: a, end_date: b }) as any
+  assert.equal(isUnavailableForWeekendAstreinte("M", "2026-W44", [v("M", "2026-11-02", "2026-11-08")]), true) // vacances dès le lundi suivant
+  assert.equal(isUnavailableForWeekendAstreinte("M", "2026-W44", [v("M", "2026-10-28", "2026-10-28")]), true) // vacances mercredi de la semaine
+  assert.equal(isUnavailableForWeekendAstreinte("M", "2026-W44", [v("M", "2026-11-09", "2026-11-15")]), false) // deux semaines plus tard
+  const veille = [v("W", "2026-11-02", "2026-11-08")]
+  const wkv = blankWeek("2026-W44")
+  wkv["Astreintes ATL Nuit"].VENDREDI = c(["W"])
+  for (const date of ["2026-10-30", "2026-10-31", "2026-11-01"]) {
+    assert.notEqual(proposeAtlNightDoctor(date, { schedule: wkv, vacations: veille }), "W", date)
+  }
+  // Week-end W/O/M sans préréglage : le médecin à la veille de ses vacances n'est pas proposé
+  const { proposeWeekendWomPattern } = await import("@/lib/weekend-wom-rules")
+  for (const doc of ["M", "O", "W"]) {
+    const pat = proposeWeekendWomPattern("2027-W03", undefined, [v(doc, "2027-01-25", "2027-01-31")])
+    if (pat?.kind === "mono") assert.notEqual(pat.atlDoctor, doc)
+    if (pat?.kind === "combo") assert.ok(pat.atlSat !== doc && pat.atlSun !== doc)
+  }
+
+  // Équité : l'historique du planning compte (le moins chargé passe en premier)
+  const hist = blankWeek("2026-W40")
+  for (const day of ["LUNDI", "MARDI", "VENDREDI", "SAMEDI", "DIMANCHE"]) hist["Astreintes ATL Nuit"][day] = c(["M"])
+  assert.equal(countAtlNightsInSchedules([hist]).M, 5)
+  const eq = autoFillAtlNightMonth([], 2026, 10, () => ({}), { M: 30, W: 0, O: 0 })
+  const firstWom = eq.find((e) => e.user !== "CH")
+  assert.notEqual(firstWom?.user, "M")
 
   // Divers
   assert.equal(cycleAtlNightUser(null), "M")
