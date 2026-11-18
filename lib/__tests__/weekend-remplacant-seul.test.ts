@@ -22,6 +22,15 @@ function main() {
     s2["Garde Nuit"].SAMEDI = { value: ["Klazen"], type: "doctor", status: "validated", manualAssignment: true }
     assert.deepEqual(applyStructuralConstraints(s2, wk, [])["Garde Nuit"].SAMEDI.value, ["Klazen"])
 
+    // Samedi matin : remplaçant seul, le médecin de la nuit du vendredi n'est pas associé (21/11, P + NGOUO)
+    const sNgouo = generateWeekSchedule(wk, [])
+    sNgouo["Garde Nuit"].VENDREDI = { value: ["P"], type: "doctor", status: "validated" }
+    for (const r of ["Garde Matin", "Garde Midi", "Garde Nuit"]) {
+      sNgouo[r].SAMEDI = { value: ["NGOUO"], type: "doctor", status: "validated", manualAssignment: true, remplacant: "NGOUO" }
+    }
+    const oNgouo = applyStructuralConstraints(sNgouo, wk, [])
+    assert.deepEqual(oNgouo["Garde Matin"].SAMEDI.value, ["NGOUO"], `${wk} : samedi matin remplaçant seul`)
+
     // Remplaçant sur toute la journée du dimanche : aucun médecin ajouté nulle part
     const s3 = generateWeekSchedule(wk, [])
     for (const r of ["Garde Matin", "Garde Midi", "Garde Nuit"]) {
