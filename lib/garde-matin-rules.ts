@@ -103,3 +103,19 @@ export function applyUGardePriorityOverCsTessee(schedule: ScheduleData): Schedul
   }
   return next
 }
+
+/**
+ * S : ETT pédiatrique du mercredi après-midi (Apm - ETT salle 1) **annulée quand S est de
+ * garde le mercredi midi** — la garde passe en priorité (consigne 18/11/2026). Seul S est
+ * retiré de la case (un remplaçant éventuel reste).
+ */
+export function applySGardePriorityOverEttPed(schedule: ScheduleData): ScheduleData {
+  const day = "MERCREDI"
+  const row = "Apm - ETT salle 1"
+  if (!((schedule["Garde Midi"]?.[day]?.value ?? []) as string[]).includes("S")) return schedule
+  const cell = schedule[row]?.[day]
+  const value = (cell?.value ?? []) as string[]
+  if (!cell || !value.includes("S")) return schedule
+  const kept = value.filter((d) => d !== "S")
+  return { ...schedule, [row]: { ...schedule[row], [day]: { ...cell, value: kept, type: kept.length ? "doctor" : "empty" } } }
+}

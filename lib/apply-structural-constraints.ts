@@ -1,5 +1,5 @@
 import { applyEntreesPssRules } from "@/lib/entrees-pss"
-import { applyGardeMatinInternAndCsPss, applyUGardePriorityOverCsTessee } from "@/lib/garde-matin-rules"
+import { applyGardeMatinInternAndCsPss, applySGardePriorityOverEttPed, applyUGardePriorityOverCsTessee } from "@/lib/garde-matin-rules"
 import { applyHolidayClosedClear } from "@/lib/holiday-closed"
 import { INTERN_CODE } from "@/lib/slot-blocking"
 import { DAYS } from "@/lib/constants"
@@ -1007,6 +1007,8 @@ export function applyStructuralConstraints(
   next = applyGardeMatinInternAndCsPss(next, weekKey, vacations)
   // 11bis-d) U de garde lundi/mardi : pas de Cs Tessée ce jour-là (la garde passe en priorité)
   next = applyUGardePriorityOverCsTessee(next)
+  // 11bis-e) S de garde mercredi midi : son ETT pédiatrique saute (la garde passe en priorité)
+  next = applySGardePriorityOverEttPed(next)
 
   // 11bis-a) Calendrier ATL Nuit ré-appliqué après les strips / couplages week-end
   next = applyAtlNightCalendarToWeek(next, weekKey)
