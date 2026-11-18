@@ -167,6 +167,36 @@ function womOnGarde(schedule: ScheduleData | undefined, day: string): string | n
   return null
 }
 
+/**
+ * Astreinte du week-end (vendredi soir → dimanche) : pas proposée à un médecin en vacances
+ * pendant la semaine (lundi → dimanche) ni la veille de ses vacances (vacances qui
+ * commencent le lundi suivant) — consigne 18/11/2026.
+ */
+export function isUnavailableForWeekendAstreinte(
+  doctor: string,
+  weekKey: string,
+  vacations: DoctorVacation[] = [],
+): boolean {
+  if (!vacations.length) return false
+  const dates = datesOfWeek(weekKey).map((d) => d.date)
+  const sunday = dateStrForWeekDay(weekKey, "DIMANCHE")
+  if (sunday) dates.push(addDays(sunday, 1)) // lundi suivant : veille de vacances
+  return dates.some((dt) => isDoctorOnVacationForFixed(doctor, dt, vacations))
+}
+
+/** Nuits ATL (M/W/O) par médecin dans des plannings déjà faits (équité sur l'historique). */
+export function countAtlNightsInSchedules(schedules: ReadonlyArray<ScheduleData | undefined>): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const sch of schedules) {
+    for (const day of DAYS) {
+      for (const d of listed(sch, ATL_NIGHT_ROW, day)) {
+        if (isWomDoctor(d)) counts[d] = (counts[d] ?? 0) + 1
+      }
+    }
+  }
+  return counts
+}
+
 export type WeekendCombo = { atlSat: string; atlSun: string }
 
 /**
@@ -193,6 +223,7 @@ export function weekendComboFromGardes(
   const pick = (exclude: string | null, dates: string[]): string | null =>
     [...ATL_NIGHT_WOM]
       .filter((d) => d !== exclude && dates.every((dt) => !dt || !isDoctorOnVacationForFixed(d, dt, vacations)))
+      .filter((d) => !isUnavailableForWeekendAstreinte(d, weekKey, vacations))
       .sort((a, b) => (counts[a] ?? 0) - (counts[b] ?? 0))[0] ?? null
   const atlSun = gSat ?? pick(gSun, [sun])
   const atlSat = gSun ?? pick(gSat, [sat])
@@ -215,7 +246,8 @@ export function proposeAtlNightDoctor(date: string, ctx: AtlNightProposalContext
   const available = (d: string) => !isDoctorOnVacationForFixed(d, date, vacations) && !gardeNuit.has(d)
 
   // Week-end (vendredi, samedi, dimanche) : combo dès qu'un M/W/O est de garde, sinon mono.
-  if (day === "VENDREDI" || day === "SAMEDI" || day === "DIMANCHE") {
+  const isWeekendNight = day === "VENDREDI" || day === "SAMEDI" || day === "DIMANCHE"
+  if (isWeekendNight) {
     const combo = weekendComboFromGardes(sched, weekKey, vacations, counts)
     if (combo) {
       const doc = day === "DIMANCHE" ? combo.atlSun : combo.atlSat
@@ -227,12 +259,16 @@ export function proposeAtlNightDoctor(date: string, ctx: AtlNightProposalContext
       for (const other of [fri, satD]) {
         if (!other || other === date) continue
         const n = nightOf(other, ctx, weekKey)
-        if (isWomDoctor(n) && available(n)) return n
+        if (isWomDoctor(n) && available(n) && !isUnavailableForWeekendAstreinte(n, weekKey, vacations)) return n
       }
     }
   }
 
   let candidates = (ATL_NIGHT_WOM as readonly string[]).filter(available)
+  if (isWeekendNight) {
+    // Pas d'astreinte du week-end en semaine de vacances ni la veille des vacances
+    candidates = candidates.filter((d) => !isUnavailableForWeekendAstreinte(d, weekKey, vacations))
+  }
 
   // Lun → jeu : jamais le même M/W/O deux nuits consécutives (veille ou lendemain).
   if ((WEEKDAY_NIGHTS as readonly string[]).includes(day)) {
@@ -398,9 +434,12 @@ export function autoFillAtlNightMonth(
   year: number,
   month0: number,
   contextFor: (date: string) => AtlNightProposalContext,
+  /** Nuits déjà assurées dans le planning (historique) : la répartition reste équitable dans la durée. */
+  historyCounts: Record<string, number> = {},
 ): AtlNightEntry[] {
   const taken = new Set(list.map((e) => e.date))
   const counts = countAtlNights(list)
+  for (const [d, n] of Object.entries(historyCounts)) counts[d] = (counts[d] ?? 0) + n
   const added: AtlNightEntry[] = []
   const nights = new Map(list.map((e) => [e.date, e.user]))
   const last = new Date(Date.UTC(year, month0 + 1, 0)).getUTCDate()

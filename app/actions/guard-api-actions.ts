@@ -39,7 +39,7 @@ import { buildSolverRulesPayload, solverAcknowledgedRules } from "@/lib/solver-r
 import { buildForbiddenAssignments, type ForbiddenAssignments } from "@/lib/solver-forbidden";
 import { setNctCalendar } from "@/lib/nct-calendar";
 import { loadNctCalendar } from "@/app/actions/nct-calendar-actions";
-import { countAtlNights, fillEmptyAtlNights, getAtlNightCalendar, setAtlNightCalendar } from "@/lib/atl-night-calendar";
+import { countAtlNightsInSchedules, fillEmptyAtlNights, setAtlNightCalendar } from "@/lib/atl-night-calendar";
 import { loadAtlNightCalendar } from "@/app/actions/atl-night-calendar-actions";
 
 // Configuration
@@ -272,6 +272,8 @@ export async function generateGuardsViaAPI(
     let replayStats: PatternStats | undefined;
     // Nombre de gardes de nuit du vendredi par médecin (26 sem.) : égalité du vendredi
     const fridayGuardCounts: Record<string, number> = {};
+    // Nuits d'astreinte ATL de W/M/O sur 26 semaines : équité des nuits proposées
+    let atlNightHistoryCounts: Record<string, number> = {};
     // Gardes de nuit par jour de semaine et par médecin (26 sem.) : égalité entre médecins préférés du jour
     const nightGuardDayCounts: Record<string, Record<string, number>> = {};
     try {
@@ -289,6 +291,7 @@ export async function generateGuardsViaAPI(
           .map((r) => r.schedule_data as ScheduleData)
           .filter((s) => s && typeof s === "object");
         historicalWeeksScanned = historical.length;
+        atlNightHistoryCounts = countAtlNightsInSchedules(historical);
         for (const sch of historical) {
           for (const d of sch["Garde Nuit"]?.VENDREDI?.value ?? []) {
             if (d && d !== "I") fridayGuardCounts[d] = (fridayGuardCounts[d] ?? 0) + 1;
@@ -644,7 +647,7 @@ export async function generateGuardsViaAPI(
     // 7bis-b. Astreintes ATL Nuit : nuits restées vides → proposition (roulement CH,
     // ATL Midi → nuit, jamais FV ni le médecin de garde de nuit, équité).
     try {
-      scheduleData = fillEmptyAtlNights(scheduleData, weekKey, vacations, countAtlNights(getAtlNightCalendar()));
+      scheduleData = fillEmptyAtlNights(scheduleData, weekKey, vacations, atlNightHistoryCounts);
     } catch (atlErr) {
       console.warn("[generateGuardsViaAPI] propositions ATL Nuit ignorées:", atlErr);
     }

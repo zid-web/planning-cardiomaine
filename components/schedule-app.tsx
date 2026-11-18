@@ -221,6 +221,7 @@ import {
   ATL_NIGHT_DOCTORS,
   ATL_NIGHT_ROW,
   autoFillAtlNightMonth,
+  countAtlNightsInSchedules,
   dayNameOfDate,
   isoWeekKeyOfDate,
   normalizeAtlNightCalendar,
@@ -1247,10 +1248,23 @@ export function ScheduleApp({
   /** Remplissage auto d'un mois du calendrier (roulement, ATL Midi → nuit, équité). */
   const atlNightAutoFill = useCallback(
     (draft: AtlNightEntry[], year: number, month0: number): AtlNightEntry[] =>
-      autoFillAtlNightMonth(draft, year, month0, (date) => ({
-        schedule: fullSchedule[isoWeekKeyOfDate(date)],
-        vacations,
-      })),
+      autoFillAtlNightMonth(
+        draft,
+        year,
+        month0,
+        (date) => ({
+          schedule: fullSchedule[isoWeekKeyOfDate(date)],
+          vacations,
+        }),
+        // Équité W/M/O sur les 26 semaines de planning précédant le mois
+        countAtlNightsInSchedules(
+          Object.entries(fullSchedule)
+            .filter(([wk]) => /-W\d{2}$/.test(wk) && wk < isoWeekKeyOfDate(`${year}-${String(month0 + 1).padStart(2, "0")}-01`))
+            .sort(([a], [b]) => (a < b ? 1 : -1))
+            .slice(0, 26)
+            .map(([, sch]) => sch),
+        ),
+      ),
     [fullSchedule, vacations],
   )
 

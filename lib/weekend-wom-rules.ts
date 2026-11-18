@@ -23,6 +23,7 @@ import {
   womWeekIndexInHalfYear,
 } from "@/lib/astreinte-cycle"
 import { dateStrForWeekDay } from "@/lib/fixed-assignments"
+import { isUnavailableForWeekendAstreinte } from "@/lib/atl-night-calendar"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import {
   getWeekendWeekPreset,
@@ -327,6 +328,7 @@ function pickByEquity(
 export function proposeWeekendWomPattern(
   weekKey: string,
   equity?: Record<string, EquityCounts>,
+  vacations?: DoctorVacation[],
 ): WeekendWomPattern | null {
   if (isChAstreinteWeek(weekKey)) return null
   const weekNum = Number.parseInt(weekKey.split("-W")[1] || "0", 10)
@@ -343,17 +345,36 @@ export function proposeWeekendWomPattern(
     return null
   }
 
-  const rot = Math.floor(weekNum / 2)
-  const a = WOM_ATL_DOCTORS[rot % 3]
-  const b = WOM_ATL_DOCTORS[(rot + 1) % 3]
+  // Pas d'astreinte du week-end en semaine de vacances ni la veille des vacances (consigne 18/11/2026)
+  const free = WOM_ATL_DOCTORS.filter((d) => !isUnavailableForWeekendAstreinte(d, weekKey, vacations))
+  const pool: readonly WomAtlDoctor[] = free.length ? free : WOM_ATL_DOCTORS
 
-  if (isWomComboWeekend(weekKey)) {
+  const rot = Math.floor(weekNum / 2)
+  const rotPair = [WOM_ATL_DOCTORS[rot % 3], WOM_ATL_DOCTORS[(rot + 1) % 3]].filter((d) => pool.includes(d))
+  const pair = rotPair.length === 2 ? rotPair : [...pool].slice(0, 2)
+
+  if (isWomComboWeekend(weekKey) && pair.length === 2) {
+    const [a, b] = pair
     const atlSat = pickByEquity([a, b], equity, "weekend_count")
     const atlSun = atlSat === a ? b : a
     return { kind: "combo", atlSat, atlSun }
   }
 
-  const atlDoctor = pickByEquity([...WOM_ATL_DOCTORS], equity, "weekend_count")
+  // Combo possible sur tout week-end W/O/M quand l'équité le justifie (consigne 18/11/2026) :
+  // si les deux médecins disponibles les moins chargés en week-ends sont à égalité, le
+  // week-end est partagé entre eux (astreinte et garde croisées) plutôt que donné à un seul.
+  if (equity && pool.length >= 2) {
+    const byWeekend = [...pool].sort(
+      (x, y) => (equity[x]?.weekend_count ?? 0) - (equity[y]?.weekend_count ?? 0),
+    )
+    const [first, second] = byWeekend
+    if ((equity[first]?.weekend_count ?? 0) === (equity[second]?.weekend_count ?? 0)) {
+      const atlSat = pickByEquity([first, second], equity, "astreinte_count")
+      return { kind: "combo", atlSat, atlSun: atlSat === first ? second : first }
+    }
+  }
+
+  const atlDoctor = pickByEquity(pool, equity, "weekend_count")
   return { kind: "mono", atlDoctor }
 }
 
@@ -776,7 +797,7 @@ export function applyWeekendWomPattern(
 
   // Heuristique (pas de preset) : soft fill seulement
   let next = schedule
-  const pattern = proposeWeekendWomPattern(weekKey, equity)
+  const pattern = proposeWeekendWomPattern(weekKey, equity, vacations)
   const isCombo = pattern?.kind === "combo"
 
   const satWom = firstWomOnAtlDay(next, "SAMEDI")
