@@ -1036,7 +1036,10 @@ export function formatDoctorWithDoublon(
   const base = isDoctorDoublonInCell(schedule, day, doctorId, rowKey)
     ? `${doctorId}²`
     : doctorId
-  return appendSpecialDoctorLabel(base, rowKey, day, doctorId)
+  const labelled = appendSpecialDoctorLabel(base, rowKey, day, doctorId)
+  // Nombre de patients (ex. médecin de Garde Matin en Cs PSS : « B (4) »)
+  const patients = schedule[rowKey]?.[day]?.patientCounts?.[doctorId]
+  return patients ? `${labelled} (${patients})` : labelled
 }
 
 /**
