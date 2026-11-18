@@ -346,3 +346,14 @@ function main() {
 }
 
 main()
+
+// Combo possible sur tout week-end W/O/M quand l'équité le justifie (égalité des deux moins chargés)
+{
+  const eq = (w: number, a: number) => ({ weekend_count: w, astreinte_count: a, garde_count: 0 }) as any
+  const tie = proposeWeekendWomPattern("2027-W05", { M: eq(2, 5), O: eq(2, 3), W: eq(4, 1) })
+  assert.equal(tie?.kind, "combo", "égalité M/O en week-ends → combo")
+  if (tie?.kind === "combo") assert.deepEqual([tie.atlSat, tie.atlSun].sort(), ["M", "O"])
+  const lead = proposeWeekendWomPattern("2027-W05", { M: eq(1, 5), O: eq(3, 3), W: eq(4, 1) })
+  assert.deepEqual(lead, { kind: "mono", atlDoctor: "M" }, "un seul nettement moins chargé → mono")
+  console.log("✅ weekend combo équité OK")
+}

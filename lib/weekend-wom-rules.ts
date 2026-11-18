@@ -360,6 +360,20 @@ export function proposeWeekendWomPattern(
     return { kind: "combo", atlSat, atlSun }
   }
 
+  // Combo possible sur tout week-end W/O/M quand l'équité le justifie (consigne 18/11/2026) :
+  // si les deux médecins disponibles les moins chargés en week-ends sont à égalité, le
+  // week-end est partagé entre eux (astreinte et garde croisées) plutôt que donné à un seul.
+  if (equity && pool.length >= 2) {
+    const byWeekend = [...pool].sort(
+      (x, y) => (equity[x]?.weekend_count ?? 0) - (equity[y]?.weekend_count ?? 0),
+    )
+    const [first, second] = byWeekend
+    if ((equity[first]?.weekend_count ?? 0) === (equity[second]?.weekend_count ?? 0)) {
+      const atlSat = pickByEquity([first, second], equity, "astreinte_count")
+      return { kind: "combo", atlSat, atlSun: atlSat === first ? second : first }
+    }
+  }
+
   const atlDoctor = pickByEquity(pool, equity, "weekend_count")
   return { kind: "mono", atlDoctor }
 }
