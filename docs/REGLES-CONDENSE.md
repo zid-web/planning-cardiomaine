@@ -30,6 +30,10 @@ Légende : **S** = envoyée au solveur dans `app_rules` (`lib/solver-rules.ts`) 
   Sinon week-end mono : le même médecin du vendredi soir au dimanche (A).
 - Nuits restées vides après génération : proposition par l'appli (roulement, ATL Midi, équité) (A).
 
+## Garde Matin (lundi → vendredi)
+- L'interne I est en doublon avec le médecin de Garde Matin (uniquement cette ligne ; pas s'il est en congé) (A).
+- Le médecin de Garde Matin est aussi en Matin - Cs PSS avec l'indice (4) = 4 patients à voir, quel que soit le médecin (A).
+
 ## Coronarographistes M, O, W
 - Si les trois sont présents un jour : **chacun une seule vacation** (Coro matin, Coro après-midi ou nuit) (S souple `coro_one_each_per_day` + A).
 - Coro d'abord pour M/O/W (S+A) ; jeudi après-midi : FV. ATL Matin/Midi suit Coro.

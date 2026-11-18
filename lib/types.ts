@@ -23,6 +23,11 @@ export type CellData = {
    */
   manualAssignment?: boolean
   /**
+   * Nombre de patients par médecin dans la case, affiché à côté des initiales — ex. le
+   * médecin de Garde Matin en Matin - Cs PSS : { B: 4 } → « B (4) ».
+   */
+  patientCounts?: Record<string, number>
+  /**
    * Lignes « Hors site - … » uniquement : créneau réellement occupé.
    * Absent = valeur par défaut de la ligne/jour (voir `lib/off-site-slots.ts`).
    * Détermine la disponibilité du médecin sur l'autre demi-journée.
