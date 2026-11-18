@@ -170,7 +170,9 @@ const SixMonthProjectionDialog = lazy(() =>
 const NCT_VIEWER_CODES: readonly string[] = ["W", "Q"]
 
 /** Comptes non-admin qui consultent le calendrier des astreintes de nuit (lecture seule). M est admin : il le modifie. */
-const ATL_NIGHT_VIEWER_CODES: readonly string[] = ["W", "O"] // toujours en lecture seule
+const ATL_NIGHT_VIEWER_CODES: readonly string[] = ["W"] // toujours en lecture seule
+/** Comptes non-admin qui modifient le calendrier des astreintes de nuit (et rien d'autre du planning). */
+const ATL_NIGHT_EDITOR_CODES: readonly string[] = ["O"]
 
 const AtlNightCalendarModal = lazy(() =>
   import("@/components/atl-night-calendar-modal").then((m) => ({ default: m.AtlNightCalendarModal })),
@@ -324,9 +326,13 @@ export function ScheduleApp({
   // Calendrier des astreintes ATL Nuit (settings.atl_night_calendar) — voir lib/atl-night-calendar.ts
   const [atlNightCalendar, setAtlNightCalendarState] = useState<AtlNightEntry[]>([])
   const [atlNightModalOpen, setAtlNightModalOpen] = useState(false)
-  const canViewAtlNight = !isAdmin && ATL_NIGHT_VIEWER_CODES.includes(doctorCode.trim().toUpperCase())
+  const canViewAtlNight =
+    !isAdmin &&
+    [...ATL_NIGHT_VIEWER_CODES, ...ATL_NIGHT_EDITOR_CODES].includes(doctorCode.trim().toUpperCase())
   // W et O : calendrier « Astreinte nuit » en lecture seule, même avec un compte admin.
-  const atlNightReadOnly = !isAdmin || ATL_NIGHT_VIEWER_CODES.includes(doctorCode.trim().toUpperCase())
+  const atlNightReadOnly =
+    ATL_NIGHT_VIEWER_CODES.includes(doctorCode.trim().toUpperCase()) ||
+    (!isAdmin && !ATL_NIGHT_EDITOR_CODES.includes(doctorCode.trim().toUpperCase()))
   const [selectedDoctorForVacations, setSelectedDoctorForVacations] = useState<string>("")
   const [generatedScheduleWarnings, setGeneratedScheduleWarnings] = useState<string[]>([])
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
@@ -1204,17 +1210,8 @@ export function ScheduleApp({
         }
         touched.add(wk)
       }
-      if (touched.size > 0) {
-        setFullSchedule(nextFull)
-        try {
-          for (const wk of touched) {
-            await saveScheduleToDb(wk, nextFull[wk], currentUser || "unknown", { source: "constraints" })
-          }
-        } catch (err) {
-          console.error("[atl-nuit] nettoyage des semaines en échec:", err)
-          toast.error("Calendrier des astreintes de nuit enregistré mais le nettoyage de certaines semaines a échoué.")
-        }
-      }
+      // Le serveur a déjà vidé ces cases en base (saveAtlNightCalendar) : mise à jour de l'affichage seulement
+      if (touched.size > 0) setFullSchedule(nextFull)
     }
     toast.success("Calendrier des astreintes de nuit enregistré")
     return { ok: true }
@@ -2908,7 +2905,7 @@ export function ScheduleApp({
                         size="sm"
                         className="h-7 border-slate-300 bg-white px-2 text-[11px] font-semibold !text-slate-900 hover:bg-slate-100 hover:!text-slate-900"
                         onClick={() => setAtlNightModalOpen(true)}
-                        title="Consulter le calendrier des astreintes de nuit"
+                        title={atlNightReadOnly ? "Consulter le calendrier des astreintes de nuit" : "Modifier le calendrier des astreintes de nuit"}
                       >
                         <Moon className="mr-1 h-3.5 w-3.5 shrink-0 !text-slate-900" strokeWidth={2.25} />
                         <span className="hidden sm:inline">Astreinte nuit</span>
