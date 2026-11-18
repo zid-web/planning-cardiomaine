@@ -72,3 +72,15 @@ console.log("✅ garde-matin-rules tests passed")
   assert.deepEqual(applySGardePriorityOverEttPed(out), out)
   console.log("✅ S garde prioritaire sur ETT ped")
 }
+
+// Garde Matin + I : Coro interdite le matin, autorisée l'après-midi (W, S44)
+{
+  const w: any = generateWeekSchedule("2026-W44", [])
+  w["Garde Matin"].MARDI = c(["W", "I"])
+  assert.equal(canAssignDoctorToSlot("W", "2026-10-27", "Apm - Coro", "MARDI", w, []).allowed, true)
+  assert.equal(canAssignDoctorToSlot("W", "2026-10-27", "Matin - Coro", "MARDI", w, []).allowed, false)
+  w["Apm - Coro"].MARDI = c(["W"])
+  const out = applyStructuralConstraints(w, "2026-W44", [], { isFreshWeek: false })
+  assert.ok(out["Apm - Coro"].MARDI.value.includes("W"), "Coro après-midi conservée")
+  console.log("✅ Garde Matin + Coro après-midi")
+}

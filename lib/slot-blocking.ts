@@ -189,6 +189,15 @@ export function isInternForbiddenClinical(rowKey: string): boolean {
   )
 }
 
+/**
+ * Interdits du cumul Garde Matin + I limités au **matin** (créneau de la garde) : l'après-midi,
+ * le médecin de garde du matin peut faire Coro, Rythmo ou Rééducation (consigne 18/11/2026 —
+ * W de garde mardi matin et en Coro mardi après-midi, S44).
+ */
+export function isInternForbiddenMorningClinical(rowKey: string): boolean {
+  return isInternForbiddenClinical(rowKey) && !rowKey.startsWith("Apm")
+}
+
 /** Médecin présent sur Garde Matin avec l’interne I (ou I avec un médecin). */
 export function isPairedWithInternOnGardeMatin(
   schedule: ScheduleData,
@@ -882,10 +891,10 @@ export function canAssignDoctorToSlot(
   }
 
   // Coro / Rythmo / Rééducation interdits si déjà Garde Matin + I
-  if (wouldBePairedWithIntern(schedule, day, doctorId, rowKey) && isInternForbiddenClinical(rowKey)) {
+  if (wouldBePairedWithIntern(schedule, day, doctorId, rowKey) && isInternForbiddenMorningClinical(rowKey)) {
     return {
       allowed: false,
-      reason: `${doctorId} est en Garde Matin avec I — Coro / Rythmo / Rééducation interdits.`,
+      reason: `${doctorId} est en Garde Matin avec I — Coro / Rythmo interdits le matin.`,
     }
   }
 
@@ -1176,10 +1185,10 @@ export function applySlotBlockingStrips(schedule: ScheduleData): ScheduleData {
         }
       }
 
-      // Strip Coro / Rythmo / Rééducation si Garde Matin + I
+      // Strip Coro / Rythmo du matin si Garde Matin + I (l'après-midi reste possible)
       if (isPairedWithInternOnGardeMatin(next, day, doctorId)) {
         for (const row of Object.keys(next)) {
-          if (isInternForbiddenClinical(row)) {
+          if (isInternForbiddenMorningClinical(row)) {
             next = stripDoctorFromRow(next, row, day, doctorId)
           }
         }
