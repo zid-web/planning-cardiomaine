@@ -651,7 +651,10 @@ export function applyWeekendGardeAtlCoupling(schedule: ScheduleData): ScheduleDa
     samMatinListed.length > 0 &&
     next["Garde Matin"]?.SAMEDI &&
     samMatinExisting.length === 0 &&
-    !next["Garde Matin"]!.SAMEDI!.manuallyCleared
+    !next["Garde Matin"]!.SAMEDI!.manuallyCleared &&
+    // Remplaçant seul sur la garde du samedi : il la fait seul, aucun médecin associé
+    // (le médecin de la nuit du vendredi n'est pas ajouté — 21/11/2026, P + NGOUO)
+    !isRemplacantOnlyWeekendGarde(next, "Garde Matin", "SAMEDI")
   ) {
     const remplacants = remplacantsInCell(next, "Garde Matin", "SAMEDI")
     const status =
