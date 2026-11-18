@@ -1,5 +1,5 @@
 import { applyEntreesPssRules } from "@/lib/entrees-pss"
-import { applyGardeMatinInternAndCsPss } from "@/lib/garde-matin-rules"
+import { applyGardeMatinInternAndCsPss, applyUGardePriorityOverCsTessee } from "@/lib/garde-matin-rules"
 import { applyHolidayClosedClear } from "@/lib/holiday-closed"
 import { INTERN_CODE } from "@/lib/slot-blocking"
 import { DAYS } from "@/lib/constants"
@@ -1005,6 +1005,8 @@ export function applyStructuralConstraints(
 
   // 11bis-c) Garde Matin lun-ven : I en doublon + médecin de garde en Matin - Cs PSS (4)
   next = applyGardeMatinInternAndCsPss(next, weekKey, vacations)
+  // 11bis-d) U de garde lundi/mardi : pas de Cs Tessée ce jour-là (la garde passe en priorité)
+  next = applyUGardePriorityOverCsTessee(next)
 
   // 11bis-a) Calendrier ATL Nuit ré-appliqué après les strips / couplages week-end
   next = applyAtlNightCalendarToWeek(next, weekKey)

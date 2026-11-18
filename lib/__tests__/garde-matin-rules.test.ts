@@ -2,7 +2,7 @@
  * Run: npx tsx lib/__tests__/garde-matin-rules.test.ts
  */
 import assert from "node:assert/strict"
-import { applyGardeMatinInternAndCsPss } from "@/lib/garde-matin-rules"
+import { applyGardeMatinInternAndCsPss, applyUGardePriorityOverCsTessee } from "@/lib/garde-matin-rules"
 import { applyStructuralConstraints } from "@/lib/apply-structural-constraints"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
 import { formatDoctorWithDoublon, canAssignDoctorToSlot } from "@/lib/slot-blocking"
@@ -43,3 +43,19 @@ assert.ok(full["Matin - Cs PSS"].MARDI.value.includes("B"))
 assert.equal(full["Matin - Cs PSS"].MARDI.patientCounts?.B, 4)
 assert.equal(canAssignDoctorToSlot("B", "2026-11-24", "Matin - Cs PSS", "MARDI", full, []).allowed, true)
 console.log("✅ garde-matin-rules tests passed")
+
+// U de garde le lundi : plus de Cs Tessée ce jour-là (la garde passe en priorité) ; mercredi inchangé
+{
+
+  const u: any = applyStructuralConstraints(generateWeekSchedule("2026-W49", []), "2026-W49", [], { isFreshWeek: true })
+  assert.ok(u["Matin - Cs Tessée"].LUNDI.value.includes("U"), "Cs Tessée fixe de U le lundi")
+  u["Garde Nuit"].LUNDI = c(["U"])
+  u["Garde Matin"].LUNDI = c(["U"])
+  const out = applyStructuralConstraints(u, "2026-W49", [], { isFreshWeek: false })
+  assert.ok(!out["Matin - Cs Tessée"].LUNDI.value.includes("U"))
+  assert.ok(!out["Apm - Cs Tessée"].LUNDI.value.includes("U"))
+  assert.equal(out["Matin - Cs PSS"].LUNDI.patientCounts?.U, 4, "U de Garde Matin en Cs PSS (4)")
+  assert.ok(out["Matin - Cs Tessée"].MARDI.value.includes("U"), "mardi sans garde : Cs Tessée conservée")
+  assert.deepEqual(applyUGardePriorityOverCsTessee(out), out)
+  console.log("✅ U garde prioritaire sur Cs Tessée")
+}

@@ -33,6 +33,7 @@ Légende : **S** = envoyée au solveur dans `app_rules` (`lib/solver-rules.ts`) 
 ## Garde Matin (lundi → vendredi)
 - L'interne I est en doublon avec le médecin de Garde Matin (uniquement cette ligne ; pas s'il est en congé) (A).
 - Le médecin de Garde Matin est aussi en Matin - Cs PSS avec l'indice (4) = 4 patients à voir, quel que soit le médecin (A).
+- U : Cs Tessée lundi et mardi seulement s'il n'est pas de garde ce jour-là — la garde passe en priorité (A).
 
 ## Coronarographistes M, O, W
 - Si les trois sont présents un jour : **chacun une seule vacation** (Coro matin, Coro après-midi ou nuit) (S souple `coro_one_each_per_day` + A).

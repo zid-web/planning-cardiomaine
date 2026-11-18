@@ -80,3 +80,26 @@ export function applyGardeMatinInternAndCsPss(
   }
   return next
 }
+
+/**
+ * U : Cs Tessée fixes le lundi et le mardi, **seulement s'il n'est pas de garde ce jour-là**
+ * (la garde passe en priorité — consigne 18/11/2026). Même règle que la génération
+ * (`enforceUCsTesseeGuardRule`), appliquée ici en permanence, saisies comprises.
+ */
+export function applyUGardePriorityOverCsTessee(schedule: ScheduleData): ScheduleData {
+  let next = schedule
+  for (const day of ["LUNDI", "MARDI"] as const) {
+    const onGuard = ["Garde Matin", "Garde Midi", "Garde Nuit"].some((r) =>
+      ((next[r]?.[day]?.value ?? []) as string[]).includes("U"),
+    )
+    if (!onGuard) continue
+    for (const row of ["Matin - Cs Tessée", "Apm - Cs Tessée"]) {
+      const cell = next[row]?.[day]
+      const value = (cell?.value ?? []) as string[]
+      if (!cell || !value.includes("U")) continue
+      const kept = value.filter((d) => d !== "U")
+      next = { ...next, [row]: { ...next[row], [day]: { ...cell, value: kept, type: kept.length ? "doctor" : "empty" } } }
+    }
+  }
+  return next
+}
