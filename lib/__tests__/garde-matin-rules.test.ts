@@ -2,7 +2,7 @@
  * Run: npx tsx lib/__tests__/garde-matin-rules.test.ts
  */
 import assert from "node:assert/strict"
-import { applyGardeMatinInternAndCsPss, applyUGardePriorityOverCsTessee } from "@/lib/garde-matin-rules"
+import { applyGardeMatinInternAndCsPss, applySGardePriorityOverEttPed, applyUGardePriorityOverCsTessee } from "@/lib/garde-matin-rules"
 import { applyStructuralConstraints } from "@/lib/apply-structural-constraints"
 import { generateWeekSchedule } from "@/lib/schedule-utils"
 import { formatDoctorWithDoublon, canAssignDoctorToSlot } from "@/lib/slot-blocking"
@@ -58,4 +58,29 @@ console.log("✅ garde-matin-rules tests passed")
   assert.ok(out["Matin - Cs Tessée"].MARDI.value.includes("U"), "mardi sans garde : Cs Tessée conservée")
   assert.deepEqual(applyUGardePriorityOverCsTessee(out), out)
   console.log("✅ U garde prioritaire sur Cs Tessée")
+}
+
+// S de garde mercredi midi : l'ETT pédiatrique saute ; sans garde elle reste
+{
+  const sp: any = applyStructuralConstraints(generateWeekSchedule("2026-W49", []), "2026-W49", [], { isFreshWeek: true })
+  assert.ok(sp["Apm - ETT salle 1"].MERCREDI.value.includes("S"), "ETT ped fixe de S")
+  const kept = applyStructuralConstraints(sp, "2026-W49", [], { isFreshWeek: false })
+  assert.ok(kept["Apm - ETT salle 1"].MERCREDI.value.includes("S"), "sans garde : ETT ped conservée")
+  sp["Garde Midi"].MERCREDI = c(["S"])
+  const out = applyStructuralConstraints(sp, "2026-W49", [], { isFreshWeek: false })
+  assert.ok(!out["Apm - ETT salle 1"].MERCREDI.value.includes("S"), "garde midi : ETT ped annulée")
+  assert.deepEqual(applySGardePriorityOverEttPed(out), out)
+  console.log("✅ S garde prioritaire sur ETT ped")
+}
+
+// Garde Matin + I : Coro interdite le matin, autorisée l'après-midi (W, S44)
+{
+  const w: any = generateWeekSchedule("2026-W44", [])
+  w["Garde Matin"].MARDI = c(["W", "I"])
+  assert.equal(canAssignDoctorToSlot("W", "2026-10-27", "Apm - Coro", "MARDI", w, []).allowed, true)
+  assert.equal(canAssignDoctorToSlot("W", "2026-10-27", "Matin - Coro", "MARDI", w, []).allowed, false)
+  w["Apm - Coro"].MARDI = c(["W"])
+  const out = applyStructuralConstraints(w, "2026-W44", [], { isFreshWeek: false })
+  assert.ok(out["Apm - Coro"].MARDI.value.includes("W"), "Coro après-midi conservée")
+  console.log("✅ Garde Matin + Coro après-midi")
 }
