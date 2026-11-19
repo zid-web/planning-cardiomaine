@@ -3756,9 +3756,20 @@ export function ScheduleApp({
                             const newValues = current.filter((d) => d !== doc)
                             const newStatus =
                               adminEditsAreValidated(currentUser) ? "validated" : "pending"
+                            // Médecin de Garde Matin retiré de sa Cs PSS (4) : noté pour que la règle
+                            // ne le remette pas (cette Cs PSS n'est pas obligatoire)
+                            const declinedCs = Boolean(cell?.patientCounts?.[doc])
+                            const counts = Object.fromEntries(
+                              Object.entries(cell?.patientCounts ?? {}).filter(([d]) => d !== doc),
+                            )
                             patchSelectedCell((c) => ({
                               ...c,
                               value: newValues,
+                              ...(declinedCs
+                                ? { csPssDeclined: doc, patientCounts: Object.keys(counts).length ? counts : undefined }
+                                : {}),
+                              // retiré par l'admin : n'est plus une affectation forcée
+                              forced: c.forced?.filter((d) => d !== doc).length ? c.forced.filter((d) => d !== doc) : undefined,
                               remplacant:
                                 c.remplacant && doc === c.remplacant ? undefined : c.remplacant,
                               type:

@@ -115,3 +115,13 @@ console.log("✅ garde-matin-rules tests passed")
   assert.ok(!restoreForcedAssignments(f, { ...f, "Matin - Coro": { ...f["Matin - Coro"], MARDI: { ...f["Matin - Coro"].MARDI, value: [] } } }, "2026-W48", vac)["Matin - Coro"].MARDI.value.includes("W"), "en congé : jamais remis")
   console.log("✅ affectation forcée")
 }
+
+// FV (externe) en Garde Matin : ni I ni Cs PSS (4)
+{
+  const fv: any = generateWeekSchedule("2026-W48", [])
+  fv["Garde Matin"].LUNDI = c(["FV"])
+  const o = applyGardeMatinInternAndCsPss(fv, "2026-W48")
+  assert.deepEqual(o["Garde Matin"].LUNDI.value, ["FV"])
+  assert.equal(o["Matin - Cs PSS"].LUNDI.patientCounts, undefined)
+  console.log("✅ FV exclu")
+}
