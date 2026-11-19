@@ -93,6 +93,12 @@ console.log("✅ garde-matin-rules tests passed")
   d["Matin - Cs PSS"].MARDI = { value: ["H"], type: "doctor", status: "validated", csPssDeclined: "B" }
   const kept = applyGardeMatinInternAndCsPss(d, "2026-W48")
   assert.deepEqual(kept["Matin - Cs PSS"].MARDI.value, ["H"], "Cs PSS retirée par l'admin : pas remise")
+  // L'admin remet B lui-même : l'indice (4) revient
+  const readded: any = structuredClone(kept)
+  readded["Matin - Cs PSS"].MARDI.value = ["H", "B"]
+  const back = applyGardeMatinInternAndCsPss(readded, "2026-W48")
+  assert.deepEqual(back["Matin - Cs PSS"].MARDI.patientCounts, { B: 4 }, "remis par l'admin : (4) revient")
+  assert.equal(back["Matin - Cs PSS"].MARDI.csPssDeclined, undefined)
   d["Garde Matin"].MARDI = c(["Z", "I"])
   const again = applyGardeMatinInternAndCsPss(d, "2026-W48")
   assert.deepEqual(again["Matin - Cs PSS"].MARDI.value, ["H", "Z"])

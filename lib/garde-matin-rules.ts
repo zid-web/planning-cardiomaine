@@ -59,6 +59,9 @@ export function applyGardeMatinInternAndCsPss(
     // de garde réactive la règle.
     let declined = cs?.csPssDeclined
     if (declined && declined !== garde) declined = undefined
+    // L'admin a remis lui-même le médecin de garde dans la case : le retrait est annulé et
+    // l'indice (4) revient.
+    if (declined && garde && value.includes(garde)) declined = undefined
     if (declined && declined === garde) delete counts[garde]
     // Ancien médecin de garde (ajouté par la règle) : retiré
     for (const doc of Object.keys(counts)) {
