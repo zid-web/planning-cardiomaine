@@ -41,7 +41,8 @@ export function applyGardeMatinInternAndCsPss(
   for (const day of WEEKDAYS) {
     const gm = next[GARDE_MATIN_ROW]?.[day]
     const gmValue = ((gm?.value ?? []) as string[]).filter(Boolean)
-    const garde = gmValue.find((d) => d !== INTERN && d !== "CH" && isListedDoctor(d)) ?? null
+    // FV et CH (externes) ne font ni binôme avec I ni Cs PSS
+    const garde = gmValue.find((d) => d !== INTERN && d !== "CH" && d !== "FV" && isListedDoctor(d)) ?? null
 
     // 1) I en doublon sur la Garde Matin
     if (gm && garde && !gmValue.includes(INTERN) && !internAway(next, weekKey, day, vacations)) {
