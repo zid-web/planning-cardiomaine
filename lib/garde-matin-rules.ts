@@ -5,7 +5,8 @@
  *   (4 patients à voir en consultation), quel que soit le médecin (y compris U, B, S).
  *
  * Le nombre de patients est porté par la case (`CellData.patientCounts`) et affiché à côté
- * des initiales. Si le médecin de garde change, l'ancien est retiré de la Cs PSS (seulement
+ * des initiales. Cette Cs PSS n'est pas obligatoire : si l'admin retire le médecin de garde
+ * de la case, il n'y est plus remis (`CellData.csPssDeclined`) tant qu'il reste de garde. Si le médecin de garde change, l'ancien est retiré de la Cs PSS (seulement
  * s'il y avait été ajouté par cette règle, c'est-à-dire avec son indice).
  */
 
@@ -52,6 +53,12 @@ export function applyGardeMatinInternAndCsPss(
     if (!next[GARDE_CS_PSS_ROW]) continue
     let value = ((cs?.value ?? []) as string[]).slice()
     const counts: Record<string, number> = { ...(cs?.patientCounts ?? {}) }
+    // L'admin a retiré le médecin de garde de la Cs PSS (noté au retrait, dans la grille) : on ne
+    // le remet plus — cette Cs PSS n'est pas obligatoire (consigne 19/11/2026). Un nouveau médecin
+    // de garde réactive la règle.
+    let declined = cs?.csPssDeclined
+    if (declined && declined !== garde) declined = undefined
+    if (declined && declined === garde) delete counts[garde]
     // Ancien médecin de garde (ajouté par la règle) : retiré
     for (const doc of Object.keys(counts)) {
       if (doc === garde) continue
@@ -60,13 +67,18 @@ export function applyGardeMatinInternAndCsPss(
       delete counts[doc]
     }
     const holiday = holidayNameForWeekDay(weekKey, day)
-    const canAdd = Boolean(garde) && !holiday && !cs?.manuallyCleared
+    if (holiday && garde && counts[garde]) {
+      const i = value.indexOf(garde)
+      if (i >= 0) value.splice(i, 1)
+      delete counts[garde]
+    }
+    const canAdd = Boolean(garde) && !holiday && !cs?.manuallyCleared && declined !== garde
     if (canAdd && garde) {
       if (!value.includes(garde)) value = [...value, garde]
       counts[garde] = GARDE_CS_PSS_PATIENTS
     }
-    const before = JSON.stringify([cs?.value ?? [], cs?.patientCounts ?? {}])
-    const after = JSON.stringify([value, counts])
+    const before = JSON.stringify([cs?.value ?? [], cs?.patientCounts ?? {}, cs?.csPssDeclined ?? null])
+    const after = JSON.stringify([value, counts, declined ?? null])
     if (before === after) continue
     const wasEmpty = ((cs?.value ?? []) as string[]).length === 0
     setCell(GARDE_CS_PSS_ROW, day, {
@@ -76,6 +88,7 @@ export function applyGardeMatinInternAndCsPss(
       // Case vide remplie d'après une garde proposée → proposition ; sinon on garde le statut
       status: wasEmpty && gm?.status === "pending" ? "pending" : cs?.status ?? "validated",
       patientCounts: Object.keys(counts).length ? counts : undefined,
+      csPssDeclined: declined,
     })
   }
   return next

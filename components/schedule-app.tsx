@@ -66,6 +66,7 @@ import {
   sortedWorkloadEntries,
 } from "@/lib/scheduler-algo"
 import { canAssignDoctor, detectConflict, isDoctorUnavailable } from "@/lib/assignment-validation"
+import { isOnLeave } from "@/lib/forced-assignments"
 import {
   getCellDisplayAssignees,
   isListedDoctor,
@@ -1965,7 +1966,9 @@ export function ScheduleApp({
     }
   }
 
-  const addDoctorToCell = (doctor: string) => {
+  /** Médecin en cours d'affectation forcée (passé au patch de la case). */
+  const forcedDoctorRef = React.useRef<string | null>(null)
+  const addDoctorToCell = (doctor: string, opts?: { force?: boolean }) => {
     if (!isAdmin) return
     if (!selectedCell || !schedule) return
 
@@ -2011,8 +2014,11 @@ export function ScheduleApp({
           day: selectedCell.day,
         })
         if (!validation.allowed) {
-          toast.error(validation.reason || "Assignation impossible sur l’autre salle")
-          return
+          if (!opts?.force || isOnLeave(schedule, doctor, selectedCell.day, dateStr, vacations)) {
+            toast.error(validation.reason || "Assignation impossible sur l’autre salle")
+            return
+          }
+          toast.warning(`Affectation forcée : ${validation.reason || "règle non respectée"}`)
         }
       }
       const newStatus = adminEditsAreValidated(currentUser) ? "validated" : "pending"
@@ -2035,6 +2041,7 @@ export function ScheduleApp({
             value: [...sisterVals, doctor],
             type: "doctor",
             status: newStatus,
+            ...(opts?.force ? { forced: [...new Set([...(sisterCell.forced ?? []), doctor])] } : {}),
           },
         },
       })
@@ -2058,10 +2065,17 @@ export function ScheduleApp({
         day: selectedCell.day,
         previousSundayGuardDoctor,
       })
+      let forcedNow = false
       if (!validation.allowed) {
-        toast.error(validation.reason || "Assignation impossible")
-        return
+        // Admin : la règle n'est qu'un avertissement (affectation forcée), sauf congé
+        if (!opts?.force || isOnLeave(schedule, doctor, selectedCell.day, dateStr, vacations)) {
+          toast.error(validation.reason || "Assignation impossible")
+          return
+        }
+        forcedNow = true
+        toast.warning(`Affectation forcée : ${validation.reason || "règle non respectée"}`)
       }
+      if (forcedNow) forcedDoctorRef.current = doctor
       // Stress : roulement hebdomadaire — avertissement non bloquant
       const stressWarning = stressRepeatWarning(schedule, weekKey, selectedCell.row, selectedCell.day, doctor, vacations)
       if (stressWarning) toast.warning(stressWarning)
@@ -2076,11 +2090,14 @@ export function ScheduleApp({
         return true
       })
       if (!base.includes(doctor)) base = [...base, doctor]
+      const forcedDoc = forcedDoctorRef.current === doctor
+      forcedDoctorRef.current = null
       return {
         ...cell,
         value: base,
         type: base.length > 0 ? "doctor" : "empty",
         status: newStatus,
+        ...(forcedDoc ? { forced: [...new Set([...(cell.forced ?? []), doctor])] } : {}),
         remplacant: cell.remplacant,
         request:
           newStatus === "pending"
@@ -2147,10 +2164,19 @@ export function ScheduleApp({
     const newValues = currentValues.filter((_, index) => index !== indexToRemove)
     const newStatus = adminEditsAreValidated(currentUser) ? "validated" : "pending"
 
+    // Médecin de Garde Matin retiré de sa Cs PSS (4) : on le note pour que la règle ne le remette pas
+    const declinedCs = Boolean(removed && currentCell?.patientCounts?.[removed])
+    const patientCounts = declinedCs
+      ? Object.fromEntries(Object.entries(currentCell?.patientCounts ?? {}).filter(([d]) => d !== removed))
+      : currentCell?.patientCounts
+
     patchSelectedCell(
       (cell) => ({
         ...cell,
         value: newValues,
+        ...(declinedCs
+          ? { csPssDeclined: removed, patientCounts: Object.keys(patientCounts ?? {}).length ? patientCounts : undefined }
+          : {}),
         remplacant:
           cell.remplacant && removed === cell.remplacant ? undefined : cell.remplacant,
         type: newValues.length > 0 || (cell.remplacant && removed !== cell.remplacant) ? "doctor" : "empty",
@@ -3801,10 +3827,23 @@ export function ScheduleApp({
                         }
                       }
                     }
-                    const blocked = Boolean(blockReason)
+                    // Admin : une règle non respectée n'est qu'un avertissement (affectation
+                    // forcée) — seul le congé bloque vraiment (consigne 19/11/2026).
+                    const onLeave =
+                      Boolean(blockReason) &&
+                      Boolean(selectedCell) &&
+                      isOnLeave(
+                        schedule ?? undefined,
+                        doc,
+                        selectedCell?.day ?? "",
+                        selectedCell ? dateStrForWeekDay(weekKey, selectedCell.day) : null,
+                        vacations,
+                      )
+                    const forceable = Boolean(blockReason) && isAdmin && !onLeave && !fullyInCell
+                    const blocked = Boolean(blockReason) && !forceable
                     const isBlocked = fullyInCell || blocked
                     const tooltip =
-                      blockReason ||
+                      (forceable ? `⚠ ${blockReason} — cliquer pour forcer l’affectation` : blockReason) ||
                       (occ >= 2 || (occ >= 1 && onSister)
                         ? "Déjà en doublon"
                         : canPromoteSameCell
@@ -3832,6 +3871,10 @@ export function ScheduleApp({
                             if (tooltip) toast.info(tooltip)
                             return
                           }
+                          if (forceable) {
+                            addDoctorToCell(doc, { force: true })
+                            return
+                          }
                           addDoctorToCell(doc)
                         }}
                         aria-disabled={isBlocked}
@@ -3841,7 +3884,9 @@ export function ScheduleApp({
                       ${
                         isBlocked
                           ? "opacity-40 cursor-not-allowed bg-slate-100 text-slate-400"
-                          : canPromoteDoublon
+                          : forceable
+                            ? "bg-amber-50 border border-dashed border-amber-400 text-amber-800 hover:bg-amber-100 shadow-sm active:scale-95"
+                            : canPromoteDoublon
                             ? "bg-sky-50 border border-sky-300 text-sky-900 hover:bg-sky-100 shadow-sm active:scale-95"
                             : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm active:scale-95"
                       }

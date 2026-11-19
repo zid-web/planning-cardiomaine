@@ -27,6 +27,10 @@ export type CellData = {
    * médecin de Garde Matin en Matin - Cs PSS : { B: 4 } → « B (4) ».
    */
   patientCounts?: Record<string, number>
+  /** Médecins affectés en forçant une règle (admin) : les règles automatiques ne les retirent pas. */
+  forced?: string[]
+  /** Médecin de Garde Matin dont l'admin a retiré la Cs PSS (4) : elle n'est plus remise. */
+  csPssDeclined?: string
   /**
    * Lignes « Hors site - … » uniquement : créneau réellement occupé.
    * Absent = valeur par défaut de la ligne/jour (voir `lib/off-site-slots.ts`).

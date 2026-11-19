@@ -84,3 +84,34 @@ console.log("✅ garde-matin-rules tests passed")
   assert.ok(out["Apm - Coro"].MARDI.value.includes("W"), "Coro après-midi conservée")
   console.log("✅ Garde Matin + Coro après-midi")
 }
+
+// Cs PSS (4) non obligatoire : retirée par l'admin (csPssDeclined), elle n'est pas remise ;
+// un nouveau médecin de garde réactive la règle
+{
+  const d: any = generateWeekSchedule("2026-W48", [])
+  d["Garde Matin"].MARDI = c(["B", "I"])
+  d["Matin - Cs PSS"].MARDI = { value: ["H"], type: "doctor", status: "validated", csPssDeclined: "B" }
+  const kept = applyGardeMatinInternAndCsPss(d, "2026-W48")
+  assert.deepEqual(kept["Matin - Cs PSS"].MARDI.value, ["H"], "Cs PSS retirée par l'admin : pas remise")
+  d["Garde Matin"].MARDI = c(["Z", "I"])
+  const again = applyGardeMatinInternAndCsPss(d, "2026-W48")
+  assert.deepEqual(again["Matin - Cs PSS"].MARDI.value, ["H", "Z"])
+  assert.equal(again["Matin - Cs PSS"].MARDI.csPssDeclined, undefined)
+  console.log("✅ Cs PSS (4) retirable")
+}
+
+// Affectation forcée par l'admin : conservée malgré la règle, sauf congé
+{
+  const { restoreForcedAssignments } = require("@/lib/forced-assignments")
+  const f: any = generateWeekSchedule("2026-W48", [])
+  // W en Coro matin forcé alors qu'il est de Garde Matin avec I (normalement retiré)
+  f["Garde Matin"].MARDI = c(["W", "I"])
+  f["Matin - Coro"].MARDI = { value: ["W"], type: "doctor", status: "validated", forced: ["W"] }
+  const out = applyStructuralConstraints(f, "2026-W48", [], { isFreshWeek: false })
+  assert.ok(out["Matin - Coro"].MARDI.value.includes("W"), "affectation forcée conservée")
+  const noForce: any = structuredClone(f); delete noForce["Matin - Coro"].MARDI.forced
+  assert.ok(!applyStructuralConstraints(noForce, "2026-W48", [], { isFreshWeek: false })["Matin - Coro"].MARDI.value.includes("W"), "sans forçage : retiré par la règle")
+  const vac: any[] = [{ id: "v", doctor_id: "W", start_date: "2026-11-24", end_date: "2026-11-24" }]
+  assert.ok(!restoreForcedAssignments(f, { ...f, "Matin - Coro": { ...f["Matin - Coro"], MARDI: { ...f["Matin - Coro"].MARDI, value: [] } } }, "2026-W48", vac)["Matin - Coro"].MARDI.value.includes("W"), "en congé : jamais remis")
+  console.log("✅ affectation forcée")
+}

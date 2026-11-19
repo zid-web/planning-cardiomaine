@@ -1,4 +1,5 @@
 import { applyEntreesPssRules } from "@/lib/entrees-pss"
+import { restoreForcedAssignments } from "@/lib/forced-assignments"
 import { applyGardeMatinInternAndCsPss, applySGardePriorityOverEttPed, applyUGardePriorityOverCsTessee } from "@/lib/garde-matin-rules"
 import { applyHolidayClosedClear } from "@/lib/holiday-closed"
 import { INTERN_CODE } from "@/lib/slot-blocking"
@@ -1031,6 +1032,10 @@ export function applyStructuralConstraints(
     next = ensureValOnBothEeRooms(next)
     next = mirrorEeDoctorForSharedNurse(next)
   }
+
+  // 12bis) Affectations forcées par l'admin : les règles ci-dessus ne les retirent pas
+  // (sauf congé / jour férié, gérés dans restoreForcedAssignments)
+  next = restoreForcedAssignments(schedule, next, weekKey, vacations)
 
   // 13) Jour férié : plus rien hors ATL / Gardes, quoi qu'ait (re)posé la chaîne.
   // Interne I : jamais hors Garde Matin, quoi qu'ait (re)posé la chaîne.

@@ -32,7 +32,7 @@ Légende : **S** = envoyée au solveur dans `app_rules` (`lib/solver-rules.ts`) 
 
 ## Garde Matin (lundi → vendredi)
 - L'interne I est en doublon avec le médecin de Garde Matin (uniquement cette ligne ; pas s'il est en congé) (A).
-- Le médecin de Garde Matin est aussi en Matin - Cs PSS avec l'indice (4) = 4 patients à voir, quel que soit le médecin (A).
+- Le médecin de Garde Matin est aussi en Matin - Cs PSS avec l'indice (4) = 4 patients à voir, quel que soit le médecin (A) — non obligatoire : retirée par l'admin, elle n'est pas remise.
 - U : Cs Tessée lundi et mardi seulement s'il n'est pas de garde ce jour-là — la garde passe en priorité (A).
 - S : ETT pédiatrique du mercredi après-midi annulée quand S est de garde le mercredi midi — la garde passe en priorité (S+A).
 
@@ -58,4 +58,5 @@ Légende : **S** = envoyée au solveur dans `app_rules` (`lib/solver-rules.ts`) 
 - Cases librement modifiables ; propositions seulement les jours habituels : CDL mardi, LFB/PSSL jeudi, IRM lundi/vendredi, Scinti lundi–mercredi (S+A). Cases grisées hors jours d'affectation.
 
 ## Saisies de l'admin
+- Affectation forcée : un médecin grisé par une règle reste affectable par l'admin (avertissement), sauf en congé ; les règles automatiques ne le retirent plus (sauf congé / férié).
 - Cases validées conservées, cases vidées volontairement non remplies (S+A).
