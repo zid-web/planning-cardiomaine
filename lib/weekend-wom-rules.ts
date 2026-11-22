@@ -151,17 +151,18 @@ function setCellDoctors(
 }
 
 /**
- * Garde de week-end tenue **par un remplaçant seul** : le remplaçant fait la garde
- * sans être associé à un médecin listé. Aucun remplissage automatique (préset WOM,
- * couplages Sam/Dim, miroir ATL…) ne doit donc y ajouter de médecin — seule une
- * saisie manuelle de l'admin peut l'associer.
+ * Garde tenue **par un remplaçant seul** (semaine ou week-end) : le remplaçant fait la
+ * garde sans être associé à un médecin listé. Aucun remplissage automatique (préset WOM,
+ * couplages Matin/Midi/Nuit de semaine, couplages Sam/Dim, miroir ATL…) ne doit donc y
+ * ajouter de médecin — seule une saisie manuelle de l'admin peut l'associer. C'est ce qui
+ * permet de retirer le médecin remplacé de la case (consigne 23/11/2026).
  */
 export function isRemplacantOnlyWeekendGarde(
   schedule: ScheduleData,
   row: string,
   day: string,
 ): boolean {
-  if (!row.startsWith("Garde") || (day !== "SAMEDI" && day !== "DIMANCHE")) return false
+  if (!row.startsWith("Garde")) return false
   return (
     remplacantsInCell(schedule, row, day).length > 0 && listedInCell(schedule, row, day).length === 0
   )
