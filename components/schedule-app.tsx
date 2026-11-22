@@ -388,11 +388,11 @@ export function ScheduleApp({
   const [historyImportOpen, setHistoryImportOpen] = useState(false)
   const [remplacantInput, setRemplacantInput] = useState("")
   /**
-   * Visite : reporter une saisie sur toute la semaine (comportement par défaut,
-   * la visite étant une vacation hebdomadaire). L'admin peut le décocher pour
-   * corriger un seul jour — une exception ponctuelle reste donc possible.
+   * Visite : la rotation remplit déjà la semaine (lundi → vendredi). Une saisie
+   * manuelle ne modifie que le jour choisi (consigne 23/11/2026) ; l'admin peut
+   * activer le report pour changer toute la semaine d'un coup.
    */
-  const [spreadVisiteToWeek, setSpreadVisiteToWeek] = useState(true)
+  const [spreadVisiteToWeek, setSpreadVisiteToWeek] = useState(false)
 
   const supabase = useMemo(() => createClient(), [])
 
@@ -3926,8 +3926,8 @@ export function ScheduleApp({
                         </Label>
                         <p className="mt-0.5 text-[11px] leading-snug text-emerald-800">
                           {spreadVisiteToWeek
-                            ? "La visite est hebdomadaire : la saisie s’applique du lundi au vendredi."
-                            : "Décoché : la saisie ne touche que cette case."}
+                            ? "Activé : la saisie s’applique du lundi au vendredi."
+                            : "La saisie ne change que ce jour ; les autres jours restent inchangés."}
                         </p>
                       </div>
                       <Switch
