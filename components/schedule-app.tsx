@@ -2967,7 +2967,7 @@ export function ScheduleApp({
                 {/* Admin Menu & Toolbar */}
                 {isAdmin && (
                   <>
-                    {isGlobalView && (
+                    {(
                       <Button
                         variant="outline"
                         size="sm"
@@ -2984,8 +2984,8 @@ export function ScheduleApp({
                       </Button>
                     )}
                     {/* Barre repliée : le bouton reste accessible sans ouvrir « Outils » */}
-                    {isGlobalView && !toolbarExpanded && hasSolverProposals && clearProposalsButton}
-                    {(!isGlobalView || toolbarExpanded) && (
+                    {!toolbarExpanded && hasSolverProposals && clearProposalsButton}
+                    {toolbarExpanded && (
                       <div className="flex max-w-full flex-wrap items-center gap-1">
                         <span
                           className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
