@@ -1,6 +1,6 @@
 "use client"
 
-import { Calendar, Edit3, MessageSquare, Plus, Sun, Moon, Sunrise, UserCircle, Lock } from "lucide-react"
+import { Edit3, MessageSquare, Plus, UserCircle, Lock } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ACTIVITY_ICONS, DAYS, DOCTOR_COLORS } from "@/lib/constants"
 import {
@@ -9,6 +9,7 @@ import {
 } from "@/lib/special-activity-labels"
 import { cn } from "@/lib/utils"
 import { formatPersonLabel } from "@/lib/doctor-code"
+import { INK, PERIODS, PERIOD_COLORS, PULSE, currentPeriod, kindOf, periodOf, prettyDate, todayKey } from "@/lib/planning-periods"
 
 export type DayTask = {
   activity: string
@@ -33,44 +34,6 @@ type TodayViewProps = {
   onEditPrivateNote?: () => void
   /** Ouvre le panneau Messagerie & Demandes (onglet Messages), pour écrire à un admin. */
   onOpenMessages?: () => void
-}
-
-function periodMeta(activity: string): { label: string; Icon: typeof Sun; accent: string; chip: string } {
-  if (activity.includes("Matin") || activity.includes("ATL Matin") || activity.includes("Garde Matin")) {
-    return {
-      label: "Matin",
-      Icon: Sunrise,
-      accent: "from-sky-500/15 via-white to-white border-sky-200",
-      chip: "bg-sky-100 text-sky-800",
-    }
-  }
-  if (
-    activity.includes("Apm") ||
-    activity.includes("Après-midi") ||
-    activity.includes("Midi") ||
-    activity.includes("ATL Midi")
-  ) {
-    return {
-      label: "Après-midi",
-      Icon: Sun,
-      accent: "from-amber-500/15 via-white to-white border-amber-200",
-      chip: "bg-amber-100 text-amber-900",
-    }
-  }
-  if (activity.includes("Nuit") || activity.includes("Soir")) {
-    return {
-      label: "Nuit",
-      Icon: Moon,
-      accent: "from-indigo-500/15 via-white to-white border-indigo-200",
-      chip: "bg-indigo-100 text-indigo-900",
-    }
-  }
-  return {
-    label: "Journée",
-    Icon: Calendar,
-    accent: "from-slate-500/10 via-white to-white border-slate-200",
-    chip: "bg-slate-100 text-slate-700",
-  }
 }
 
 function cleanActivityLabel(activity: string): string {
@@ -102,287 +65,273 @@ export function TodayView({
   onEditPrivateNote,
   onOpenMessages,
 }: TodayViewProps) {
+
   const myTasks = tasks.filter((task) => task.doctors.includes(doctorCode))
   const hasNote = Boolean(dayNote?.trim())
   const dayName = days[currentDayIndex] || DAYS[currentDayIndex]
   const dateLabel = weekDates[currentDayIndex] || ""
+  const isRealToday = dateLabel === todayKey()
+  const nowPeriod = isRealToday ? currentPeriod() : null
+  const dayTitle = dayName.charAt(0) + dayName.slice(1).toLowerCase()
+  const onCallCount = myTasks.filter((t) => ["garde", "astreinte"].includes(kindOf(t.activity))).length
+  const visiblePeriods = PERIODS.filter((p) => p.key !== "jour" || myTasks.some((t) => periodOf(t.activity) === "jour"))
 
   return (
-    <div className="mx-auto w-full max-w-xl space-y-4 px-2 pb-6 sm:px-4">
-      {/* Day strip */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-1.5 shadow-sm backdrop-blur-md">
-        <div className="grid grid-cols-7 gap-1">
-          {days.map((day, idx) => {
-            const selected = idx === currentDayIndex
-            const date = weekDates[idx]?.split("/")[0] || ""
-            return (
-              <button
-                key={day}
-                type="button"
-                onClick={() => onSelectDay(idx)}
-                className={cn(
-                  "flex min-h-14 flex-col items-center justify-center rounded-xl px-1 py-1.5 transition-all duration-200",
-                  selected
-                    ? "bg-gradient-to-b from-slate-900 to-slate-800 text-white shadow-lg shadow-slate-900/20 scale-[1.03]"
-                    : "bg-slate-50/70 text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                )}
-              >
-                <span
-                  className={cn(
-                    "text-[10px] font-bold uppercase tracking-wider",
-                    selected ? "text-sky-300" : "text-slate-400",
-                  )}
-                >
-                  {day.slice(0, 3)}
-                </span>
-                <span className="text-base font-extrabold tabular-nums leading-tight">{date}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Hero Header */}
-      <div className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 p-5 text-white shadow-xl shadow-slate-900/20">
-        <div className="pointer-events-none absolute -right-10 -top-12 size-44 rounded-full bg-blue-500/20 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-10 left-10 size-32 rounded-full bg-teal-400/10 blur-2xl" />
-        <div className="relative flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-blue-300 ring-1 ring-inset ring-blue-400/30">
-                Aujourd&apos;hui
-              </span>
-              {doctorCode && (
-                <span className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-200">
-                  {formatPersonLabel(doctorCode)}
-                </span>
-              )}
-            </div>
-            <h3 className="text-2xl font-black tracking-tight text-white">{dayName}</h3>
-            <p className="text-sm font-medium text-slate-300">{dateLabel}</p>
-          </div>
-
-          <div className="flex flex-col items-end gap-2">
-            <div className="rounded-2xl bg-white/10 p-3 backdrop-blur-sm ring-1 ring-white/15">
-              <Calendar className="size-6 text-blue-300" />
-            </div>
-            <span className="rounded-full bg-blue-500/30 px-3 py-1 text-xs font-bold text-blue-200 ring-1 ring-blue-400/40">
-              {myTasks.length} créneau{myTasks.length === 1 ? "" : "x"}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Interactive notes */}
-      {isAdmin ? (
-        <button
-          type="button"
-          onClick={onEditNote}
-          className={cn(
-            "group w-full rounded-2xl border p-4 text-left shadow-sm transition-all duration-200",
-            "hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
-            hasNote
-              ? "border-blue-200 bg-gradient-to-br from-blue-50/80 to-white"
-              : "border-dashed border-slate-300 bg-white hover:border-blue-300",
-          )}
-        >
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-xl bg-blue-100 text-blue-700 ring-1 ring-blue-200">
-                <MessageSquare className="size-4" />
-              </span>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">Notes du jour</h4>
-                <p className="text-[11px] text-slate-500">Partagée avec toute l’équipe · appuyez pour modifier</p>
-              </div>
-            </div>
-            <span
+    <div className="mx-auto w-full max-w-5xl px-2 pb-8 sm:px-4">
+      {/* Bande des jours */}
+      <nav aria-label="Jours de la semaine" className="mb-5 grid grid-cols-7 gap-1 border-b border-slate-200">
+        {days.map((day, idx) => {
+          const selected = idx === currentDayIndex
+          const date = weekDates[idx]?.split("/")[0] || ""
+          const isToday = weekDates[idx] === todayKey()
+          return (
+            <button
+              key={day}
+              type="button"
+              onClick={() => onSelectDay(idx)}
+              aria-current={selected ? "date" : undefined}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition",
-                hasNote
-                  ? "bg-blue-600 text-white group-hover:bg-blue-700"
-                  : "bg-slate-900 text-white group-hover:bg-slate-800",
+                "relative flex flex-col items-center pb-2 pt-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 rounded-t-md",
+                selected ? "text-slate-900" : "text-slate-400 hover:text-slate-700",
               )}
             >
-              {hasNote ? <Edit3 className="size-3.5" /> : <Plus className="size-3.5" />}
-              {hasNote ? "Modifier" : "Ajouter"}
-            </span>
-          </div>
-          <div
-            className={cn(
-              "min-h-[56px] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed",
-              hasNote ? "bg-white/80 font-medium text-slate-700 shadow-inner" : "bg-slate-50 text-slate-400 italic",
-            )}
-          >
-            {hasNote ? dayNote : "Aucune note pour ce jour. Ajoutez un rappel, une consigne…"}
-          </div>
-        </button>
-      ) : (
-        <div
-          className={cn(
-            "w-full rounded-2xl border p-4 shadow-sm",
-            hasNote
-              ? "border-blue-200 bg-gradient-to-br from-blue-50/80 to-white"
-              : "border-dashed border-slate-300 bg-white",
-          )}
-        >
-          <div className="mb-2 flex items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-xl bg-blue-100 text-blue-700 ring-1 ring-blue-200">
-              <MessageSquare className="size-4" />
-            </span>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Notes du jour</h4>
-              <p className="text-[11px] text-slate-500">Partagée avec toute l’équipe</p>
-            </div>
-          </div>
-          <div
-            className={cn(
-              "min-h-[48px] rounded-xl px-3 py-2.5 text-sm leading-relaxed",
-              hasNote ? "bg-white/80 font-medium text-slate-700" : "bg-slate-50 text-slate-400 italic",
-            )}
-          >
-            {hasNote ? dayNote : "Aucune note pour ce jour."}
-          </div>
-        </div>
-      )}
-
-      {/* Note privée */}
-      {!isAdmin && (
-        <button
-          type="button"
-          onClick={onOpenMessages}
-          className={cn(
-            "group w-full rounded-2xl border p-4 text-left shadow-sm transition-all duration-200",
-            "hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500",
-            myPrivateNote?.trim()
-              ? "border-amber-200 bg-gradient-to-br from-amber-50/80 to-white"
-              : "border-dashed border-slate-300 bg-white hover:border-amber-300",
-          )}
-        >
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
-                <Lock className="size-4" />
+              <span className="text-[11px] font-medium">{day.charAt(0) + day.slice(1, 3).toLowerCase()}</span>
+              <span
+                className="text-lg font-bold tabular-nums leading-tight"
+                style={isToday ? { color: PULSE } : selected ? { color: INK } : undefined}
+              >
+                {Number(date)}
               </span>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">Note privée pour vous</h4>
-                <p className="text-[11px] text-slate-500">Visible uniquement par vous et l’administrateur · appuyez pour écrire</p>
-              </div>
-            </div>
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white transition group-hover:bg-slate-800">
-              <Edit3 className="size-3.5" />
-              Écrire
-            </span>
-          </div>
-          <div
-            className={cn(
-              "min-h-[48px] rounded-xl px-3 py-2.5 text-sm leading-relaxed",
-              myPrivateNote?.trim() ? "bg-white/80 font-medium text-slate-700" : "bg-slate-50 text-slate-400 italic",
-            )}
-          >
-            {myPrivateNote?.trim() || "Aucune note privée pour l’instant. Appuyez pour écrire à un administrateur."}
-          </div>
-        </button>
-      )}
-      {isAdmin && onEditPrivateNote && (
-        <button
-          type="button"
-          onClick={onEditPrivateNote}
-          className="group w-full rounded-2xl border border-dashed border-amber-300 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-md"
-        >
-          <div className="flex items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
-              <Lock className="size-4" />
-            </span>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Note privée à un médecin</h4>
-              <p className="text-[11px] text-slate-500">Visible seulement de lui, pas des autres utilisateurs</p>
-            </div>
-          </div>
-        </button>
-      )}
+              {selected && <span className="absolute inset-x-2 -bottom-px h-[3px] rounded-full" style={{ background: INK }} />}
+            </button>
+          )
+        })}
+      </nav>
 
-      {/* Tasks List */}
-      <div className="space-y-3 pt-1">
-        <div className="flex items-center justify-between px-1">
-          <h4 className="text-base font-bold text-slate-900">Mon planning</h4>
-          <Badge variant="outline" className="border-slate-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
-            {myTasks.length} créneau{myTasks.length === 1 ? "" : "x"}
-          </Badge>
+      {/* En-tête du jour */}
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className="text-4xl font-black leading-none tracking-tight md:text-5xl" style={{ color: INK }}>
+            {dayTitle}
+          </h3>
+          <p className="mt-1.5 text-sm text-slate-500">
+            {prettyDate(dateLabel)}
+            {isRealToday && <span className="font-semibold" style={{ color: PULSE }}> · aujourd&apos;hui</span>}
+            {doctorCode && <> · {formatPersonLabel(doctorCode)}</>}
+          </p>
         </div>
+        <p className="text-sm text-slate-600">
+          <span className="text-2xl font-bold tabular-nums" style={{ color: INK }}>{myTasks.length}</span> créneau
+          {myTasks.length === 1 ? "" : "x"}
+          {onCallCount > 0 && (
+            <>
+              {" "}dont <span className="font-bold" style={{ color: PULSE }}>{onCallCount}</span> de garde/astreinte
+            </>
+          )}
+        </p>
+      </header>
 
-        {myTasks.length > 0 ? (
-          <div className="space-y-3">
-            {myTasks.map((task, idx) => {
-              const meta = periodMeta(task.activity)
-              const Icon = meta.Icon
-              const iconKey = Object.keys(ACTIVITY_ICONS).find((k) => task.activity.includes(k)) || ""
-              return (
-                <div
-                  key={`${task.activity}-${idx}`}
-                  className={cn(
-                    "rounded-2xl border bg-gradient-to-r p-4 shadow-sm transition-all duration-200 hover:shadow-md",
-                    meta.accent,
-                    task.isSolverProposal && "ring-2 ring-violet-500/80 bg-violet-50/50",
-                    task.status === "pending" && !task.isSolverProposal && "ring-1 ring-amber-300",
-                  )}
-                >
-                  <div className="flex items-start gap-3.5">
-                    <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white text-xl shadow-sm ring-1 ring-slate-900/5">
-                      {ACTIVITY_ICONS[iconKey] || <Icon className="size-6 text-slate-600" />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex flex-wrap items-center gap-2">
-                        <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider", meta.chip)}>
-                          {meta.label}
-                        </span>
-                        {task.isSolverProposal ? (
-                          <span className="rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white shadow-sm">
-                            Prop. Générer
-                          </span>
-                        ) : (
-                          task.status === "pending" && (
-                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                              En attente
-                            </span>
-                          )
-                        )}
-                      </div>
-                      <p className="truncate text-base font-bold text-slate-900">
-                        {activityDisplayLabel(task.activity, dayName, task.doctors)}
-                      </p>
-                      <div className="mt-2.5 flex flex-wrap gap-1.5">
-                        {task.doctors.map((doc) => (
-                          <Badge
-                            key={doc}
-                            className={cn(
-                              "border-none px-2 py-0.5 text-xs font-bold text-white shadow-xs",
-                              DOCTOR_COLORS[doc] || "bg-slate-600",
-                              doc === doctorCode && "ring-2 ring-offset-1 ring-slate-900",
-                            )}
-                          >
-                            {appendSpecialDoctorLabel(doc, task.activity, dayName, doc)}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white px-4 py-12 text-center shadow-xs">
-            <div className="mb-3 rounded-full bg-slate-100 p-4">
-              <UserCircle className="size-8 text-slate-400" />
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_300px]">
+        {/* Fil de la journée */}
+        <section aria-label="Mon planning du jour">
+          {myTasks.length === 0 ? (
+            <div className="flex flex-col items-center rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center">
+              <UserCircle className="mb-2 size-8 text-slate-300" />
+              <p className="text-sm font-semibold text-slate-800">Rien de prévu pour vous ce jour-là</p>
+              <p className="mt-1 max-w-xs text-xs text-slate-500">Le planning de toute l&apos;équipe est dans l&apos;onglet Global.</p>
             </div>
-            <p className="text-base font-bold text-slate-800">Aucune activité prévue pour vous</p>
-            <p className="mt-1 max-w-xs text-xs font-medium text-slate-500">
-              Consultez l&apos;onglet Global pour voir l&apos;ensemble du planning d&apos;équipe.
-            </p>
+          ) : (
+            <ol className="relative">
+              {visiblePeriods.map((p, i) => {
+                const c = PERIOD_COLORS[p.key]
+                const items = myTasks.filter((t) => periodOf(t.activity) === p.key)
+                const isNow = nowPeriod === p.key
+                const last = i === visiblePeriods.length - 1
+                return (
+                  <li key={p.key} className="relative grid grid-cols-[84px_minmax(0,1fr)] gap-2.5 sm:grid-cols-[104px_minmax(0,1fr)] sm:gap-3">
+                    {/* Colonne horaire + rail coloré */}
+                    <div className="relative pb-5 pt-1 text-right">
+                      <p className="whitespace-nowrap text-[13px] font-bold sm:text-sm" style={{ color: c.ink }}>{p.label}</p>
+                      <p className="text-[10px] leading-tight text-slate-400">{p.hours}</p>
+                      {isNow && (
+                        <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: PULSE }}>
+                          <svg viewBox="0 0 40 16" className="h-3.5 w-8" aria-hidden="true">
+                            <path d="M0 8 H12 L15 3 L19 14 L23 1 L26 8 H40" fill="none" stroke={PULSE} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+                          </svg>
+                          Maintenant
+                        </p>
+                      )}
+                    </div>
+                    <div className="relative pb-5 pl-4">
+                      <span
+                        className={cn("absolute left-0 top-1.5 w-[3px] rounded-full", last ? "bottom-5" : "-bottom-1.5")}
+                        style={{ background: c.solid, opacity: items.length ? 1 : 0.25 }}
+                      />
+                      <span
+                        className="absolute -left-[4px] top-1.5 size-[11px] rounded-full border-2 bg-white"
+                        style={{ borderColor: isNow ? PULSE : c.solid }}
+                      />
+                      {items.length === 0 ? (
+                        <p className="pt-0.5 text-xs text-slate-400">Libre</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {items.map((task, idx) => {
+                            const kind = kindOf(task.activity)
+                            const onCall = kind === "garde" || kind === "astreinte"
+                            const others = task.doctors.filter((d) => d !== doctorCode)
+                            const iconKey = Object.keys(ACTIVITY_ICONS).find((k) => task.activity.includes(k)) || ""
+                            return (
+                              <article
+                                key={`${task.activity}-${idx}`}
+                                className={cn(
+                                  "rounded-lg border bg-white px-3 py-2.5",
+                                  task.isSolverProposal ? "border-violet-300 border-dashed" : "border-slate-200",
+                                )}
+                                style={onCall ? { borderColor: "#F3B5BB", background: "#FFF7F8" } : undefined}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="min-w-0 text-[15px] font-semibold leading-snug text-slate-900">
+                                    {ACTIVITY_ICONS[iconKey] && <span className="mr-1.5">{ACTIVITY_ICONS[iconKey]}</span>}
+                                    {activityDisplayLabel(task.activity, dayName, task.doctors)}
+                                  </p>
+                                  <div className="flex shrink-0 gap-1">
+                                    {onCall && (
+                                      <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ background: PULSE }}>
+                                        {kind === "garde" ? "Garde" : "Astreinte"}
+                                      </span>
+                                    )}
+                                    {task.isSolverProposal ? (
+                                      <span className="rounded bg-violet-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">Proposition</span>
+                                    ) : (
+                                      task.status === "pending" && (
+                                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">En attente</span>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                                {others.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap items-center gap-1">
+                                    <span className="mr-0.5 text-[11px] text-slate-500">Avec</span>
+                                    {others.map((doc) => (
+                                      <Badge
+                                        key={doc}
+                                        className={cn("border-none px-1.5 py-0 text-[11px] font-bold text-white", DOCTOR_COLORS[doc] || "bg-slate-600")}
+                                      >
+                                        {appendSpecialDoctorLabel(doc, task.activity, dayName, doc)}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
+                              </article>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+        </section>
+
+        {/* Notes */}
+        <aside className="space-y-3">
+          <NoteCard
+            icon={<MessageSquare className="size-4" />}
+            title="Note du jour"
+            hint={isAdmin ? "Partagée avec toute l’équipe" : "Partagée avec toute l’équipe"}
+            text={hasNote ? dayNote : ""}
+            empty={isAdmin ? "Aucune note. Ajoutez une consigne pour l’équipe." : "Aucune note pour ce jour."}
+            action={isAdmin ? (hasNote ? "Modifier" : "Ajouter") : undefined}
+            onClick={isAdmin ? onEditNote : undefined}
+            tone="blue"
+          />
+          {!isAdmin && (
+            <NoteCard
+              icon={<Lock className="size-4" />}
+              title="Note privée"
+              hint="Visible par vous et l’administrateur"
+              text={myPrivateNote?.trim() || ""}
+              empty="Aucune note privée. Écrivez à un administrateur."
+              action="Écrire"
+              onClick={onOpenMessages}
+              tone="amber"
+            />
+          )}
+          {isAdmin && onEditPrivateNote && (
+            <NoteCard
+              icon={<Lock className="size-4" />}
+              title="Note privée à un médecin"
+              hint="Visible seulement par ce médecin"
+              text=""
+              empty="Choisissez un médecin et écrivez-lui."
+              action="Écrire"
+              onClick={onEditPrivateNote}
+              tone="amber"
+            />
+          )}
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+function NoteCard({
+  icon,
+  title,
+  hint,
+  text,
+  empty,
+  action,
+  onClick,
+  tone,
+}: {
+  icon: React.ReactNode
+  title: string
+  hint: string
+  text: string
+  empty: string
+  action?: string
+  onClick?: () => void
+  tone: "blue" | "amber"
+}) {
+  const color = tone === "blue" ? "#2F7FD8" : "#C77D0A"
+  const body = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="flex size-7 items-center justify-center rounded-md text-white" style={{ background: color }}>
+            {icon}
+          </span>
+          <div>
+            <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
+            <p className="text-[11px] text-slate-500">{hint}</p>
           </div>
+        </div>
+        {action && (
+          <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 group-hover:bg-slate-50">
+            {action === "Ajouter" ? <Plus className="size-3.5" /> : <Edit3 className="size-3.5" />}
+            {action}
+          </span>
         )}
       </div>
+      <p className={cn("mt-2.5 text-sm leading-relaxed", text ? "text-slate-700" : "text-slate-400")}>{text || empty}</p>
+    </>
+  )
+  const cls = "group block w-full rounded-xl border border-slate-200 bg-white p-3.5 text-left"
+  return onClick ? (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(cls, "transition-colors hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400")}
+      style={{ borderTop: `3px solid ${color}` }}
+    >
+      {body}
+    </button>
+  ) : (
+    <div className={cls} style={{ borderTop: `3px solid ${color}` }}>
+      {body}
     </div>
   )
 }
