@@ -124,6 +124,20 @@ export function nctDoctorForDate(date: string): string | null {
 }
 
 /**
+ * Le médecin a un NCT **le lendemain** de `date` (`YYYY-MM-DD`) : jamais d'astreinte de nuit
+ * ce soir-là (consigne 23/11/2026). `nextDayNct` permet de passer la case NCT du planning
+ * (si elle a été modifiée directement dans la grille).
+ */
+export function hasNctNextDay(doctor: string, date: string, nextDayNct?: readonly string[]): boolean {
+  const [y, m, d] = date.split("-").map(Number)
+  if (!y || !m || !d) return false
+  const n = new Date(Date.UTC(y, m - 1, d + 1))
+  const next = `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, "0")}-${String(n.getUTCDate()).padStart(2, "0")}`
+  if (nctDoctorForDate(next) === doctor) return true
+  return Boolean(nextDayNct?.includes(doctor))
+}
+
+/**
  * La case « Hors site - NCT » n'existe qu'aux dates ouvertes dans le calendrier NCT :
  * sans vacation ce jour-là, elle est grisée (fermée) sur le planning global.
  */

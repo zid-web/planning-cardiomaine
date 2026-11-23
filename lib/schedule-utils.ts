@@ -3,7 +3,7 @@ import { applyFixedClinicalAssignments } from "./fixed-assignments"
 import { applyHabitualHalfDaysOff } from "./half-day-off"
 import type { CellData, DoctorVacation, ScheduleData } from "./types"
 import { constraints2026, generateAstreinteRotation } from "./guard-scheduler"
-import { getNctCalendar } from "./nct-calendar"
+import { getNctCalendar, hasNctNextDay } from "./nct-calendar"
 import { lfbDoctorForWeekNum } from "@/lib/week-generation-params"
 
 export const getWeekNumber = (d: Date) => {
@@ -358,6 +358,8 @@ export const generateWeekSchedule = (
         const dateStr = dayToDateMap[dayName]
         const hasFixed = constraints2026.fixedAstreintes2026.some((a) => a.date === dateStr)
         if (hasFixed) return
+        // Jamais d'astreinte de nuit la veille d'un NCT : la nuit reste à proposer à un autre
+        if (hasNctNextDay(user, dateStr)) return
         const rowKey = "Astreintes ATL Nuit"
         if (schedule[rowKey]?.[dayName]) {
           const current = schedule[rowKey][dayName].value
