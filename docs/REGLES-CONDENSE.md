@@ -51,7 +51,7 @@ Légende : **S** = envoyée au solveur dans `app_rules` (`lib/solver-rules.ts`) 
 - Lundi, mardi : médecin de Garde Midi + un autre médecin ; mercredi → vendredi : Garde Midi seul (S+A).
 
 ## EE et infirmières
-- Seuls O, V, DAAS occupent EE sans infirmière (Val / Véro) (S+A).
+- Seuls O, V, R, DAAS occupent EE sans infirmière (Val / Véro) (S+A).
 - Un seul médecin par infirmière, identique sur EE1 et EE2 (S+A).
 
 ## Hors site

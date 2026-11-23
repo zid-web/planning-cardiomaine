@@ -108,7 +108,7 @@ export function buildSolverRulesPayload(
     eligibility: {
       ett_forbidden: ["O"],
       ee_solo_doctors: [...EE_SOLO_DOCTORS],
-      ee_rule: "un seul médecin par infirmière (Val/Véro), identique sur EE1 et EE2; seuls O, V, DAAS sans infirmière",
+      ee_rule: "un seul médecin par infirmière (Val/Véro), identique sur EE1 et EE2; seuls O, V, R, DAAS sans infirmière",
       intern_only_row: "Garde Matin",
     },
     priorities: {

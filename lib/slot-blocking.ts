@@ -78,7 +78,7 @@ export function isNonBlockingRow(rowKey: string): boolean {
 }
 
 /** Seuls médecins pouvant occuper EE1 / EE2 sans Val ni Véro (consigne utilisateur). */
-export const EE_SOLO_DOCTORS: readonly string[] = ["O", "V", "DAAS"]
+export const EE_SOLO_DOCTORS: readonly string[] = ["O", "V", "R", "DAAS"] // R : consigne 23/11/2026
 
 /** Code de l’interne (associé à un médecin sur Garde Matin). */
 export const INTERN_CODE = "I"
@@ -804,7 +804,7 @@ export function canAssignDoctorToSlot(
     }
   }
 
-  // EE1 / EE2 : un médecin n'y est qu'en binôme avec Val ou Véro — seuls O, V et DAAS
+  // EE1 / EE2 : un médecin n'y est qu'en binôme avec Val ou Véro — seuls O, V, R et DAAS
   // peuvent occuper une salle EE seuls. Une infirmière présente sur les deux salles n'a
   // qu'un seul médecin partenaire (le même sur EE1 et EE2).
   if (/ - EE[12]$/.test(rowKey) && !isNurse(doctorId)) {
@@ -817,7 +817,7 @@ export function canAssignDoctorToSlot(
     if (nursesHere.length === 0 && !EE_SOLO_DOCTORS.includes(doctorId) && !isFixedEeSlot) {
       return {
         allowed: false,
-        reason: `${doctorId} ne peut pas occuper EE seul : seuls O, V et DAAS le peuvent, les autres médecins sont en binôme avec Val ou Véro.`,
+        reason: `${doctorId} ne peut pas occuper EE seul : seuls O, V, R et DAAS le peuvent, les autres médecins sont en binôme avec Val ou Véro.`,
       }
     }
     if (nursesHere.length > 0) {
