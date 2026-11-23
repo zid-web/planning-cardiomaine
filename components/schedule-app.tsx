@@ -1262,6 +1262,13 @@ export function ScheduleApp({
             .slice(0, 26)
             .map(([, sch]) => sch),
         ),
+        // Astreintes posées à la main dans le planning : jamais modifiées
+        (date) => {
+          const cell = fullSchedule[isoWeekKeyOfDate(date)]?.[ATL_NIGHT_ROW]?.[dayNameOfDate(date)]
+          if (!cell?.manualAssignment) return null
+          const v = (cell.value || []) as string[]
+          return v.find((d) => (ATL_NIGHT_DOCTORS as readonly string[]).includes(d)) ?? null
+        },
       ),
     [fullSchedule, vacations],
   )
