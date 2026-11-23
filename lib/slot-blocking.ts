@@ -26,7 +26,7 @@ import {
   isEttPedWithGardeOrAtlMidi,
 } from "@/lib/special-activity-labels"
 import { closedSlotReason, isSlotClosed } from "@/lib/closed-slots"
-import { isNctClosedOnDate } from "@/lib/nct-calendar"
+import { hasNctNextDay, isNctClosedOnDate } from "@/lib/nct-calendar"
 import { holidayClosedReason, holidayNameForIsoDate, isHolidayClosedSlot } from "@/lib/holiday-closed"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 import { isDoctorUnavailable } from "@/lib/assignment-validation"
@@ -714,6 +714,15 @@ export function canAssignDoctorToSlot(
             ? "FV n’est en ATL que le jeudi après-midi (avec Coro)."
             : "Astreinte ATL réservée à M, O, W et CH (FV = Midi jeudi seulement).",
       }
+    }
+  }
+
+  // Jamais d'astreinte de nuit la veille d'un NCT (consigne 23/11/2026)
+  if (rowKey === "Astreintes ATL Nuit") {
+    const nextDay = DAYS[DAYS.indexOf(day) + 1]
+    const nextNct = nextDay ? ((schedule["Hors site - NCT"]?.[nextDay]?.value ?? []) as string[]) : []
+    if (hasNctNextDay(doctorId, dateStr, nextNct)) {
+      return { allowed: false, reason: `${doctorId} est au NCT le lendemain — pas d’astreinte de nuit la veille.` }
     }
   }
 

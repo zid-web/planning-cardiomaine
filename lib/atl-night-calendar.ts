@@ -20,6 +20,7 @@
 import { DAYS } from "@/lib/constants"
 import { chNightWeekdaysForWeek, isChAstreinteWeek } from "@/lib/astreinte-cycle"
 import { dateStrForWeekDay, isDoctorOnVacationForFixed } from "@/lib/fixed-assignments"
+import { hasNctNextDay } from "@/lib/nct-calendar"
 import type { DoctorVacation, ScheduleData } from "@/lib/types"
 
 export type AtlNightEntry = { date: string; user: string; manual?: boolean }
@@ -243,7 +244,13 @@ export function proposeAtlNightDoctor(date: string, ctx: AtlNightProposalContext
   const vacations = ctx.vacations ?? []
   const counts = ctx.counts ?? {}
   const gardeNuit = new Set(listed(sched, "Garde Nuit", day))
-  const available = (d: string) => !isDoctorOnVacationForFixed(d, date, vacations) && !gardeNuit.has(d)
+  const nextDay = DAYS[DAYS.indexOf(day) + 1]
+  const nextNct = nextDay ? listed(sched, "Hors site - NCT", nextDay) : []
+  const available = (d: string) =>
+    !isDoctorOnVacationForFixed(d, date, vacations) &&
+    !gardeNuit.has(d) &&
+    // Jamais d'astreinte de nuit la veille d'un NCT
+    !hasNctNextDay(d, date, nextNct)
 
   // Week-end (vendredi, samedi, dimanche) : combo dès qu'un M/W/O est de garde, sinon mono.
   const isWeekendNight = day === "VENDREDI" || day === "SAMEDI" || day === "DIMANCHE"
