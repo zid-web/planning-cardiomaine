@@ -3784,6 +3784,12 @@ export function ScheduleApp({
                                 (c.remplacant && doc !== c.remplacant)
                                   ? "doctor"
                                   : "empty",
+                              // Case vidée à la main : aucune règle (planning fixe de Val, rotation…)
+                              // ne la re-remplit — la personne peut être réaffectée ailleurs
+                              manuallyCleared:
+                                newValues.length === 0 && !(c.remplacant && doc !== c.remplacant)
+                                  ? true
+                                  : c.manuallyCleared,
                               status: newStatus,
                             }))
                           }}
