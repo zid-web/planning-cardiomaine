@@ -430,20 +430,36 @@ export function fillEmptyAtlNights(
 
 /** Entrées automatiques pour les dates d'un mois sans entrée (remplissage « Auto »). */
 export function autoFillAtlNightMonth(
-  list: readonly AtlNightEntry[],
+  input: readonly AtlNightEntry[],
   year: number,
   month0: number,
   contextFor: (date: string) => AtlNightProposalContext,
   /** Nuits déjà assurées dans le planning (historique) : la répartition reste équitable dans la durée. */
   historyCounts: Record<string, number> = {},
+  /**
+   * Astreinte posée **à la main dans le planning** pour une date (ou null). Elle n'est jamais
+   * modifiée : reprise telle quelle au calendrier (saisie manuelle), à la place d'une éventuelle
+   * proposition automatique, et prise en compte pour l'équité et les nuits voisines.
+   */
+  manualPlanningFor: (date: string) => string | null = () => null,
 ): AtlNightEntry[] {
+  const lastDay = new Date(Date.UTC(year, month0 + 1, 0)).getUTCDate()
+  const byDate = new Map(input.map((e) => [e.date, e]))
+  for (let d = 1; d <= lastDay; d++) {
+    const date = `${year}-${String(month0 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`
+    const fixed = manualPlanningFor(date)
+    if (!fixed) continue
+    const existing = byDate.get(date)
+    if (existing?.manual) continue // saisie manuelle du calendrier : elle prime
+    byDate.set(date, { date, user: fixed, manual: true })
+  }
+  const list = [...byDate.values()]
   const taken = new Set(list.map((e) => e.date))
   const counts = countAtlNights(list)
   for (const [d, n] of Object.entries(historyCounts)) counts[d] = (counts[d] ?? 0) + n
   const added: AtlNightEntry[] = []
   const nights = new Map(list.map((e) => [e.date, e.user]))
-  const last = new Date(Date.UTC(year, month0 + 1, 0)).getUTCDate()
-  for (let d = 1; d <= last; d++) {
+  for (let d = 1; d <= lastDay; d++) {
     const date = `${year}-${String(month0 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`
     if (taken.has(date)) continue
     const ctx = contextFor(date)

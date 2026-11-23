@@ -194,6 +194,22 @@ async function main() {
   assert.equal(cycleAtlNightUser("CH"), null)
   assert.deepEqual(normalizeAtlNightCalendar([{ date: "2026-11-02", user: "FV" }]), [])
 
+  // Astreintes posées à la main dans le planning : jamais modifiées par le remplissage auto
+  {
+    const manualPlanning: Record<string, string> = { "2026-11-10": "W", "2026-11-12": "O" }
+    const auto = [{ date: "2026-11-10", user: "M" }] // ancienne proposition auto, contraire au planning
+    const filled = autoFillAtlNightMonth(auto, 2026, 10, () => ({}), {}, (d) => manualPlanning[d] ?? null)
+    const at = (d: string) => filled.find((e) => e.date === d)
+    assert.equal(at("2026-11-10")?.user, "W", "planning manuel prioritaire sur la proposition auto")
+    assert.equal(at("2026-11-10")?.manual, true)
+    assert.equal(at("2026-11-12")?.user, "O")
+    assert.notEqual(at("2026-11-11")?.user, "W", "pas deux nuits de suite (W le 10)")
+    assert.notEqual(at("2026-11-11")?.user, "O", "pas deux nuits de suite (O le 12)")
+    // une saisie manuelle du calendrier prime sur le planning
+    const cal = autoFillAtlNightMonth([{ date: "2026-11-10", user: "M", manual: true }], 2026, 10, () => ({}), {}, (d) => manualPlanning[d] ?? null)
+    assert.equal(cal.find((e) => e.date === "2026-11-10")?.user, "M")
+  }
+
   console.log("✅ atl-night-calendar tests passed")
 }
 
