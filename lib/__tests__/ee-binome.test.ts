@@ -1,6 +1,6 @@
 /**
  * Run: bunx tsx lib/__tests__/ee-binome.test.ts
- * EE1 / EE2 : médecin en binôme avec Val/Véro ; seuls O, V, DAAS peuvent être seuls ;
+ * EE1 / EE2 : médecin en binôme avec Val/Véro ; seuls O, V, R, DAAS peuvent être seuls ;
  * une infirmière sur les deux salles n'a qu'un seul médecin (le même).
  */
 import assert from "node:assert/strict"
@@ -13,16 +13,16 @@ const wk = "2026-W44" // lundi 26/10/2026
 const cell = (value: string[], status: "validated" | "pending" = "validated") => ({ value, type: "doctor" as const, status })
 
 function main() {
-  assert.deepEqual([...EE_SOLO_DOCTORS].sort(), ["DAAS", "O", "V"])
+  assert.deepEqual([...EE_SOLO_DOCTORS].sort(), ["DAAS", "O", "R", "V"])
 
-  // Seuls O, V, DAAS seuls en EE ; les autres médecins refusés sans infirmière
+  // Seuls O, V, R, DAAS seuls en EE ; les autres médecins refusés sans infirmière
   const s = generateWeekSchedule(wk, [])
-  for (const d of ["O", "V", "DAAS"]) {
+  for (const d of ["O", "V", "R", "DAAS"]) {
     assert.equal(canAssignDoctorToSlot(d, "2026-10-28", "Matin - EE2", "MERCREDI", s, []).allowed, true, `${d} peut être seul`)
   }
   const refused = canAssignDoctorToSlot("H", "2026-10-28", "Matin - EE2", "MERCREDI", s, [])
   assert.equal(refused.allowed, false)
-  assert.match(refused.reason || "", /seuls O, V et DAAS/)
+  assert.match(refused.reason || "", /seuls O, V, R et DAAS/)
 
   // Avec Val ou Véro : binôme autorisé
   s["Matin - EE2"].MERCREDI = cell(["Val"])
